@@ -9,10 +9,9 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.HARDCODED_SERVICES
@@ -74,12 +73,16 @@ private fun scanWorld(
 private fun World.analyzeAll(
     sniWhite: (Warm) -> Set<String> = { emptySet() },
     onBoard: (ScanBoard) -> Unit = {},
-): Pair<Warm, ScanBoard> = runBlocking(Dispatchers.Default) {
-    resourceScope {
-        val d = driver()
-        val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-        warm to d.analyze(warm, services, mts, Prior.None, emptyMap(), sniWhite(warm), onBoard)
+): Pair<Warm, ScanBoard> {
+    lateinit var out: Pair<Warm, ScanBoard>
+    runTest {
+        resourceScope {
+            val d = driver()
+            val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
+            out = warm to d.analyze(warm, services, mts, Prior.None, emptyMap(), sniWhite(warm), onBoard)
+        }
     }
+    return out
 }
 
 /** Лента полного анализа на фейках (для проигрыша рядом с Лентами нажатия). */
@@ -136,8 +139,9 @@ class ScanDriverTest : FunSpec({
         val w = scanWorld(prober = scanProber(hang = "10.0.0.3"), exits = exitProbe(hangPort = 20002),
             passport = Passport(mapOf("old" to oldFacts), analyzedAtMs = 5))
         val twoDone = CompletableDeferred<Unit>()
-        val keys = runBlocking(Dispatchers.Default) {
-            resourceScope {
+        lateinit var keys: List<String>
+        runTest {
+            keys = resourceScope {
                 val d = w.driver()
                 val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
                 val job = async { d.analyze(warm, w.services, mts, Prior.None, emptyMap()) { if (it.done == 2) twoDone.complete(Unit) } }

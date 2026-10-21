@@ -71,12 +71,16 @@ private fun pipes(
     pressTimeoutMs = pressTimeoutMs, services = HARDCODED_SERVICES,
 )
 
-private fun World.pressAll(onBoard: (Board) -> Unit = {}): Board = runBlocking(Dispatchers.Default) {
-    resourceScope {
-        val d = driver()
-        val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-        d.press(warm, services, mts, onBoard = onBoard)
+private fun World.pressAll(onBoard: (Board) -> Unit = {}): Board {
+    lateinit var out: Board
+    runTest {
+        out = resourceScope {
+            val d = driver()
+            val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
+            d.press(warm, services, mts, onBoard = onBoard)
+        }
     }
+    return out
 }
 
 /** Лента нажатия двух трубопроводов (v2): Телега находит s001, Инсте не годен ни один. */
