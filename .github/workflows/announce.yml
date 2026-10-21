@@ -1,4 +1,4 @@
-# Пост о релизе в телеграм-канал: версия, разделы CHANGELOG, ссылка на страницу релиза. Зовёт выпуск в CI
+# Пост о релизе в телеграм-канал: версия, разделы CHANGELOG, прямая ссылка на APK и страница релиза. Зовёт выпуск в CI
 # после APK; руками — на любой тег (проверка, повтор неудачного поста).
 name: Пост о релизе
 
@@ -37,7 +37,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         # «0.7.4» и «v0.7.4» — один релиз: теги вида vX.Y.Z.
         run: |
-          gh release view "v${TAG#v}" -R "$GITHUB_REPOSITORY" --json tagName,url,body > release.json
+          gh release view "v${TAG#v}" -R "$GITHUB_REPOSITORY" --json tagName,url,body,assets > release.json
           python3 -I .github/scripts/release-post.py < release.json > post.html
       - uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
