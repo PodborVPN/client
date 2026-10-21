@@ -7,6 +7,8 @@ name: CI
 on:
   push:
     branches: [main]
+  # PR со стороны: тесты и заголовки, без выпуска (у please — только push).
+  pull_request:
   workflow_dispatch:
 
 # Без отмены: новый push не обрывает начатый выпуск (релиз без APK).
@@ -21,11 +23,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       # libXray пересобирается, только когда меняется скрипт сборки (в нём тег и коммит апстрима).
       - id: libxray
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: app/libs/libXray.aar
           key: libxray-${{ hashFiles('app/scripts/build-libxray.sh') }}
@@ -33,7 +37,7 @@ jobs:
         run: app/scripts/build-libxray.sh
       - run: ./gradlew :core:test :driver:test :app:testDebugUnitTest :app:assembleRelease
       - if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-reports
           path: "*/build/reports/tests"
@@ -41,10 +45,11 @@ jobs:
   commits:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: wagoid/commitlint-github-action@v6
+      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
 
   please:
     needs: [build, commits]
@@ -59,7 +64,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -76,8 +81,9 @@ jobs:
       TAG: ${{ needs.please.outputs.tag_name }}
       APK: podbor-${{ needs.please.outputs.version }}.apk
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.please.outputs.tag_name }}
       - uses: ./.github/actions/setup
       # Выпускной libXray — всегда с нуля, без кеша.
@@ -98,7 +104,7 @@ jobs:
       - run: |
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           rm -f "$RUNNER_TEMP/release.jks"
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ env.APK }}
       - name: APK и SHA-256 в релиз
