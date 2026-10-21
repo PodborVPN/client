@@ -1,3 +1,5 @@
+<img src="fastlane/metadata/android/ru-RU/images/icon.png" width="96" alt="Podbor" align="right">
+
 # Podbor
 
 [![Скачиваний](https://img.shields.io/github/downloads/PodborVPN/client/total?label=Скачиваний)](https://github.com/PodborVPN/client/releases)
