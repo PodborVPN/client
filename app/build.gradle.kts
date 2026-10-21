@@ -115,6 +115,17 @@ val appVersion: Pair<String, Int> = rootProject.file("version.txt").readText().t
     v to major * 10_000 + minor * 100 + patch
 }
 
+/** Переменные релизной подписи: все — подписываем ими, ни одной — null (debug-ключ), часть — ошибка сборки. */
+fun releaseSigning(): Map<String, String>? {
+    val names = listOf("SIGNING_KEYSTORE_PATH", "SIGNING_STORE_PASSWORD", "SIGNING_KEY_ALIAS", "SIGNING_KEY_PASSWORD")
+    val set = names.associateWith { System.getenv(it) }.filterValues { !it.isNullOrEmpty() }.mapValues { it.value!! }
+    return when (set.size) {
+        0 -> null
+        names.size -> set
+        else -> error("релизная подпись: не заданы ${(names - set.keys).joinToString()}")
+    }
+}
+
 android {
     namespace = "podbor.app"
     compileSdkVersion("android-37.0")
@@ -128,11 +139,20 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
-    // Не-отладочная сборка тем же debug-ключом (без релизной обвязки): Compose в debuggable-сборке в разы
-    // медленнее, производительность меряется и раздаётся только так.
+    // Релизный ключ — из переменных окружения (выпуск в CI); их нет — тот же debug-ключ: не-отладочная сборка
+    // нужна и локально, Compose в debuggable-сборке в разы медленнее.
+    val signing = releaseSigning()
+    if (signing != null) {
+        signingConfigs.create("release") {
+            storeFile = file(signing.getValue("SIGNING_KEYSTORE_PATH"))
+            storePassword = signing.getValue("SIGNING_STORE_PASSWORD")
+            keyAlias = signing.getValue("SIGNING_KEY_ALIAS")
+            keyPassword = signing.getValue("SIGNING_KEY_PASSWORD")
+        }
+    }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (signing != null) "release" else "debug")
             isMinifyEnabled = false
         }
     }
