@@ -111,20 +111,14 @@ class PolicyTest : FunSpec({
     }
 
     test("класс — только по измеренному входу, имя не читается") {
-        classOf(server("s001", yandex, name = "🇷🇺 RU-2 → 🇳🇱 NL-7")) shouldBe CandidateClass.RuEntry
-        classOf(server("s002", yandex, name = "🇳🇱 Netherlands")) shouldBe CandidateClass.RuEntry
-        classOf(server("s003", hetzner, name = "🇷🇺 Russia-29s")) shouldBe CandidateClass.Foreign
-        classOf(server("s005", Entry.Unknown)) shouldBe CandidateClass.UnknownEntry
-    }
-
-    test("Offline → пустая очередь") {
-        plan(Scenario.Offline, listOf(server("s001", yandex)), Memory.Empty, mtsOpen, nowMs = 0).queue.shouldBeEmpty()
-    }
-
-    test("вердикт: TelegramDc(2) — Fits, TelegramDc(1) — ServiceDead") {
-        Verdict.TelegramDc(2).kind() shouldBe VerdictKind.Fits
-        Verdict.TelegramDc(1).kind() shouldBe VerdictKind.ServiceDead
-        Verdict.TlsSilence.kind() shouldBe VerdictKind.TlsSilence
-        Verdict.Unreachable.kind() shouldBe VerdictKind.Unreachable
+        val servers = listOf(
+            server("s001", hetzner, name = "🇷🇺 Russia-29s"),
+            server("s002", Entry.Unknown, name = "🇷🇺 RU-1"),
+            server("s003", yandex, name = "🇳🇱 Netherlands"),
+            server("s004", yandex, name = "🇷🇺 RU-2 → 🇳🇱 NL-7"),
+        )
+        val p = plan(Scenario.MobileWhitelist, servers, Memory.Empty, mtsWl, nowMs = 0)
+        ids(p) shouldBe listOf("s003", "s004", "s002")
+        p.skipped shouldBe mapOf(CandidateClass.Foreign to mapOf(SkipReason.ForeignInWhitelist to 1))
     }
 })

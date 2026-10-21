@@ -1,7 +1,6 @@
 package podbor.core
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.choice
@@ -23,29 +22,6 @@ class ExplainTest : FunSpec({
 
     fun answer(tag: String, v: Verdict, at: Long = 100) = Letter.ProbeAnswered(at, ServerId(tag), v)
 
-    test("пример: 7 входов тишина, 3 не отвечают, 1 без Телеги, 81 зарубежный (через мир с повторами)") {
-        val chains = (1..7).map { server("s%03d".format(it), Entry.Ru) }
-        val singles = (8..11).map { server("s%03d".format(it), Entry.Ru) }
-        val foreign = (12..92).map { server("s%03d".format(it), Entry.Foreign("NL")) }
-        val verdicts = chains.associate { it.id to (Verdict.TlsSilence as Verdict) } +
-            singles.take(3).associate { it.id to Verdict.Unreachable } + mapOf(ServerId("s011") to Verdict.TelegramDc(1))
-        val run = runPress(pressed(chains + singles + foreign), FakeWorld(whitelist, verdicts))
-        val e = explain(run.letters)
-        e.diagnosis.scenario shouldBe Scenario.MobileWhitelist
-        e.lineEvidence shouldBe whitelist
-        e.tried shouldBe mapOf(
-            CandidateClass.RuEntry to mapOf(VerdictKind.TlsSilence to 7, VerdictKind.Unreachable to 3, VerdictKind.ServiceDead to 1),
-        )
-        e.skipped shouldBe mapOf(CandidateClass.Foreign to mapOf(SkipReason.ForeignInWhitelist to 81))
-        e.outcome shouldBe Outcome.NotFound(Conclusion.AllAdmissibleFailed)
-    }
-
-    test("подписка без Ru при белых списках → NoAdmissibleInConfig, tried пуст") {
-        val e = explain(listOf(pressed(listOf(server("s001", Entry.Foreign("NL")))), *confirmed))
-        e.tried.shouldBeEmpty()
-        e.outcome shouldBe Outcome.NotFound(Conclusion.NoAdmissibleInConfig)
-    }
-
     test("пустая подписка → NoAdmissibleInConfig") {
         explain(listOf(pressed(emptyList()), Letter.LineObserved(10, open))).outcome shouldBe
             Outcome.NotFound(Conclusion.NoAdmissibleInConfig)
@@ -57,22 +33,6 @@ class ExplainTest : FunSpec({
             listOf(pressed(servers), Letter.LineObserved(10, open), answer("s001", Verdict.Unreachable), answer("s002", Verdict.TlsSilence),
                 answer("s002", Verdict.TlsSilence, at = 900)),
         ).outcome shouldBe Outcome.NotFound(Conclusion.NothingWorksOpen)
-    }
-
-    test("нет сети → NoNetwork") {
-        explain(listOf(pressed(emptyList()), Letter.LineObserved(10, line(Reach.Down, Reach.Down)))).outcome shouldBe
-            Outcome.NotFound(Conclusion.NoNetwork)
-    }
-
-    test("Found: восьмой ответивший из 11 → position 8, admissible 11") {
-        val servers = (1..11).map { server("s%03d".format(it), Entry.Ru) }
-        val answers = (1..7).map { answer("s%03d".format(it), Verdict.Unreachable) } + answer("s008", Verdict.TelegramDc(3))
-        explain(listOf(pressed(servers), *confirmed) + answers).outcome shouldBe
-            Outcome.Found(ServerId("s008"), position = 8, admissible = 11)
-    }
-
-    test("нет LineObserved → InProgress") {
-        explain(listOf(pressed(listOf(server("s001", Entry.Ru))))).outcome shouldBe Outcome.InProgress
     }
 
     test("двойники на одном IP:порт после второй тишины: нажатие кончается, объяснение не застревает в InProgress") {

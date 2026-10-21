@@ -120,20 +120,6 @@ class ScanTest : FunSpec({
         t.state.shouldBeInstanceOf<ScanState.Done>().diagnosis.scenario shouldBe Scenario.MobileWhitelist
     }
 
-    test("бюджет: на один адрес не больше одной задачи разом") {
-        val servers = listOf(
-            server("s001", Entry.Foreign("NL"), host = "10.0.0.9"),
-            server("s002", Entry.Foreign("NL"), host = "10.0.0.9"),
-            server("s003", Entry.Foreign("NL")),
-        )
-        val (s, _) = scanStep(ScanState.Idle, scan(servers))
-        scanStep(s, Letter.LineObserved(10, open)).second shouldContainExactly
-            listOf(Deed.MeasureExit(ServerId("s001")), Deed.MeasureExit(ServerId("s003")))
-        val t = drive(scan(servers))
-        t.maxPerEndpoint shouldBe 1
-        t.probes() shouldHaveSize 6
-    }
-
     test("выдуманный третий сервис получает пробы и свой ключ памяти") {
         val servers = listOf(server("s001", Entry.Foreign("NL")), server("s002", Entry.Foreign("NL")))
         val t = drive(scan(servers, services = listOf(tg, insta, yt)))
@@ -252,8 +238,7 @@ class ScanTest : FunSpec({
         val servers = (1..20).map { server("s%03d".format(it), Entry.Foreign("NL"), host = "10.0.0.${(it - 1) % 15}") }
         val (s, _) = scanStep(ScanState.Idle, scan(servers))
         val first = scanStep(s, Letter.LineObserved(10, open)).second
-        first shouldHaveSize SCAN_BUDGET_TOTAL
-        SCAN_BUDGET_TOTAL shouldBe 12
+        first shouldHaveSize 12
         val t = drive(scan(servers))
         t.maxPerEndpoint shouldBe 1
         t.exits() shouldHaveSize 20

@@ -5,7 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /** Найденные ошибки: каждая — тест, который падал до исправления. */
-class ReviewFixesTest : FunSpec({
+class RegressionTest : FunSpec({
 
     val mts = OsNetwork.Cellular("MTS", "25001")
     val whitelist = line(Reach.Up, Reach.Down)

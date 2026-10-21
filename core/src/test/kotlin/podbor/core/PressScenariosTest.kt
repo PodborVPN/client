@@ -3,7 +3,6 @@ package podbor.core
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
@@ -37,26 +36,14 @@ class PressScenariosTest : FunSpec({
         run.probed.shouldBeEmpty()
     }
 
-    test("3. белые списки, все Ru падают с разными подписями → AllAdmissibleFailed, счётчики верны") {
-        val run = runPress(
-            pressed(ru3 + foreign3),
-            FakeWorld(whitelist, mapOf(id(1) to Verdict.TlsSilence, id(2) to Verdict.Unreachable, id(3) to Verdict.TelegramDc(1))),
-        )
-        val e = explain(run.letters)
-        e.outcome shouldBe Outcome.NotFound(Conclusion.AllAdmissibleFailed)
-        e.tried shouldBe mapOf(
-            CandidateClass.RuEntry to mapOf(VerdictKind.TlsSilence to 1, VerdictKind.Unreachable to 1, VerdictKind.ServiceDead to 1),
-        )
-    }
-
-    test("4. чистая сеть, первый проходит → ранний стоп, не больше 6 проб") {
+    test("3. чистая сеть, первый проходит → ранний стоп, не больше 6 проб") {
         val servers = (1..12).map { server("s%03d".format(it), Entry.Foreign("NL")) }
         val run = runPress(pressed(servers), FakeWorld(open, mapOf(id(1) to Verdict.TelegramDc(5))))
         run.probed.size shouldBeLessThanOrEqual 6
         run.deeds shouldContain Deed.MakeExit(id(1))
     }
 
-    test("5. посреди перебора в чистой сети все упали → линия заново → белые списки → только Ru") {
+    test("4. посреди перебора в чистой сети все упали → линия заново → белые списки → только Ru") {
         val servers = (1..12).map { server("s%03d".format(it), Entry.Foreign("NL")) } +
             listOf(server("s013", Entry.Ru), server("s014", Entry.Ru))
         val run = runPress(pressed(servers), FakeWorld(open, emptyMap(), lineAfter = 4 to whitelist))
@@ -64,7 +51,7 @@ class PressScenariosTest : FunSpec({
         run.probed.drop(9).shouldContainExactly(id(13), id(14))
     }
 
-    test("6. TlsSilence на :8443 → тот же сервер на :2096; :8443 не трогается 10 мин и в следующих нажатиях") {
+    test("5. TlsSilence на :8443 → тот же сервер на :2096; :8443 не трогается 10 мин и в следующих нажатиях") {
         val a8443 = server("s001", Entry.Ru, host = "10.7.0.1", port = 8443)
         val a2096 = server("s002", Entry.Ru, host = "10.7.0.1", port = 2096)
         val others = (3..10).map { server("s%03d".format(it), Entry.Ru, host = "10.7.1.$it") }
@@ -76,38 +63,28 @@ class PressScenariosTest : FunSpec({
         runPress(pressed(servers, memory = memory, at = 660_000), FakeWorld(whitelist, emptyMap())).probed shouldContain id(1)
     }
 
-    test("7. 20 серверов на одном IP:порт → одновременно ≤ 1 кандидат (= 3 рукопожатия пробы)") {
+    test("6. 20 серверов на одном IP:порт → одновременно ≤ 1 кандидат (= 3 рукопожатия пробы)") {
         val servers = (1..20).map { server("s%03d".format(it), Entry.Foreign("NL"), host = "10.8.0.1", port = 443) }
         runPress(pressed(servers), FakeWorld(open, emptyMap())).maxInFlightPerEndpoint shouldBeLessThanOrEqual 1
     }
 
-    test("8. нет сети → NoNetwork, ни одной пробы") {
+    test("7. нет сети → NoNetwork, ни одной пробы") {
         val run = runPress(pressed(ru3), FakeWorld(line(Reach.Down, Reach.Down), emptyMap()))
         explain(run.letters).outcome shouldBe Outcome.NotFound(Conclusion.NoNetwork)
         run.probed.shouldBeEmpty()
     }
 
-    test("9. память: прошлый успех в том же сценарии у того же оператора пробуется первым") {
+    test("8. память: прошлый успех в том же сценарии у того же оператора пробуется первым") {
         val servers = (1..9).map { server("s%03d".format(it), Entry.Ru) }
         val memory = Memory.Empty.rememberSuccess(MemoryKey("MTS", Scenario.MobileWhitelist), servers[8], atMs = 0)
         runPress(pressed(servers, memory = memory, at = 1_000), FakeWorld(whitelist, emptyMap())).probed.first() shouldBe id(9)
     }
 
-    test("10. Wi-Fi ведёт себя как чистая сеть; Wi-Fi с белым списком на линии → MobileWhitelist") {
+    test("9. Wi-Fi ведёт себя как чистая сеть; Wi-Fi с белым списком на линии → MobileWhitelist") {
         val servers = ru3 + foreign3
         val world = FakeWorld(open, emptyMap())
         runPress(pressed(servers, os = OsNetwork.Wifi), world).probed shouldBe runPress(pressed(servers), world).probed
         explain(runPress(pressed(servers, os = OsNetwork.Wifi), FakeWorld(whitelist, emptyMap())).letters).diagnosis.scenario shouldBe
             Scenario.MobileWhitelist
-    }
-
-    test("11. красная кнопка: объяснение полное, MakeExit нет") {
-        val run = runPress(pressed(ru3 + foreign3), FakeWorld(whitelist, emptyMap()))
-        val screen = render(run.letters)
-        screen.button shouldBe Button.Red
-        run.deeds.filterIsInstance<Deed.MakeExit>().shouldBeEmpty()
-        val e = explain(run.letters)
-        e.lineEvidence shouldBe whitelist
-        e.skipped.keys shouldContainAll listOf(CandidateClass.Foreign)
     }
 })

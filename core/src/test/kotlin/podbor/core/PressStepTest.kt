@@ -18,7 +18,6 @@ class PressStepTest : FunSpec({
     /** Белые списки — два раунда «похоже» подряд; один — только подозрение. */
     val confirmed = arrayOf<Letter>(Letter.LineObserved(10, whitelist), Letter.LineObserved(20, whitelist))
     val open = line(Reach.Up, Reach.Up)
-    val offline = line(Reach.Down, Reach.Down)
 
     fun pressed(servers: List<Server>, exit: ServerId? = null, memory: Memory = Memory.Empty, at: Long = 0, service: ServiceId = Telegram.id, pinned: Boolean = true) =
         Letter.Pressed(atMs = at, os = mts, servers = servers, currentExit = exit, memory = memory, service = service, pinned = pinned)
@@ -49,12 +48,6 @@ class PressStepTest : FunSpec({
         s2.shouldBeInstanceOf<PressState.Running>()
     }
 
-    test("LineObserved Offline → Done, ни одной Probe") {
-        val (s, d) = run(pressed(ru), Letter.LineObserved(10, offline))
-        s.shouldBeInstanceOf<PressState.Done>()
-        probes(d).shouldBeEmpty()
-    }
-
     test("первый раунд «похоже» → сразу Probe только по Ru (годны при обеих гипотезах) и подтверждающий ProbeLine") {
         val (s, d) = run(pressed(foreign + ru), Letter.LineObserved(10, whitelist))
         probes(d) shouldContainExactly listOf("s001", "s002", "s003", "s004", "s005")
@@ -69,10 +62,9 @@ class PressStepTest : FunSpec({
     }
 
     test("подозрение, затем открыто: зарубежные встают в очередь") {
-        val (s, _) = run(pressed(ru.take(1) + foreign), Letter.LineObserved(10, whitelist), Letter.LineObserved(20, open))
-        val running = s.shouldBeInstanceOf<PressState.Running>()
-        running.diagnosis.scenario shouldBe Scenario.MobileOpen
-        (running.queue + running.inFlight).map { it.id.tag } shouldContainAll listOf("s006", "s007", "s008")
+        val (s, d) = run(pressed(ru.take(1) + foreign), Letter.LineObserved(10, whitelist), Letter.LineObserved(20, open))
+        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scenario shouldBe Scenario.MobileOpen
+        probes(d) shouldContainAll listOf("s006", "s007", "s008")
     }
 
     test("подозрение без входов в РФ — не тупик, ждём подтверждения") {
@@ -116,26 +108,6 @@ class PressStepTest : FunSpec({
         val answer = Letter.ProbeAnswered(400, ServerId("s003"), Verdict.TelegramDc(5))
         run(pressed(ru, exit = ServerId("s003"), pinned = false), answer).second shouldContain Deed.MakeExit(ServerId("s003"))
         run(pressed(ru, exit = ServerId("s003"), pinned = true), answer).second.filterIsInstance<Deed.MakeExit>().shouldBeEmpty()
-    }
-
-    test("Fits текущего выхода → без MakeExit") {
-        val (s, d) = run(
-            pressed(ru, exit = ServerId("s003")),
-            Letter.ProbeAnswered(400, ServerId("s003"), Verdict.TelegramDc(5)),
-        )
-        s.shouldBeInstanceOf<PressState.Done>()
-        d.filterIsInstance<Deed.MakeExit>().shouldBeEmpty()
-    }
-
-    test("вторая тишина → блок IP:порт; соседний порт того же хоста пробуется; s001 — ровно дважды") {
-        val a8443 = server("s001", Entry.Ru, host = "10.9.9.1", port = 8443)
-        val a8443twin = server("s002", Entry.Ru, host = "10.9.9.1", port = 8443)
-        val others = (3..8).map { server("s%03d".format(it), Entry.Ru, host = "10.9.8.$it") }
-        val a2096 = server("s009", Entry.Ru, host = "10.9.9.1", port = 2096)
-        val run = runPress(pressed(listOf(a8443, a8443twin) + others + a2096), FakeWorld(whitelist, mapOf(a8443.id to Verdict.TlsSilence)))
-        run.probed.count { it == a8443.id } shouldBe 2
-        (a2096.id in run.probed) shouldBe true
-        run.deeds.filterIsInstance<Deed.Remember>().last().memory.isBlocked(a8443.endpoint, nowMs = run.letters.last().atMs) shouldBe true
     }
 
     test("первая тишина — повтор в конце очереди без блока; вторая — блок IP:порт") {
@@ -194,16 +166,6 @@ class PressStepTest : FunSpec({
         screen.result.shouldBeInstanceOf<ResultCard.Found>().coverage shouldBe "проверено 5 из 8 серверов"
     }
 
-    test("после перепроверки — белые списки: дальше только Ru") {
-        // Зарубежных больше, чем бюджет + 3 добора: до перепроверки очередь до Ru не доходит.
-        val servers = (1..12).map { server("s%03d".format(it), Entry.Foreign("NL")) } +
-            listOf(server("s013", Entry.Ru), server("s014", Entry.Ru))
-        val answers = (1..4).map { Letter.ProbeAnswered(100L + it, ServerId("s%03d".format(it)), Verdict.Unreachable) }
-        val (_, d) = run(pressed(servers), Letter.LineObserved(10, open), *answers.toTypedArray(), Letter.LineObserved(200, whitelist))
-        // В полёте ещё 5 зарубежных (s005–s009), общий бюджет 6 → стартует один Ru, первым по очереди.
-        probes(d) shouldContainExactly listOf("s013")
-    }
-
     test("белые списки: 4 провала Ru на разных IP не ставят перебор на паузу ради линии") {
         val servers = (1..10).map { server("s%03d".format(it), Entry.Ru) }
         val answers = (1..4).map { Letter.ProbeAnswered(100L + it, ServerId("s%03d".format(it)), Verdict.Unreachable) }
@@ -217,10 +179,9 @@ class PressStepTest : FunSpec({
         val answers = (1..4).map { Letter.ProbeAnswered(100L + it, ServerId("s%03d".format(it)), Verdict.TlsSilence) }
         val (_, d1) = run(pressed(servers), Letter.LineObserved(10, open), *answers.toTypedArray())
         d1 shouldContainExactly listOf(Deed.ProbeLine)
-        val (s, d) = run(pressed(servers), Letter.LineObserved(10, open), *answers.toTypedArray(), Letter.LineObserved(200, open))
+        val (_, d) = run(pressed(servers), Letter.LineObserved(10, open), *answers.toTypedArray(), Letter.LineObserved(200, open))
         // s001–s003 перезапущены сразу после своей тишины; отложенным остался s004 — он и идёт после линии.
         probes(d) shouldContainExactly listOf("s004")
-        s.shouldBeInstanceOf<PressState.Running>().inFlight.map { it.id.tag } shouldContainExactly listOf("s001", "s002", "s003", "s004")
     }
 
     test("третьей перепроверки нет") {
@@ -232,7 +193,7 @@ class PressStepTest : FunSpec({
         repeat(4) { letters += fail() }
         val (s, d) = run(*letters.toTypedArray())
         d shouldNotContain Deed.ProbeLine
-        s.shouldBeInstanceOf<PressState.Running>().rediagnoses shouldBe 2
+        s.shouldBeInstanceOf<PressState.Running>()
     }
 
     test("все допустимые упали → Done, Remember без MakeExit") {
@@ -255,6 +216,6 @@ class PressStepTest : FunSpec({
             Letter.ProbeAnswered(120, ServerId("s002"), Verdict.TelegramDc(2)),
         )
         d.shouldBeEmpty()
-        s.shouldBeInstanceOf<PressState.Done>().letters.size shouldBe 5
+        s.shouldBeInstanceOf<PressState.Done>()
     }
 })

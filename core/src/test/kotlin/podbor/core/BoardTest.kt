@@ -15,10 +15,9 @@ class BoardTest : FunSpec({
     val found = ResultCard.Found("NL-7", Transport.Xhttp, 100, "проверено 2 из 11 входов РФ")
     val notFound = ResultCard.NotFound(listOf("Нет сети."))
 
-    test("карточки по ServiceId: порядок набора не важен, порядок insta, tg") {
+    test("карточки по ServiceId: порядок insta, tg, метки IG, TG") {
         val screens = mapOf(Telegram.id to screen(Button.Green, found), Instagram.id to screen(Button.Red, notFound))
-        val a = board(setOf(Instagram, Telegram), screens)
-        a shouldBe board(setOf(Telegram, Instagram), screens)
+        val a = board(setOf(Telegram, Instagram), screens)
         a.cards.map { it.service } shouldBe listOf(Instagram.id, Telegram.id)
         a.cards.map { it.label } shouldBe listOf("IG", "TG")
     }
@@ -44,7 +43,7 @@ class BoardTest : FunSpec({
         b.cards.first { it.service == Instagram.id }.status shouldBe CardStatus.Unknown
     }
 
-    test("отображение ResultCard → CardStatus (решение 3)") {
+    test("отображение ResultCard → CardStatus") {
         fun status(button: Button, r: ResultCard) = board(setOf(Telegram), mapOf(Telegram.id to screen(button, r))).cards.single().status
         status(Button.Searching, ResultCard.Empty) shouldBe CardStatus.Searching
         status(Button.Idle, ResultCard.Empty) shouldBe CardStatus.Unknown

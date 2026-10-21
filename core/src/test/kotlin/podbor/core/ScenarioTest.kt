@@ -23,7 +23,7 @@ class ScenarioTest : FunSpec({
         // Заграница отвечает рукопожатием — сеть открыта, что бы ни было с российскими эталонами.
         Row(mts, Reach.Down, Reach.Up, Scenario.MobileOpen),
         Row(OsNetwork.Wifi, Reach.Down, Reach.Up, Scenario.Wifi),
-        // Review Focus 4: ОС говорит «нет сети», но линию всё равно снимаем и верим ей.
+        // ОС говорит «нет сети», но линию всё равно снимаем и верим ей.
         Row(OsNetwork.None, Reach.Up, Reach.Up, Scenario.MobileOpen),
         Row(OsNetwork.None, Reach.Down, Reach.Down, Scenario.Offline),
     ) { row -> scenarioOf(row.os, nonEmptyListOf(line(row.russia, row.abroad))) shouldBe row.expected }

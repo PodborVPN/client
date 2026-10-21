@@ -10,32 +10,25 @@ class WhiteListsTest : FunSpec({
         domains = listOf("ya.ru", "", "  VK.com "),
     )
 
-    test("IPv4 по CIDR") {
-        lists.hasIp("203.0.113.10") shouldBe true
-        lists.hasIp("198.51.100.1") shouldBe false
+    test("whiteHint: Likely ⟺ IP входа в белых CIDR (белые у операторов — по адресу), SNI не условие") {
+        whiteHint(lists, "203.0.113.1") shouldBe WhiteHint.Likely
+        whiteHint(lists, "198.51.100.1") shouldBe WhiteHint.Unlikely
+        whiteHint(lists, "ya.ru") shouldBe WhiteHint.Unlikely
     }
-    test("IPv6 по CIDR, включая сжатие ::") {
-        lists.hasIp("2a00:1fa0:1::1") shouldBe true
-        lists.hasIp("2a00:1fa1::1") shouldBe false
-        lists.hasIp("203.0.113.10") shouldBe true
+    test("whiteHint по IPv6, включая сжатие ::") {
+        whiteHint(lists, "2a00:1fa0:1::1") shouldBe WhiteHint.Likely
+        whiteHint(lists, "2a00:1fa1::1") shouldBe WhiteHint.Unlikely
     }
     test("одиночный адрес без маски — /32; мусор пропускается") {
-        lists.hasIp("5.6.7.8") shouldBe true
-        lists.hasIp("1.2.3.4") shouldBe false
-        lists.hasIp("не ip") shouldBe false
+        whiteHint(lists, "5.6.7.8") shouldBe WhiteHint.Likely
+        whiteHint(lists, "1.2.3.4") shouldBe WhiteHint.Unlikely
+        whiteHint(lists, "не ip") shouldBe WhiteHint.Unlikely
     }
-    test("SNI: домен и поддомены, не суффикс строки") {
-        lists.hasSni("ya.ru") shouldBe true
-        lists.hasSni("api.ya.ru") shouldBe true
-        lists.hasSni("notya.ru") shouldBe false
-        lists.hasSni("API.VK.com") shouldBe true
-    }
-    test("whiteHint: Likely ⟺ IP входа в белых (белые у операторов — по адресу), SNI не условие") {
-        whiteHint(lists, "203.0.113.1") shouldBe WhiteHint.Likely
-        whiteHint(lists, "9.9.9.9") shouldBe WhiteHint.Unlikely
-    }
-    test("sniWhite: отдельный факт; нет SNI — нет") {
+    test("sniWhite: домен и поддомены, не суффикс строки; регистр не важен; нет SNI — нет") {
+        sniWhite(lists, "ya.ru") shouldBe true
         sniWhite(lists, "api.ya.ru") shouldBe true
+        sniWhite(lists, "notya.ru") shouldBe false
+        sniWhite(lists, "API.VK.com") shouldBe true
         sniWhite(lists, "evil.com") shouldBe false
         sniWhite(lists, null) shouldBe false
     }
