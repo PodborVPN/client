@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Тег релиза, например v0.7.4
+        description: Версия релиза, например 0.7.4
         type: string
         required: true
 
@@ -35,7 +35,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-        run: gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json tagName,url,body | python3 -I .github/scripts/release-post.py > post.html
+        # «0.7.4» и «v0.7.4» — один релиз: теги вида vX.Y.Z.
+        run: |
+          gh release view "v${TAG#v}" -R "$GITHUB_REPOSITORY" --json tagName,url,body > release.json
+          python3 -I .github/scripts/release-post.py < release.json > post.html
       - uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
