@@ -116,3 +116,12 @@ jobs:
           gh release view "$TAG" --json body --jq .body > notes.md
           printf '\n\n`%s` SHA-256: `%s`\n' "$APK" "$sha" >> notes.md
           gh release edit "$TAG" --notes-file notes.md
+
+  announce:
+    needs: [please, apk]
+    uses: ./.github/workflows/announce.yml
+    with:
+      tag: ${{ needs.please.outputs.tag_name }}
+    secrets:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
