@@ -1,6 +1,6 @@
 # Podbor
 
-[![Скачиваний](https://img.shields.io/github/downloads/PodborVPN/client/total?label=скачивания)](https://github.com/PodborVPN/client/releases)
+[![Скачиваний](https://img.shields.io/github/downloads/PodborVPN/client/total?label=Скачиваний)](https://github.com/PodborVPN/client/releases)
 [![Boosty](https://img.shields.io/badge/Boosty-поддержать-F15F2C?logo=boosty&logoColor=white)](https://boosty.to/stasyanrazrab)
 
 **Телега и Инста работают одной кнопкой, без ручного перебора серверов.**
