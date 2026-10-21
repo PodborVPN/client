@@ -132,7 +132,7 @@ fun towerLine(os: OsNetwork): String? = when (os) {
 }
 
 /*
- * Слова экрана — одни для CLI и APK: экран раскладывает их по строкам, CLI печатает строкой.
+ * Слова экрана — из ядра: экран раскладывает их по строкам и красит.
  */
 
 /** Транспорт словами экрана. */
@@ -148,15 +148,6 @@ fun transportWords(t: Transport): String = when (t) {
 fun networkTitle(card: NetworkCard): String = when (card) {
     is NetworkCard.Measuring -> "измеряю сеть…"
     is NetworkCard.Measured -> titleOf(card.scenario)
-}
-
-/** Карточка сети строкой: заголовок · оператор · вышка · улика (повторы — Wi-Fi дважды — схлопнуты). */
-fun networkWords(card: NetworkCard): String {
-    val (os, evidence) = when (card) {
-        is NetworkCard.Measuring -> card.os to null
-        is NetworkCard.Measured -> card.os to card.evidence
-    }
-    return listOfNotNull(networkTitle(card), operatorOf(os), towerLine(os), evidence).distinct().joinToString(" · ")
 }
 
 /**
@@ -185,18 +176,6 @@ fun exitNote(e: ExitState, service: Service = Telegram): String? = when (e) {
         Blame.Unexplained -> "сеть непонятная, причину не называю"
     }
 }
-
-/** Текущий VPN строкой (CLI). */
-fun exitWords(e: ExitState, service: Service = Telegram): String = when (e) {
-    ExitState.Off -> "${exitHead(e)} — Xray выбирает сам, нажми «Подобрать»"
-    is ExitState.Unlisted -> "${exitHead(e)} — ${exitNote(e, service)}"
-    is ExitState.Checking -> "${exitHead(e)} · ${exitNote(e, service)}"
-    is ExitState.Works -> "${exitHead(e)} · ${service.title} ✓"
-    is ExitState.Dead -> "${exitHead(e)} · ${service.title} ✗ · ${exitNote(e, service)}"
-}
-
-/** Найденный нажатием выход строкой (CLI); экран берёт [refWords] и покрытие по отдельности. */
-fun foundWords(r: ResultCard.Found, service: Service = Telegram): String = "${service.title} ✓ через ${refWords(r.serverName, r.transport)} · ${r.coverage}"
 
 /** Выход по имени и транспорту: «NL-7» (gRPC); транспорт, уже названный в имени целым словом, не повторяется. */
 fun refWords(name: String, transport: Transport): String {

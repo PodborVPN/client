@@ -46,7 +46,7 @@ class RenderTest : FunSpec({
         render(letters).result.shouldBeInstanceOf<ResultCard.Found>().coverage shouldBe "текущий выход работает"
     }
 
-    test("I1: найден до подтверждения — Green, подозрение без «проверяю»") {
+    test("найден до подтверждения — Green, подозрение без «проверяю»") {
         val servers = listOf(server("s001", Entry.Ru))
         val screen = render(listOf(pressed(servers), Letter.LineObserved(10, whitelist), answer("s001", Verdict.TelegramDc(3), at = 300)))
         screen.button shouldBe Button.Green
@@ -121,9 +121,6 @@ class RenderTest : FunSpec({
         lines shouldContain "2 входа в РФ — соединился, но Инста не ответила"
         lines.none { "Телега" in it } shouldBe true
 
-        val found = render(listOf(pressed(listOf(server("s001", Entry.Ru))), Letter.LineObserved(10, whitelist), answer("s001", Verdict.TelegramDc(3), at = 300)), Instagram)
-        foundWords(found.result.shouldBeInstanceOf<ResultCard.Found>(), Instagram) shouldBe "Инста ✓ через «s001» (gRPC) · ${(found.result as ResultCard.Found).coverage}"
-        exitWords(ExitState.Works(ExitRef("NL-7", Transport.Grpc)), Instagram) shouldBe "«NL-7» (gRPC) · Инста ✓"
-        exitWords(ExitState.Checking(ExitRef("NL-7", Transport.Grpc)), Instagram) shouldBe "«NL-7» (gRPC) · проверяю Инсту…"
+        exitNote(ExitState.Checking(ExitRef("NL-7", Transport.Grpc)), Instagram) shouldBe "проверяю Инсту…"
     }
 })

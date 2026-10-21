@@ -4,27 +4,12 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
 import io.kotest.matchers.shouldBe
 
-/** Слова экрана — одни для CLI и APK: каждый вариант выхода, вины и карточки сети. */
+/** Слова экрана: каждый вариант выхода, вины и карточки сети. */
 class WordsTest : FunSpec({
 
     val nl = ExitRef("NL-7", Transport.Grpc)
 
-    context("exitWords — каждый вариант ExitState и Blame") {
-        withData(
-            nameFn = { it.second },
-            ExitState.Off to "выход не выбран — Xray выбирает сам, нажми «Подобрать»",
-            ExitState.Unlisted(ServerId("s042")) to "s042 — такого сервера нет в подписке, проверить нечем",
-            ExitState.Checking(nl) to "«NL-7» (gRPC) · проверяю Телегу…",
-            ExitState.Works(nl) to "«NL-7» (gRPC) · Телега ✓",
-            ExitState.Dead(nl, Blame.Whitelist) to "«NL-7» (gRPC) · Телега ✗ · белые списки: сеть его не пропускает",
-            ExitState.Dead(nl, Blame.SuspectedWhitelist) to "«NL-7» (gRPC) · Телега ✗ · похоже на белые списки, подтверждаю",
-            ExitState.Dead(nl, Blame.NoNetwork) to "«NL-7» (gRPC) · Телега ✗ · нет сети",
-            ExitState.Dead(nl, Blame.Server) to "«NL-7» (gRPC) · Телега ✗ · сеть ни при чём — проблема у сервера",
-            ExitState.Dead(nl, Blame.Unexplained) to "«NL-7» (gRPC) · Телега ✗ · сеть непонятная, причину не называю",
-        ) { (state, words) -> exitWords(state) shouldBe words }
-    }
-
-    context("голова и пояснение выхода — для двух строк экрана") {
+    context("голова и пояснение выхода — для двух строк экрана, каждый вариант ExitState и Blame") {
         withData(
             nameFn = { "${it.first}" },
             Triple(ExitState.Off, "выход не выбран", "Xray выбирает сам — нажми «Подобрать»"),
@@ -32,6 +17,10 @@ class WordsTest : FunSpec({
             Triple(ExitState.Checking(nl), "«NL-7» (gRPC)", "проверяю Телегу…"),
             Triple(ExitState.Works(nl), "«NL-7» (gRPC)", null),
             Triple(ExitState.Dead(nl, Blame.Whitelist), "«NL-7» (gRPC)", "белые списки: сеть его не пропускает"),
+            Triple(ExitState.Dead(nl, Blame.SuspectedWhitelist), "«NL-7» (gRPC)", "похоже на белые списки, подтверждаю"),
+            Triple(ExitState.Dead(nl, Blame.NoNetwork), "«NL-7» (gRPC)", "нет сети"),
+            Triple(ExitState.Dead(nl, Blame.Server), "«NL-7» (gRPC)", "сеть ни при чём — проблема у сервера"),
+            Triple(ExitState.Dead(nl, Blame.Unexplained), "«NL-7» (gRPC)", "сеть непонятная, причину не называю"),
         ) { (state, head, note) ->
             exitHead(state) shouldBe head
             exitNote(state) shouldBe note
@@ -61,34 +50,23 @@ class WordsTest : FunSpec({
     }
 
     val mts = OsNetwork.Cellular("MTS", "25001")
-    val mtsTower = OsNetwork.Cellular("MTS", "25001", Tower.Known(cellId = 1, earfcn = 1575, rsrpDbm = -100))
 
-    context("networkWords — каждая карточка сети") {
+    context("заголовок карточки сети: пока линия молчит — «измеряю сеть…», потом сценарий") {
         withData(
             nameFn = { it.second },
-            NetworkCard.Measuring(OsNetwork.None) to "измеряю сеть…",
-            NetworkCard.Measuring(mts) to "измеряю сеть… · MTS",
-            NetworkCard.Measuring(mtsTower) to "измеряю сеть… · MTS · вышка 1575 · −100 дБм",
-            NetworkCard.Measured(OsNetwork.Wifi, Scenario.Wifi, "заграница отвечает") to "Wi-Fi · заграница отвечает",
-            NetworkCard.Measured(mts, Scenario.MobileWhitelist, "заграница не отвечает, РФ работает") to
-                "Белые списки · MTS · заграница не отвечает, РФ работает",
-            NetworkCard.Measured(mts, Scenario.SuspectWhitelist, "заграница не отвечает, РФ работает — проверяю ещё раз") to
-                "Похоже на белые списки · MTS · заграница не отвечает, РФ работает — проверяю ещё раз",
-            NetworkCard.Measured(mts, Scenario.MobileOpen, "заграница отвечает") to "Сеть чистая · MTS · заграница отвечает",
-            NetworkCard.Measured(OsNetwork.None, Scenario.Offline, "ни РФ, ни заграница не отвечают") to
-                "Нет сети · ни РФ, ни заграница не отвечают",
-            NetworkCard.Measured(mts, Scenario.Unclear, "ответы неполные: РФ 1 из 3, заграница 0 из 3") to
-                "Сеть непонятная · MTS · ответы неполные: РФ 1 из 3, заграница 0 из 3",
-        ) { (card, words) -> networkWords(card) shouldBe words }
+            NetworkCard.Measuring(mts) to "измеряю сеть…",
+            NetworkCard.Measured(mts, Scenario.MobileWhitelist, "") to "Белые списки",
+            NetworkCard.Measured(mts, Scenario.SuspectWhitelist, "") to "Похоже на белые списки",
+            NetworkCard.Measured(mts, Scenario.MobileOpen, "") to "Сеть чистая",
+            NetworkCard.Measured(OsNetwork.Wifi, Scenario.Wifi, "") to "Wi-Fi",
+            NetworkCard.Measured(OsNetwork.None, Scenario.Offline, "") to "Нет сети",
+            NetworkCard.Measured(mts, Scenario.Unclear, "") to "Сеть непонятная",
+        ) { (card, title) -> networkTitle(card) shouldBe title }
     }
 
-    test("networkTitle: пока линия молчит — «измеряю сеть…», потом сценарий") {
-        networkTitle(NetworkCard.Measuring(mts)) shouldBe "измеряю сеть…"
-        networkTitle(NetworkCard.Measured(mts, Scenario.MobileWhitelist, "")) shouldBe "Белые списки"
-    }
-
-    test("foundWords — найденный выход и покрытие, как в CLI") {
-        foundWords(ResultCard.Found("NL-7", Transport.Xhttp, probedAtMs = 0, coverage = "проверено 2 из 11 входов РФ")) shouldBe
-            "Телега ✓ через «NL-7» (XHTTP) · проверено 2 из 11 входов РФ"
+    test("оператор на карточке: сотовая — имя оператора, Wi-Fi — «Wi-Fi», без сети — ничего") {
+        operatorOf(mts) shouldBe "MTS"
+        operatorOf(OsNetwork.Wifi) shouldBe "Wi-Fi"
+        operatorOf(OsNetwork.None) shouldBe null
     }
 })
