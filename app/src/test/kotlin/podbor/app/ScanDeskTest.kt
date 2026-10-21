@@ -112,7 +112,13 @@ private class ScanStand(
     val dir = Files.createTempDirectory("scan").toFile()
     val subscriptions = SubscriptionStore(dir)
     val passports = InMemoryPassportStore()
-    val xray = Mutex()
+    private val lock = Mutex()
+    /** Рестартов, обогнавших замок анализа: каждый оставляет [xray] занятым для одного tryLock — гонка без планировщика. */
+    private val overtakes = java.util.concurrent.atomic.AtomicInteger()
+    val xray: Mutex = object : Mutex by lock {
+        override fun tryLock(owner: Any?): Boolean =
+            if (overtakes.getAndUpdate { maxOf(0, it - 1) } > 0) false else lock.tryLock(owner)
+    }
     private val lineProbe = LineProbe { line }
     private val clock = Clock { System.currentTimeMillis() }
     /** Часы обновления подписки — свои, ручные: у драйвера — настоящие. */
@@ -182,7 +188,7 @@ private class ScanStand(
             passports = passports,
             stopSession = {
                 host.stop(++startId)
-                if (restarts > 0) { restarts--; host.start(++startId) }
+                if (restarts > 0) { restarts--; overtakes.incrementAndGet(); host.start(++startId) }
             },
             clock = Clock { nowMs },
         ),
@@ -304,7 +310,7 @@ class ScanDeskTest : FunSpec({
     }
 
     test("старт, влетевший между стопом и замком, снова гасится: анализ доходит до конца") {
-        // Стоп от анализа тут же стартует сессию дважды: она снова берёт Xray, анализ гасит её, пока не возьмёт замок сам.
+        // Стоп от анализа тут же стартует сессию дважды, и оба раза она обгоняет замок: анализ гасит её, пока не возьмёт замок сам.
         val s = ScanStand(restarts = 2)
         s.start()
         s.up()
