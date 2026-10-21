@@ -1,0 +1,27 @@
+# Окружение сборки Podbor: JDK, Android SDK + NDK, Go для libXray, Gradle с кешем, кеш ассетов Xray.
+name: Окружение сборки
+description: JDK 21, Android SDK 37 + NDK, Go, Gradle, кеш ассетов Xray
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: "21"
+    - uses: android-actions/setup-android@v4
+      with:
+        packages: platform-tools platforms;android-37.0 build-tools;37.0.0 ndk;30.0.16248370
+        log-accepted-android-sdk-licenses: false
+    # На раннере предустановлено несколько NDK — libXray собирается ровно этой.
+    - shell: bash
+      run: echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+    - uses: actions/setup-go@v7
+      with:
+        go-version: "1.27.2"
+        cache: false
+    - uses: gradle/actions/setup-gradle@v6
+    # Geo-файлы Xray и белые списки качаются сборкой по sha — кеш по тем же sha.
+    - uses: actions/cache@v6
+      with:
+        path: ~/.cache/podbor
+        key: podbor-assets-${{ hashFiles('app/geo.sha256', 'app/whitelist.sha256') }}

@@ -1,0 +1,43 @@
+# Каждый push в main: тесты, сборка APK из исходников (вместе с libXray), заголовки коммитов.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # libXray пересобирается, только когда меняется скрипт сборки (в нём тег и коммит апстрима).
+      - id: libxray
+        uses: actions/cache@v6
+        with:
+          path: app/libs/libXray.aar
+          key: libxray-${{ hashFiles('app/scripts/build-libxray.sh') }}
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        run: app/scripts/build-libxray.sh
+      - run: ./gradlew :core:test :driver:test :app:testDebugUnitTest :app:assembleRelease
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: "*/build/reports/tests"
+
+  commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6

@@ -22,9 +22,14 @@ fi
 
 command -v go >/dev/null || die "нет Go (нужен ≥ 1.27.2 в ~/go-sdk/go, см. README)"
 command -v git >/dev/null || die "нет git"
-ndk=$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | sort -V | tail -1 || true)
-[[ -n $ndk ]] || die "нет NDK в $ANDROID_HOME/ndk (sdkmanager \"ndk;<версия>\", см. README)"
-export ANDROID_NDK_HOME="${ndk%/}"
+# Заданный ANDROID_NDK_HOME (CI закрепляет версию) — как есть; иначе самая новая из установленных.
+if [[ -n ${ANDROID_NDK_HOME:-} ]]; then
+  [[ -d $ANDROID_NDK_HOME ]] || die "ANDROID_NDK_HOME=$ANDROID_NDK_HOME — нет такого каталога"
+else
+  ndk=$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | sort -V | tail -1 || true)
+  [[ -n $ndk ]] || die "нет NDK в $ANDROID_HOME/ndk (sdkmanager \"ndk;<версия>\", см. README)"
+  export ANDROID_NDK_HOME="${ndk%/}"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
