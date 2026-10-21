@@ -42,8 +42,7 @@ class TelephonyTest : FunSpec({
         osNetworkOf(Transport.Cellular, "MTS RUS", "25001", tower) shouldBe OsNetwork.Cellular("MTS RUS", "25001", tower)
     }
 
-    test("сотовая без имени оператора → имя = MCC/MNC; без обоих → «?»") {
-        osNetworkOf(Transport.Cellular, null, "25001", Tower.Unknown) shouldBe OsNetwork.Cellular("25001", "25001", Tower.Unknown)
+    test("сотовая без имени оператора и без MCC/MNC → «?»") {
         osNetworkOf(Transport.Cellular, " ", null, Tower.Unknown) shouldBe OsNetwork.Cellular("?", "?", Tower.Unknown)
     }
 

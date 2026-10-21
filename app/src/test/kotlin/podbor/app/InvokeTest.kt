@@ -98,19 +98,14 @@ class InvokeTest : FunSpec({
         fake.methods shouldBe listOf("runXray", "stopXray")
     }
 
-    test("LibXrayEngine: stopXray отказал или бросил → предупреждение без текста ответа") {
+    test("LibXrayEngine: stopXray отказал или бросил → предупреждение без текста ответа; успешная остановка — без предупреждений") {
         val warnings = mutableListOf<String>()
+        resourceScope { with(LibXrayEngine(FakeInvoke { RUN_OK }) { warnings += it }) { run(config) } }
         val refusing = FakeInvoke { if (it == "stopXray") FAILED else RUN_OK }
         resourceScope { with(LibXrayEngine(refusing) { warnings += it }) { run(config) } }
         val throwing = FakeInvoke { if (it == "stopXray") throw IllegalStateException("jni") else RUN_OK }
         resourceScope { with(LibXrayEngine(throwing) { warnings += it }) { run(config) } }
         warnings shouldBe listOf("stopXray: success=false", "stopXray бросил IllegalStateException")
-    }
-
-    test("LibXrayEngine: успешная остановка — без предупреждений") {
-        val warnings = mutableListOf<String>()
-        resourceScope { with(LibXrayEngine(FakeInvoke { RUN_OK }) { warnings += it }) { run(config) } }
-        warnings shouldBe emptyList()
     }
 
     test("LibXrayConverter: convertShareLinksToXrayJson с текстом подписки в payload.text") {

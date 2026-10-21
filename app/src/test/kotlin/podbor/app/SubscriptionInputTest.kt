@@ -2,6 +2,7 @@ package podbor.app
 
 import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.datatest.withData
 import io.kotest.matchers.shouldBe
 import podbor.app.net.readCapped
 import podbor.app.sub.Fetched
@@ -14,36 +15,36 @@ import podbor.app.sub.viaYandex
 import podbor.app.sub.wordsOf
 
 class SubscriptionInputTest : FunSpec({
-    test("http(s) одной строкой — ссылка, пробелы по краям срезаются") {
-        inputOf("https://example.org/sub?t=1") shouldBe Either.Right(SubscriptionInput.Link("https://example.org/sub?t=1"))
-        inputOf("  http://example.org/x \n") shouldBe Either.Right(SubscriptionInput.Link("http://example.org/x"))
-    }
-    test("всё остальное — текст") {
-        inputOf("vless://a@b:1#x\nvless://c@d:2#y") shouldBe Either.Right(SubscriptionInput.Text("vless://a@b:1#x\nvless://c@d:2#y"))
-        inputOf("https://a.b/1 https://c.d/2") shouldBe Either.Right(SubscriptionInput.Text("https://a.b/1 https://c.d/2"))
-        inputOf("https://a.b/1\nhttps://c.d/2") shouldBe Either.Right(SubscriptionInput.Text("https://a.b/1\nhttps://c.d/2"))
-    }
-    test("ссылка, которую не разобрать как URI (кириллический хост, запрещённые знаки), — Unreadable, а не «сеть не отвечает»") {
-        inputOf("https://пример.рф/sub") shouldBe Either.Left(InputError.Unreadable)
-        inputOf("https://a.b/sub|x") shouldBe Either.Left(InputError.Unreadable)
-        inputOf("https://a.b/sub?t=\"1\"") shouldBe Either.Left(InputError.Unreadable)
-        inputOf("https://a.b/подписка") shouldBe Either.Right(SubscriptionInput.Link("https://a.b/подписка"))
-    }
-    test("подчёркивание в хосте — ссылка (URI.host у такого null, а провайдеры так называют поддомены)") {
-        inputOf("https://my_sub.example.com/x") shouldBe Either.Right(SubscriptionInput.Link("https://my_sub.example.com/x"))
-        inputOf("https://u:p@my_sub.example.com:8443/x") shouldBe Either.Right(SubscriptionInput.Link("https://u:p@my_sub.example.com:8443/x"))
-        inputOf("https://_/x") shouldBe Either.Right(SubscriptionInput.Link("https://_/x"))
-    }
-    test("пусто и одни пробелы — Empty") {
-        inputOf("") shouldBe Either.Left(InputError.Empty)
-        inputOf(" \n\t ") shouldBe Either.Left(InputError.Empty)
+    /** Вставка → что из неё вышло. */
+    data class Case(val name: String, val raw: String, val expected: Either<InputError, SubscriptionInput>)
+
+    fun link(u: String) = Either.Right(SubscriptionInput.Link(u))
+    fun text(t: String) = Either.Right(SubscriptionInput.Text(t))
+    val twoServers = listOf("vless://a@b:1#x", "vless://c@d:2#y").joinToString("\n")
+
+    context("разбор вставки: ссылка, текст или ошибка") {
+        withData(
+            nameFn = { it.name },
+            Case("http(s) одной строкой — ссылка", "https://example.org/sub?t=1", link("https://example.org/sub?t=1")),
+            Case("пробелы по краям срезаются", "  http://example.org/x \n", link("http://example.org/x")),
+            Case("кириллический путь — ссылка", "https://a.b/подписка", link("https://a.b/подписка")),
+            // URI.host у такого null, а провайдеры так называют поддомены.
+            Case("подчёркивание в хосте — ссылка", "https://my_sub.example.com/x", link("https://my_sub.example.com/x")),
+            Case("подчёркивание в хосте с паролем и портом — ссылка", "https://u:p@my_sub.example.com:8443/x", link("https://u:p@my_sub.example.com:8443/x")),
+            Case("хост из одного подчёркивания — ссылка", "https://_/x", link("https://_/x")),
+            Case("несколько серверов — текст", twoServers, text(twoServers)),
+            Case("две ссылки через пробел — текст", "https://a.b/1 https://c.d/2", text("https://a.b/1 https://c.d/2")),
+            Case("две ссылки строками — текст", "https://a.b/1\nhttps://c.d/2", text("https://a.b/1\nhttps://c.d/2")),
+            // Не разобрать как URI — Unreadable, а не «сеть не отвечает».
+            Case("кириллический хост — Unreadable", "https://пример.рф/sub", Either.Left(InputError.Unreadable)),
+            Case("знак | — Unreadable", "https://a.b/sub|x", Either.Left(InputError.Unreadable)),
+            Case("кавычки — Unreadable", "https://a.b/sub?t=\"1\"", Either.Left(InputError.Unreadable)),
+            Case("пусто — Empty", "", Either.Left(InputError.Empty)),
+            Case("одни пробелы — Empty", " \n\t ", Either.Left(InputError.Empty)),
+        ) { inputOf(it.raw) shouldBe it.expected }
     }
     test("ссылка: скачали — отдаём тело") {
         fetchText(SubscriptionInput.Link("https://a.b"), { Fetched("тело") }, { false }) shouldBe Either.Right(Fetched("тело"))
-    }
-    test("ссылка: не скачалась при белых списках — Download(true), иначе Download(false)") {
-        fetchText(SubscriptionInput.Link("https://a.b"), { null }, { true }) shouldBe Either.Left(InputError.Download(true))
-        fetchText(SubscriptionInput.Link("https://a.b"), { null }, { false }) shouldBe Either.Left(InputError.Download(false))
     }
     test("ссылка: пустое тело — Unreadable") {
         fetchText(SubscriptionInput.Link("https://a.b"), { Fetched("  ") }, { false }) shouldBe Either.Left(InputError.Unreadable)

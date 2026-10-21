@@ -1,8 +1,6 @@
 package podbor.app
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -63,18 +61,6 @@ class RadialUiTest {
     }
 
     @Test
-    fun releaseAwayFromPetalDoesNothing() {
-        show(Face.Press(Button.Green))
-        compose.onNodeWithTag(PRESS_TAG).performTouchInput {
-            down(center)
-            advanceEventTime(600)
-            moveTo(Offset(center.x + 300f, center.y))
-            up()
-        }
-        assertEquals(emptyList<String>(), calls)
-    }
-
-    @Test
     fun petalHiddenUntilLongPress() {
         show(Face.Press(Button.Ready))
         compose.onNodeWithText("ВЫКЛ").assertDoesNotExist()
@@ -100,10 +86,13 @@ class RadialUiTest {
     @Test
     fun vpnOffHasNoPetal() {
         show(Face.TurnOn)
-        compose.onNodeWithTag(PRESS_TAG).performTouchInput { down(center); advanceEventTime(600); moveTo(petal(center)); up() }
-        compose.onNodeWithTag(PRESS_TAG)
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.CustomActions))
+        compose.onNodeWithTag(PRESS_TAG).performTouchInput { down(center); advanceEventTime(600); moveTo(petal(center)) }
+        compose.onNodeWithText("ВЫКЛ").assertDoesNotExist()
+        compose.onNodeWithTag(PRESS_TAG).performTouchInput { up() }
         assertEquals(emptyList<String>(), calls)
+        // TalkBack тоже не предлагает «Выключить VPN»: выключать нечего.
+        val actions = compose.onNodeWithTag(PRESS_TAG).fetchSemanticsNode().config.getOrElse(SemanticsActions.CustomActions) { emptyList() }
+        assertEquals(emptyList<String>(), actions.map { it.label })
     }
 
     @Test

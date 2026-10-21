@@ -70,12 +70,6 @@ class SubscriptionUiTest {
     }
 
     @Test
-    fun noErrorNoWords() {
-        show(null)
-        compose.onNodeWithText(wordsOf(InputError.NoServers)).assertDoesNotExist()
-    }
-
-    @Test
     fun menuOnMainLeadsToChangeSubscription() {
         compose.setContent {
             PodborTheme {

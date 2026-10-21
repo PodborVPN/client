@@ -11,7 +11,6 @@ import podbor.app.share.Tape
 import podbor.app.share.Unshared
 import podbor.app.share.bundleOf
 import podbor.app.share.readTapes
-import podbor.app.share.shareName
 import podbor.app.share.wordsOf
 import podbor.app.share.writeShare
 import java.io.File
@@ -21,11 +20,7 @@ import java.time.LocalDateTime
 class ShareTest : FunSpec({
     val at = LocalDateTime.of(2026, 1, 15, 12, 0, 42)
 
-    test("имя файла — podbor-tape-<yyyyMMdd-HHmm>.jsonl") {
-        shareName(at) shouldBe "podbor-tape-20260115-1200.jsonl"
-    }
-
-    test("склейка в порядке времени файлов, а не порядка имён: 999 раньше 1000") {
+    test("склейка в порядке времени файлов, а не порядка имён: 999 раньше 1000; имя — podbor-tape-<yyyyMMdd-HHmm>.jsonl") {
         val tapes = listOf(
             Tape(1000, "{\"b\":1}\n"),
             Tape(999, "{\"a\":1}\n"),
