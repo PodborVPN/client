@@ -1,0 +1,291 @@
+package podbor.app.ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import podbor.app.sub.SubscriptionNote
+import podbor.app.vpn.ExitOrigin
+import podbor.core.Board
+import podbor.core.Button
+import podbor.core.ServiceId
+
+internal val Muted = Color(0xFF6F7A72)
+internal val Rule = Color(0xFF222622)
+internal val Idle = Color(0xFF3A403C)
+
+internal fun colorOf(t: Tone): Color = when (t) {
+    Tone.Ok -> PodborColors.Ok
+    Tone.Warn -> PodborColors.Accent
+    Tone.Fail -> PodborColors.Fail
+    Tone.Neutral -> PodborColors.Text
+    Tone.Muted -> Muted
+}
+
+/**
+ * Главная страница под сетью (сеть — свой фрагмент сверху): кнопка (функтор) → текущий VPN (выход). Справа сверху «⋮» —
+ * сведения о подписке [subscription], «Поддержка провайдера» и «Сменить подписку»; объявление провайдера — серой
+ * строкой под VPN. Все слова о выходе — из ядра (те же, что в CLI); экран раскладывает их и красит ([Look.kt]).
+ */
+@Composable
+fun MainScreen(
+    board: Board,
+    link: Link,
+    origin: Map<ServiceId, ExitOrigin>,
+    shareNote: String?,
+    subscription: SubscriptionNote?,
+    onPress: () -> Unit,
+    onOff: () -> Unit,
+    onOn: () -> Unit,
+    onRetry: () -> Unit,
+    onShare: () -> Unit,
+    onChangeSubscription: () -> Unit,
+    onSupport: (String) -> Unit = {},
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        ) {
+            PressButton(faceOf(board, link), onPress, onOff, onOn)
+            Tier("ТЕКУЩИЙ VPN")
+            VpnCard(rowsOf(board, link, origin), onRetry)
+            subscription?.announce?.let { Announce(it) }
+            ShareLink(shareNote, onShare)
+        }
+        Menu(subscription, onSupport, onChangeSubscription, Modifier.align(Alignment.TopEnd))
+    }
+}
+
+/** Объявление провайдера (`announce`): серым под карточкой — его слова, не наши. */
+@Composable
+private fun Announce(text: String) {
+    Text(
+        text,
+        color = Muted,
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+    )
+}
+
+/**
+ * «⋮» справа сверху: неброско, серым; в меню — то, что нужно редко. Сверху — сведения о подписке (не кнопка): имя и
+ * строки [SubscriptionNote.lines]; дальше — поддержка провайдера, если дал ссылку, и смена подписки.
+ */
+@Composable
+private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, onChangeSubscription: () -> Unit, modifier: Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Text(
+            "⋮",
+            color = Muted,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .clickable(role = Role.Button) { open = true }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = MaterialTheme.colorScheme.surface) {
+            subscription?.takeIf { it.title != null || it.lines.isNotEmpty() }?.let { note ->
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    note.title?.let { Text(it, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) }
+                    note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            subscription?.supportUrl?.let { url ->
+                DropdownMenuItem(
+                    text = { Text("Поддержка провайдера", color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        open = false
+                        onSupport(url)
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Сменить подписку", color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) },
+                onClick = {
+                    open = false
+                    onChangeSubscription()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * «поделиться Лентой» — неброская строка под карточкой (серый моноширинный текст, без значка): главная на экране —
+ * круглая кнопка. Под ней — почему не отдали (Лента пуста, нашёлся адрес), если так.
+ */
+@Composable
+private fun ShareLink(note: String?, onShare: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "поделиться Лентой",
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .clickable(role = Role.Button, onClick = onShare)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        )
+        // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
+        AnimatedVisibility(visible = note != null) {
+            Text(note.orEmpty(), color = PodborColors.Fail, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+internal fun Tier(label: String) {
+    Text(
+        label,
+        color = Muted,
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.14.em),
+        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+internal fun Dot(color: Color, size: Int = 8) {
+    Box(Modifier.size(size.dp).background(color, CircleShape))
+}
+
+/**
+ * Карточка текущего VPN: строка на сервис (или одна строка связи с VPN), разделены линией. Строка — ценность слева
+ * направо: [✓/✗/… TG] | [имя сервера] | [ПРОТОКОЛ, транспорт]; под ней — её заметки с точкой и полоска поиска.
+ * Под карточкой — «повторить», если подъём не удался.
+ */
+@Composable
+private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, Rule),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            rows.forEachIndexed { i, row ->
+                if (i > 0) HorizontalDivider(thickness = 1.dp, color = Rule)
+                ServiceLine(row)
+            }
+        }
+    }
+    if (rows.any { it.retry }) {
+        // Акцентом, а не серым, как «поделиться Лентой»: сейчас это единственное, что человек может сделать.
+        Text(
+            "повторить",
+            color = PodborColors.Accent,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier
+                .clickable(role = Role.Button, onClick = onRetry)
+                .padding(top = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        )
+    }
+    Spacer(Modifier.height(16.dp))
+}
+
+/** Одна строка карточки: отметка с меткой сервиса, имя, протокол; ниже — заметки и полоска поиска этой строки. */
+@Composable
+private fun ServiceLine(row: ServiceRow) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            if (row.label.isNotEmpty()) {
+                val (sign, color) = when (row.mark) {
+                    Mark.Checking -> "…" to PodborColors.Accent
+                    Mark.Works -> "✓" to PodborColors.Ok
+                    Mark.Dead -> "✗" to PodborColors.Fail
+                    null -> "–" to Muted
+                }
+                Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.widthIn(min = 44.dp))
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+            }
+            Text(
+                row.name,
+                color = PodborColors.Text,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            row.protocol?.let { p ->
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+                Column {
+                    Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        p,
+                        color = PodborColors.Text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 96.dp),
+                    )
+                }
+            }
+        }
+        row.notes.forEach { n ->
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(n.tone)) }
+                Spacer(Modifier.width(10.dp))
+                Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        // Полоска — только во время поиска: после результата «1 из 92» читалась бы как 1 %. Появляется плавно.
+        AnimatedVisibility(visible = row.searching) {
+            LinearProgressIndicator(
+                color = PodborColors.Accent,
+                trackColor = Rule,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+        }
+    }
+}

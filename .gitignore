@@ -1,0 +1,19 @@
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Engine: built locally by app/scripts/build-libxray.sh
+app/libs/*.aar
+
+# Artifacts and signing
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties

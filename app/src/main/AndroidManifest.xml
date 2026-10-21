@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- allCellInfo (вышка и RSRP): без разрешения вышка — Unknown; запрос у пользователя — экран, задача 7. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- VPN держится foreground-сервисом; уведомление «Podbor · выход» (Android 13+ — с разрешения пользователя). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Банки и Госуслуги мимо VPN и приложения сервисов (правила process): на Android 11+ без <queries> их пакеты приложению
+         не видны. Списки — vpn/BypassApps.kt и описания сервисов ядра (Service.match.apps), по ServiceId. -->
+    <queries>
+        <package android:name="ru.sberbankmobile" />
+        <package android:name="com.idamob.tinkoff.android" />
+        <package android:name="ru.vtb24.mobilebanking.android" />
+        <package android:name="ru.alfabank.mobile.android" />
+        <package android:name="ru.rostel" />
+        <package android:name="ru.gosuslugi.goskey" />
+        <package android:name="com.instagram.android" />
+        <package android:name="org.telegram.messenger" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Podbor"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- Только вертикально. Android 16 игнорирует это на экранах sw≥600dp — цель телефон.
+             singleTask: повторное открытие (лаунчер, am start) возвращает тот же экран, а не кладёт новый поверх. -->
+        <activity
+            android:name="podbor.app.ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- «Поделиться → Podbor»: ссылка или конфиги подписки текстом — тот же путь, что буфер. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <!-- Сканер QR подписки (zxing-android-embedded): по положению телефона — у библиотеки зашит альбомный, его и
+             снимаем (отсюда replace и ignore); камера — его разрешение, спрашивает он сам. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:ignore="DiscouragedApi"
+            tools:replace="android:screenOrientation" />
+        <!-- «Поделиться Лентой»: временное право чтения одной выгрузки из cache/share/ для выбранного приложения. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.tape"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/tape_paths" />
+        </provider>
+        <service
+            android:name="podbor.app.vpn.PodborVpnService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+        </service>
+    </application>
+</manifest>

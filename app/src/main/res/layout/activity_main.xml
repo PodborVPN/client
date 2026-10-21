@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Экран: сеть сверху (всегда), под ней — страница (подписка/анализ или главный) — транзакциями FragmentManager. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/network"
+        android:name="podbor.app.ui.NetworkFragment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/page"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+</LinearLayout>

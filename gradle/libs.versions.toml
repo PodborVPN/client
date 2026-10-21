@@ -1,0 +1,57 @@
+# Каталог версий: единое место для версий Kotlin и тест-зависимостей.
+
+[versions]
+kotlin = "2.3.21"
+kotest = "5.9.1"
+arrow = "2.2.1.1"
+serialization = "1.8.0"
+coroutines = "1.10.2"
+protobuf = "4.28.3"
+grpc = "1.68.1"
+grpcKotlin = "1.4.1"
+protobufPlugin = "0.9.4"
+agp = "8.13.2"
+composeBom = "2026.06.01"
+activityCompose = "1.13.0"
+robolectric = "4.17"
+
+[libraries]
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
+kotest-framework-datatest = { module = "io.kotest:kotest-framework-datatest", version.ref = "kotest" }
+arrow-stack = { module = "io.arrow-kt:arrow-stack", version.ref = "arrow" }
+arrow-core = { module = "io.arrow-kt:arrow-core" }
+arrow-core-serialization = { module = "io.arrow-kt:arrow-core-serialization" }
+arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-netty = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
+grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc" }
+grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpcKotlin" }
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.9.4" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-core = { module = "androidx.core:core", version = "1.18.0" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version = "1.9.1" }
+zxing-embedded = { module = "com.journeyapps:zxing-android-embedded", version = "4.3.0" }
+androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+junit4 = { module = "junit:junit", version = "4.13.2" }
+# JUnit 4 (Robolectric) на той же JUnit Platform, что kotest: версия движка = версия платформы (1.11.x ↔ 5.11.x).
+junit-vintage = { module = "org.junit.vintage:junit-vintage-engine", version = "5.11.4" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+[plugins]
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

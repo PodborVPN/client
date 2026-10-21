@@ -1,0 +1,6 @@
+Podbor (Android) включает сторонние материалы:
+
+- JetBrains Mono (res/font/jetbrains_mono_*.ttf) — SIL Open Font License 1.1, текст: OFL.txt.
+- Иконки Google Material Symbols, Outlined (res/drawable/ic_cell_tower.xml, ic_globe.xml, ic_shield.xml,
+  ic_shield_check.xml, ic_shield_cross.xml) — Apache License 2.0, текст: MATERIAL-SYMBOLS-LICENSE.txt.
+  Источник: https://github.com/google/material-design-icons (symbols/android/*/materialsymbolsoutlined).
