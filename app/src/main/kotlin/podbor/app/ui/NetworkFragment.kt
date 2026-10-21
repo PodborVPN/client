@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import podbor.app.BuildConfig
 import podbor.app.R
 import podbor.core.NetworkCard
 import podbor.core.networkTitle
@@ -54,14 +55,14 @@ class NetworkFragment : Fragment() {
             val screen = requireActivity() as MainActivity
             setContent {
                 val board by screen.boards.collectAsStateWithLifecycle()
-                PodborTheme { NetworkScreen(board.network) }
+                PodborTheme { NetworkScreen(board.network, BuildConfig.VERSION_NAME) }
             }
         }
 }
 
-/** Ярус «СЕТЬ»: сценарий цветом, оператор и вышка, улика. Отступ сверху — под строку состояния. */
+/** Ярус «СЕТЬ»: сценарий цветом, оператор и вышка, улика; справа в строке яруса — версия. Отступ сверху — под строку состояния. */
 @Composable
-fun NetworkScreen(card: NetworkCard) {
+fun NetworkScreen(card: NetworkCard, version: String) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -70,7 +71,11 @@ fun NetworkScreen(card: NetworkCard) {
             .padding(horizontal = 20.dp)
             .padding(top = 12.dp),
     ) {
-        Tier("СЕТЬ")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Tier("СЕТЬ")
+            Spacer(Modifier.weight(1f))
+            Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
+        }
         NetworkTier(card)
     }
 }

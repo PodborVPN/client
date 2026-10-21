@@ -127,7 +127,11 @@ android {
         // Цель — arm64; libXray собран только под него.
         ndk { abiFilters += "arm64-v8a" }
     }
-    buildFeatures { compose = true }
+    // buildConfig — версия на экране (BuildConfig.VERSION_NAME из version.txt).
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     // Релизный ключ — из переменных окружения (выпуск в CI); их нет — тот же debug-ключ: не-отладочная сборка
     // нужна и локально, Compose в debuggable-сборке в разы медленнее.
     val signing = releaseSigning()
