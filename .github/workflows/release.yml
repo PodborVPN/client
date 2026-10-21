@@ -1,0 +1,73 @@
+# Выпуск: release-please ведёт PR релиза с CHANGELOG; его мёрж — тег и GitHub Release, к которому
+# следующая задача прикладывает подписанный APK с аттестацией происхождения и SHA-256.
+# Всё, что идёт за релизом, — в этом же workflow: события от GITHUB_TOKEN другие workflow не запускают.
+name: Релиз
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  apk:
+    needs: please
+    if: needs.please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.please.outputs.tag_name }}
+      APK: podbor-${{ needs.please.outputs.version }}.apk
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.please.outputs.tag_name }}
+      - uses: ./.github/actions/setup
+      # Выпускной libXray — всегда с нуля, без кеша.
+      - run: app/scripts/build-libxray.sh force
+      # Без ключа релиз не выпускается: debug-подпись молча не подставляется.
+      - name: Ключ подписи
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          [[ -n "$SIGNING_KEYSTORE_BASE64" ]] || { echo "нет секрета SIGNING_KEYSTORE_BASE64" >&2; exit 1; }
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - run: ./gradlew :app:assembleRelease
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      - run: |
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ env.APK }}
+      - name: APK и SHA-256 в релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" "$APK"
+          sha=$(sha256sum "$APK" | cut -d' ' -f1)
+          gh release view "$TAG" --json body --jq .body > notes.md
+          printf '\n\n`%s` SHA-256: `%s`\n' "$APK" "$sha" >> notes.md
+          gh release edit "$TAG" --notes-file notes.md
