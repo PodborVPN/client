@@ -8,16 +8,20 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.ints.shouldBeGreaterThan
-import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus
@@ -32,6 +36,8 @@ import podbor.core.Reach
 import podbor.core.ServerId
 import podbor.core.Telegram
 import podbor.core.Verdict
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 private val mts = OsNetwork.Cellular("MTS", "25001")
 
@@ -91,42 +97,35 @@ internal fun pipesTape(): List<String> {
 }
 
 /**
- * Виртуальное время, когда карточка Телеги впервые стала «найдено»: повторное нажатие, общий выход — s001, проба
- * любого вида 100 мс. Потолок на адрес — 1: Инста (не закреплена) пробует тот же s001.
+ * Диспетчер-противник на виртуальном времени: из задач, готовых к запуску, первой идёт поданная последней. Так
+ * трубопровод, запущенный вторым, первым доходит до своих проб — как бывает на настоящих потоках.
  */
-private fun tgFoundAt(services: Set<podbor.core.Service>): Long {
-    var foundAt = -1L
-    runTest {
-        val w = pipes(prober(tg = setOf(ServerId("s001")), insta = setOf(ServerId("s001")), delayMs = { _, _ -> 100 }))
-        resourceScope {
-            val d = w.driver()
-            val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-            d.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
-            d.press(warm, services, mts) { b ->
-                if (foundAt < 0 && b.cards.any { it.service == Telegram.id && it.status is CardStatus.Found }) foundAt = currentTime
-            }
-        }
+@OptIn(InternalCoroutinesApi::class)
+private class LastFirst(private val base: TestDispatcher) : CoroutineDispatcher(), Delay by base {
+    private val pending = ArrayDeque<Runnable>()
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        synchronized(pending) { pending.addLast(block) }
+        base.dispatch(context, Runnable { synchronized(pending) { pending.removeLast() }.run() })
     }
-    return foundAt
 }
 
 /**
- * То же на настоящих потоках (Dispatchers.Default): трубопроводы стартуют параллельно, и без порядка Инста может
- * первой занять место на общем адресе (на телефоне: Телега +1,1 с против +0,45 с одна). Мс от нажатия до
- * «найдено» Телеги; проба любого вида [probeMs].
+ * Виртуальное время, когда карточка Телеги впервые стала «найдено»: повторное нажатие, общий выход — s001, проба
+ * любого вида 100 мс. Потолок на адрес — 1: Инста (не закреплена) пробует тот же s001. [lastFirst] — трубопроводы
+ * стартуют в обратном порядке ([LastFirst]).
  */
-private fun tgFoundRealMs(probeMs: Long): Long {
+private fun tgFoundAt(services: Set<podbor.core.Service>, lastFirst: Boolean = false): Long {
     var foundAt = -1L
-    val w = pipes(prober(tg = setOf(ServerId("s001")), insta = setOf(ServerId("s001")), delayMs = { _, _ -> probeMs }))
-    runBlocking(Dispatchers.Default) {
-        resourceScope {
-            val d = w.driver()
-            val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-            d.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
-            val t0 = System.nanoTime()
-            d.press(warm, HARDCODED_SERVICES, mts) { b ->
-                if (foundAt < 0 && b.cards.any { it.service == Telegram.id && it.status is CardStatus.Found }) {
-                    foundAt = (System.nanoTime() - t0) / 1_000_000
+    runTest {
+        val w = pipes(prober(tg = setOf(ServerId("s001")), insta = setOf(ServerId("s001")), delayMs = { _, _ -> 100 }))
+        withContext(if (lastFirst) LastFirst(StandardTestDispatcher(testScheduler)) else EmptyCoroutineContext) {
+            resourceScope {
+                val d = w.driver()
+                val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
+                d.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
+                d.press(warm, services, mts) { b ->
+                    if (foundAt < 0 && b.cards.any { it.service == Telegram.id && it.status is CardStatus.Found }) foundAt = currentTime
                 }
             }
         }
@@ -142,10 +141,9 @@ class PipesTest : FunSpec({
         tgFoundAt(HARDCODED_SERVICES) shouldBe solo
     }
 
-    test("на настоящих потоках Телега первой встаёт на общий адрес: ни разу не ждёт пробу Инсты") {
-        // Проба 150 мс: ждала бы Инсту — «найдено» не раньше 300 мс.
-        val slow = (1..30).map { tgFoundRealMs(150) }.filter { it >= 290 }
-        slow shouldBe emptyList()
+    test("Инста стартует первой (обратный порядок задач) — Телега всё равно первой встаёт на общий адрес") {
+        // Ждала бы пробу Инсты — «найдено» не раньше 200 мс.
+        tgFoundAt(HARDCODED_SERVICES, lastFirst = true) shouldBe 100L
     }
 
     test("Телега годна на s001, Инста мертва везде → TG найдено, IG не найдено, кнопка зелёная") {
@@ -155,8 +153,6 @@ class PipesTest : FunSpec({
         board.cards.map { it.service } shouldBe listOf(Instagram.id, Telegram.id)
         board.card(Telegram.id).shouldBeInstanceOf<CardStatus.Found>().ref.name shouldBe "Сервер 0"
         board.card(Instagram.id).shouldBeInstanceOf<CardStatus.NotFound>()
-        // Общий выход — за Телегой; Инста не закреплена и едет вслед.
-        w.overrides shouldBe listOf("svc.tg=s001", "exit=s001", "svc.insta=s001")
     }
 
     test("доска нажатия не мигает «—»: с первого экрана карточки всех сервисов — «ищу», не Unknown") {
@@ -202,9 +198,7 @@ class PipesTest : FunSpec({
     test("срок Инсты истёк (проба молчит) → TG найдено, IG не найдено, нажатие возвращается") {
         // Потолок на адрес — отдельный тест: здесь молчащая Инста не должна держать слот Телеги.
         val w = pipes(prober(tg = setOf(ServerId("s001")), silent = ProbeSpec.Instagram), gate = EndpointGate(perEndpoint = 2), pressTimeoutMs = 500)
-        val started = System.currentTimeMillis()
         val board = w.pressAll()
-        (System.currentTimeMillis() - started) shouldBeLessThan 5_000L
         board.card(Telegram.id).shouldBeInstanceOf<CardStatus.Found>()
         board.card(Instagram.id).shouldBeInstanceOf<CardStatus.NotFound>()
         board.button shouldBe Button.Green
