@@ -3,6 +3,7 @@ package podbor.app.sub
 import android.util.Log
 import arrow.core.Either
 import arrow.core.getOrElse
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -43,13 +44,18 @@ private fun writeAtomic(file: File, what: String, text: String, warn: (String) -
     }.onLeft { warn("$what не записан: ${it.javaClass.simpleName}") }
 }
 
-class SubscriptionStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) {
+class SubscriptionStore(
+    dir: File,
+    private val warn: (String) -> Unit = { Log.w("Podbor", it) },
+    /** Пул файла; тест подставляет свой диспетчер. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+) {
     private val file = File(dir, "subscription.json")
     /** Файл — на пуле IO: зовут и с главного потока (экран). */
-    suspend fun load(): Subscription? = withContext(Dispatchers.IO) {
+    suspend fun load(): Subscription? = withContext(io) {
         readJson(file) { json.decodeFromString(Subscription.serializer(), it) }
     }
-    suspend fun save(s: Subscription) = withContext(Dispatchers.IO) {
+    suspend fun save(s: Subscription) = withContext(io) {
         writeAtomic(file, "подписка", json.encodeToString(Subscription.serializer(), s), warn)
     }
 }

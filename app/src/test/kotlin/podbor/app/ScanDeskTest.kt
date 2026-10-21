@@ -4,22 +4,24 @@ import arrow.core.Either
 import arrow.core.nonEmptyListOf
 import arrow.core.right
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -70,7 +72,6 @@ import podbor.driver.XrayEngine
 import podbor.driver.classify
 import podbor.driver.detectLine
 import java.nio.file.Files
-import java.util.Collections
 
 private val mts = OsNetwork.Cellular("MTS", "25001")
 
@@ -90,9 +91,13 @@ private fun outbound(i: Int): JsonObject = buildJsonObject {
 /**
  * Сервис без Android для анализа: настоящие SessionHost и Desk, Driver на фейковых портах. Xray сессии и Xray анализа
  * отмечают подъём и остановку в [events]; оба держат один замок «Xray один на процесс». Пробы сервера с адресом [hang]
- * и эталон через SOCKS-порт [hangPort] молчат до отмены; [probeMs] — сколько отвечает проба.
+ * и эталон через SOCKS-порт [hangPort] молчат до отмены; [probeMs] — сколько отвечает проба. Сцена — в [scope] теста,
+ * пул анализа и файла — [io] на том же планировщике, часы драйвера — тестовые: порядок задают шаги теста.
  */
 private class ScanStand(
+    scope: CoroutineScope,
+    io: CoroutineDispatcher,
+    driverMs: () -> Long,
     val hang: String? = null,
     val hangPort: Int? = null,
     val probeMs: Long = 0,
@@ -103,29 +108,28 @@ private class ScanStand(
     val lists: WhiteLists? = null,
     /** Сколько раз стоп сессии от анализа тут же стартует её снова (быстрое выкл→вкл, always-on). */
     var restarts: Int = 0,
+    /** Сколько первых tryLock замка Xray заняты другим (рестарт успел взять Xray раньше анализа). */
+    busyTries: Int = 0,
     /** Xray анализа не поднимается (конфиг, движок) — ScanFailed. */
     val warmFails: Boolean = false,
 ) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
-    val tape: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    val events = mutableListOf<String>()
+    val tape = mutableListOf<String>()
     val dir = Files.createTempDirectory("scan").toFile()
-    val subscriptions = SubscriptionStore(dir)
+    val subscriptions = SubscriptionStore(dir, io = io)
     val passports = InMemoryPassportStore()
     private val lock = Mutex()
-    /** Рестартов, обогнавших замок анализа: каждый оставляет [xray] занятым для одного tryLock — гонка без планировщика. */
-    private val overtakes = java.util.concurrent.atomic.AtomicInteger()
+    private var busy = busyTries
+    /** Замок «Xray один на процесс»; первые [busyTries] tryLock — заняты (тестовый двойник перехвата). */
     val xray: Mutex = object : Mutex by lock {
-        override fun tryLock(owner: Any?): Boolean =
-            if (overtakes.getAndUpdate { maxOf(0, it - 1) } > 0) false else lock.tryLock(owner)
+        override fun tryLock(owner: Any?): Boolean = if (busy > 0) { busy--; false } else lock.tryLock(owner)
     }
     private val lineProbe = LineProbe { line }
-    private val clock = Clock { System.currentTimeMillis() }
-    /** Часы обновления подписки — свои, ручные: у драйвера — настоящие. */
-    @Volatile
+    private val clock = Clock { driverMs() }
+    /** Часы обновления подписки — свои, ручные. */
     var nowMs = 1_000L
     /** Сколько раз Desk качал подписку. */
-    val downloads = java.util.concurrent.atomic.AtomicInteger()
+    var downloads = 0
     private var startId = 0
 
     private fun driver(): Driver = Driver(
@@ -179,7 +183,7 @@ private class ScanStand(
         services = setOf(Telegram),
         xray = xray,
         scan = ScanPorts(
-            download = { url -> downloads.incrementAndGet(); download(url) },
+            download = { url -> downloads++; download(url) },
             downloadVia = downloadVia,
             servers = { servers },
             warm = { _ -> if (warmFails) Either.Left(podbor.driver.EngineError.Failed("движок")) else xrayOf("scan") },
@@ -188,15 +192,16 @@ private class ScanStand(
             passports = passports,
             stopSession = {
                 host.stop(++startId)
-                if (restarts > 0) { restarts--; overtakes.incrementAndGet(); host.start(++startId) }
+                if (restarts > 0) { restarts--; host.start(++startId) }
             },
             clock = Clock { nowMs },
         ),
+        io = io,
     )
 
     fun start() = host.start(++startId)
 
-    suspend fun up() = withTimeout(5_000) { host.state.first { it is SessionState.Up } }
+    suspend fun up() = host.state.first { it is SessionState.Up }
 
     /** Буквы Pressed из Ленты: их hints по ключу сервера. */
     fun pressedHints(): List<JsonObject> = tape.map { Json.parseToJsonElement(it).jsonObject }
@@ -204,208 +209,270 @@ private class ScanStand(
         .map { it.getValue("hints").jsonObject }
 
     suspend fun analyze(input: SubscriptionInput = SubscriptionInput.Text("vless://x"), onBoard: (ScanBoard) -> Unit = {}) =
-        withTimeout(10_000) { desk.analyze(input, onBoard) }
+        desk.analyze(input, onBoard)
 }
+
+private fun TestScope.stand(
+    hang: String? = null,
+    hangPort: Int? = null,
+    probeMs: Long = 0,
+    line: LineObservation = openLine,
+    download: suspend (String) -> Fetched? = { null },
+    downloadVia: suspend (String, Int) -> Fetched? = { _, _ -> null },
+    servers: Int = 3,
+    lists: WhiteLists? = null,
+    restarts: Int = 0,
+    busyTries: Int = 0,
+    warmFails: Boolean = false,
+) = ScanStand(
+    backgroundScope, StandardTestDispatcher(testScheduler), { testScheduler.currentTime },
+    hang, hangPort, probeMs, line, download, downloadVia, servers, lists, restarts, busyTries, warmFails,
+)
 
 class ScanDeskTest : FunSpec({
 
     test("страница подписки без VPN: замер линии мимо туннеля публикует плашку сети, сессия не поднимается") {
-        val s = ScanStand()
-        runBlocking { withTimeout(5_000) { s.desk.measureLine() } }
-        s.desk.board.value.network.shouldBeInstanceOf<NetworkCard.Measured>()
-        s.host.state.value shouldBe SessionState.Down
-        s.events shouldNotContain "vpn up"
+        runTest {
+            val s = stand()
+            s.desk.measureLine()
+            s.desk.board.value.network.shouldBeInstanceOf<NetworkCard.Measured>()
+            s.host.state.value shouldBe SessionState.Down
+            s.events shouldNotContain "vpn up"
+        }
     }
 
     test("VPN поднят → анализ сначала гасит сессию и ждёт её Xray, потом поднимает свой; после — свой остановлен") {
-        val s = ScanStand()
-        s.start()
-        s.up()
-        runBlocking { s.analyze() }.shouldBeInstanceOf<Either.Right<ScanBoard>>().value.finished shouldBe true
-        s.host.state.value shouldBe SessionState.Down
-        s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe listOf("vpn up", "vpn down", "scan up", "scan down")
+        runTest {
+            val s = stand()
+            s.start()
+            s.up()
+            s.analyze().shouldBeInstanceOf<Either.Right<ScanBoard>>().value.finished shouldBe true
+            runCurrent()
+            s.host.state.value shouldBe SessionState.Down
+            s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe listOf("vpn up", "vpn down", "scan up", "scan down")
+        }
     }
 
     test("подписка сохранена (текст и ссылка); паспорт — по всем серверам") {
-        val s = ScanStand(download = { Fetched("vless://из ссылки") })
-        runBlocking { s.analyze(SubscriptionInput.Link("https://a.b/sub")) }.shouldBeInstanceOf<Either.Right<ScanBoard>>()
-        s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://из ссылки", fetchedAtMs = 1_000)
-        s.desk.hasSubscription() shouldBe true
-        s.passports.load().shouldNotBeNull().servers.size shouldBe 3
+        runTest {
+            val s = stand(download = { Fetched("vless://из ссылки") })
+            s.analyze(SubscriptionInput.Link("https://a.b/sub")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://из ссылки", fetchedAtMs = 1_000)
+            s.desk.hasSubscription() shouldBe true
+            s.passports.load().shouldNotBeNull().servers.size shouldBe 3
+        }
     }
 
     test("нет серверов → NoServers, подписка не сохранена, Xray анализа не поднимался") {
-        val s = ScanStand(servers = 0)
-        runBlocking { s.analyze() } shouldBe Either.Left(InputError.NoServers)
-        s.subscriptions.load() shouldBe null
-        s.desk.hasSubscription() shouldBe false
-        s.events shouldNotContain "scan up"
+        runTest {
+            val s = stand(servers = 0)
+            s.analyze() shouldBe Either.Left(InputError.NoServers)
+            s.subscriptions.load() shouldBe null
+            s.desk.hasSubscription() shouldBe false
+            s.events shouldNotContain "scan up"
+        }
     }
 
     test("ссылка не скачалась: белые списки по замеру линии — Download(true), сеть чистая — Download(false); не сохранена") {
-        val white = ScanStand(line = whiteLine)
-        runBlocking { white.analyze(SubscriptionInput.Link("https://a.b/sub")) } shouldBe Either.Left(InputError.Download(true))
-        white.subscriptions.load() shouldBe null
-        val open = ScanStand(line = openLine)
-        runBlocking { open.analyze(SubscriptionInput.Link("https://a.b/sub")) } shouldBe Either.Left(InputError.Download(false))
+        runTest {
+            val white = stand(line = whiteLine)
+            white.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(true))
+            white.subscriptions.load() shouldBe null
+            val open = stand(line = openLine)
+            open.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(false))
+        }
     }
 
     test("отмена анализа → Xray анализа остановлен, частичный паспорт (разобранные) сохранён") {
         // Третий сервер молчит и на эталон, и на пробы: два первых разбираются, третий висит до отмены.
-        val s = ScanStand(hang = "10.0.0.3", hangPort = 20002)
-        val twoDone = CompletableDeferred<Unit>()
-        runBlocking {
-            val job = s.scope.async { s.desk.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
-            withTimeout(10_000) { twoDone.await() }
+        runTest {
+            val s = stand(hang = "10.0.0.3", hangPort = 20002)
+            val twoDone = CompletableDeferred<Unit>()
+            val job = async { s.desk.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
+            twoDone.await()
             job.cancel()
             job.join()
+            runCurrent()
+            s.events.last() shouldBe "scan down"
+            s.passports.load().shouldNotBeNull().servers.size shouldBe 2
         }
-        s.events.last() shouldBe "scan down"
-        s.passports.load().shouldNotBeNull().servers.size shouldBe 2
     }
 
     test("подсказки анализа — из белых списков по входу; нажатие после анализа получает их из паспорта") {
-        val s = ScanStand(lists = WhiteLists.of(listOf("10.0.0.1/32"), emptyList()))
-        runBlocking { s.analyze() }.shouldBeInstanceOf<Either.Right<ScanBoard>>()
-        val likely = s.passports.load().shouldNotBeNull().servers.filterValues { it.whiteHint == WhiteHint.Likely }.keys
-        likely.size shouldBe 1
-        s.tape.clear()
-        s.start()
-        s.up()
-        runBlocking { withTimeout(10_000) { s.desk.press() } }
-        // Буква Pressed в Ленте (строка step): её hints — из паспорта, ключ сервера → Likely.
-        val hints = s.tape.map { Json.parseToJsonElement(it).jsonObject }
-            .mapNotNull { row -> row["letter"]?.jsonObject?.takeIf { it["type"]?.jsonPrimitive?.content?.endsWith("Pressed") == true } }
-            .map { it.getValue("hints").jsonObject }
-        hints.isEmpty() shouldBe false
-        hints.forEach { h -> h.keys shouldBe s.passports.load()!!.servers.keys; h.getValue(likely.single()).toString() shouldContain "Likely" }
+        runTest {
+            val s = stand(lists = WhiteLists.of(listOf("10.0.0.1/32"), emptyList()))
+            s.analyze().shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            val likely = s.passports.load().shouldNotBeNull().servers.filterValues { it.whiteHint == WhiteHint.Likely }.keys
+            likely.size shouldBe 1
+            s.tape.clear()
+            s.start()
+            s.up()
+            s.desk.press()
+            // Буква Pressed в Ленте (строка step): её hints — из паспорта, ключ сервера → Likely.
+            val hints = s.pressedHints()
+            hints.isEmpty() shouldBe false
+            hints.forEach { h -> h.keys shouldBe s.passports.load()!!.servers.keys; h.getValue(likely.single()).toString() shouldContain "Likely" }
+        }
     }
 
     test("анализ один за раз: второй поднимает Xray только после остановки Xray первого") {
-        val s = ScanStand(probeMs = 100)
-        runBlocking {
-            val a = s.scope.async { s.analyze() }
-            val b = s.scope.async { s.analyze() }
+        runTest {
+            val s = stand(probeMs = 100)
+            val a = async { s.analyze() }
+            val b = async { s.analyze() }
             a.await().shouldBeInstanceOf<Either.Right<ScanBoard>>()
             b.await().shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            s.events.filter { it.startsWith("scan ") } shouldBe listOf("scan up", "scan down", "scan up", "scan down")
         }
-        s.events.filter { it.startsWith("scan ") } shouldBe listOf("scan up", "scan down", "scan up", "scan down")
     }
 
     test("нажатие посреди анализа не идёт (сессии нет); старт VPN посреди анализа ждёт остановки Xray анализа") {
-        val s = ScanStand(probeMs = 300)
-        runBlocking {
-            val scan = s.scope.async { s.analyze() }
-            withTimeout(5_000) { while ("scan up" !in s.events) delay(5) }
-            // Анализ идёт ≥ 900 мс (три пробы по 300): нажатие вернулось сразу — подбора не было.
-            withTimeout(200) { s.desk.press() }
+        runTest {
+            val s = stand(probeMs = 300)
+            val scan = async { s.analyze() }
+            runCurrent()
+            s.events shouldContain "scan up"
+            // Анализ идёт (три пробы по 300 мс виртуального времени): нажатие вернулось, не дождавшись его, — подбора не было.
+            val before = testScheduler.currentTime
+            s.desk.press()
+            testScheduler.currentTime shouldBe before
             s.host.state.value shouldBe SessionState.Down
             s.start()
-            delay(100)
+            runCurrent()
             s.host.state.value shouldBe SessionState.Starting
             scan.await().shouldBeInstanceOf<Either.Right<ScanBoard>>()
             s.up()
+            s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe listOf("scan up", "scan down", "vpn up")
         }
-        s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe listOf("scan up", "scan down", "vpn up")
     }
 
-    test("старт, влетевший между стопом и замком, снова гасится: анализ доходит до конца") {
-        // Стоп от анализа тут же стартует сессию дважды, и оба раза она обгоняет замок: анализ гасит её, пока не возьмёт замок сам.
-        val s = ScanStand(restarts = 2)
-        s.start()
-        s.up()
-        runBlocking { s.analyze() }.shouldBeInstanceOf<Either.Right<ScanBoard>>().value.finished shouldBe true
-        val xrays = s.events.filter { it.endsWith(" up") || it.endsWith(" down") }
-        xrays.take(2) shouldBe listOf("vpn up", "vpn down")
-        xrays.takeLast(2) shouldBe listOf("scan up", "scan down")
-        xrays.count { it == "scan up" } shouldBe 1
+    test("старт, влетевший между стопом и замком, ждёт конца анализа: сессия поднимается после, анализ не прерван") {
+        // Стоп от анализа тут же стартует сессию снова: замок уже у анализа, новая сессия ждёт его конца.
+        runTest {
+            val s = stand(restarts = 1)
+            s.start()
+            s.up()
+            s.analyze().shouldBeInstanceOf<Either.Right<ScanBoard>>().value.finished shouldBe true
+            s.up()
+            s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe
+                listOf("vpn up", "vpn down", "scan up", "scan down", "vpn up")
+        }
+    }
+
+    test("рестарт успел взять Xray раньше анализа → анализ гасит сессию снова, пока не возьмёт замок сам") {
+        // Двойник: первые два tryLock заняты — оба раза рестарт после стопа обогнал анализ.
+        runTest {
+            val s = stand(restarts = 2, busyTries = 2)
+            s.start()
+            s.up()
+            s.analyze().shouldBeInstanceOf<Either.Right<ScanBoard>>().value.finished shouldBe true
+            s.up()
+            s.events.filter { it.endsWith(" up") || it.endsWith(" down") } shouldBe
+                listOf("vpn up", "vpn down", "vpn up", "vpn down", "scan up", "scan down", "vpn up")
+        }
     }
 
     test("стоп сессии, ждущей замок за анализом, — Down сразу, не после анализа") {
-        val s = ScanStand(probeMs = 2_000)
-        runBlocking {
-            val scan = s.scope.async { s.analyze() }
-            withTimeout(5_000) { while ("scan up" !in s.events) delay(5) }
+        runTest {
+            val s = stand(probeMs = 2_000)
+            val scan = async { s.analyze() }
+            runCurrent()
+            s.events shouldContain "scan up"
             s.start()
-            delay(100)
+            runCurrent()
             s.host.state.value shouldBe SessionState.Starting
+            val before = testScheduler.currentTime
             s.host.stop(99)
-            withTimeout(500) { s.host.state.first { it == SessionState.Down } }
+            runCurrent()
+            s.host.state.value shouldBe SessionState.Down
+            testScheduler.currentTime shouldBe before
             scan.await().shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            s.events shouldNotContain "vpn up"
         }
-        s.events shouldNotContain "vpn up"
     }
 
     test("VPN поднят, серверов нет → сессия не гасится, прежняя подписка цела") {
-        val s = ScanStand(servers = 0)
-        s.subscriptions.save(Subscription(null, "прежняя"))
-        s.start()
-        s.up()
-        runBlocking { s.analyze() } shouldBe Either.Left(InputError.NoServers)
-        s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
-        s.events shouldNotContain "vpn down"
-        s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+        runTest {
+            val s = stand(servers = 0)
+            s.subscriptions.save(Subscription(null, "прежняя"))
+            s.start()
+            s.up()
+            s.analyze() shouldBe Either.Left(InputError.NoServers)
+            s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
+            s.events shouldNotContain "vpn down"
+            s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+        }
     }
 
     test("VPN поднят, ссылка не скачалась → сессия не гасится, прежняя подписка цела") {
-        val s = ScanStand()
-        s.subscriptions.save(Subscription("https://old/sub", "прежняя"))
-        s.start()
-        s.up()
-        runBlocking { s.analyze(SubscriptionInput.Link("https://a.b/sub")) } shouldBe Either.Left(InputError.Download(false))
-        s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
-        s.subscriptions.load() shouldBe Subscription("https://old/sub", "прежняя")
+        runTest {
+            val s = stand()
+            s.subscriptions.save(Subscription("https://old/sub", "прежняя"))
+            s.start()
+            s.up()
+            s.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(false))
+            s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
+            s.subscriptions.load() shouldBe Subscription("https://old/sub", "прежняя")
+        }
     }
 
     test("Xray анализа не поднялся → ScanFailed, прежняя подписка цела") {
-        val s = ScanStand(warmFails = true)
-        s.subscriptions.save(Subscription(null, "прежняя"))
-        runBlocking { s.analyze(SubscriptionInput.Text("vless://новая")) } shouldBe Either.Left(InputError.ScanFailed)
-        s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+        runTest {
+            val s = stand(warmFails = true)
+            s.subscriptions.save(Subscription(null, "прежняя"))
+            s.analyze(SubscriptionInput.Text("vless://новая")) shouldBe Either.Left(InputError.ScanFailed)
+            s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+        }
     }
 
     test("подсказки нажатия — по белым спискам для всех серверов сессии, а не только из паспорта") {
         // Паспорта нет: раньше подсказок не было бы вовсе.
-        val s = ScanStand(lists = WhiteLists.of(listOf("10.0.0.2/32"), emptyList()))
-        s.start()
-        s.up()
-        runBlocking { withTimeout(10_000) { s.desk.press() } }
-        val hints = s.pressedHints()
-        hints.isEmpty() shouldBe false
-        val keys = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.associate { it.endpoint.host to it.key }
-        hints.forEach { h ->
-            h.keys shouldBe keys.values.toSet()
-            h.getValue(keys.getValue("10.0.0.2")).toString() shouldContain "Likely"
-            h.getValue(keys.getValue("10.0.0.1")).toString() shouldContain "Unlikely"
+        runTest {
+            val s = stand(lists = WhiteLists.of(listOf("10.0.0.2/32"), emptyList()))
+            s.start()
+            s.up()
+            s.desk.press()
+            val hints = s.pressedHints()
+            hints.isEmpty() shouldBe false
+            val keys = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.associate { it.endpoint.host to it.key }
+            hints.forEach { h ->
+                h.keys shouldBe keys.values.toSet()
+                h.getValue(keys.getValue("10.0.0.2")).toString() shouldContain "Likely"
+                h.getValue(keys.getValue("10.0.0.1")).toString() shouldContain "Unlikely"
+            }
         }
     }
 
     test("списков нет — подсказки нажатия из паспорта") {
-        val s = ScanStand(lists = null)
-        s.start()
-        s.up()
-        val key = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.first().key
-        s.passports.save(Passport(mapOf(key to ServerFacts(Transport.Grpc, Entry.Ru, WhiteHint.Likely, Exit.Unknown, Seen.Silent)), 1))
-        runBlocking { withTimeout(10_000) { s.desk.press() } }
-        s.pressedHints().forEach { h -> h.keys shouldBe setOf(key); h.getValue(key).toString() shouldContain "Likely" }
+        runTest {
+            val s = stand(lists = null)
+            s.start()
+            s.up()
+            val key = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.first().key
+            s.passports.save(Passport(mapOf(key to ServerFacts(Transport.Grpc, Entry.Ru, WhiteHint.Likely, Exit.Unknown, Seen.Silent)), 1))
+            s.desk.press()
+            s.pressedHints().forEach { h -> h.keys shouldBe setOf(key); h.getValue(key).toString() shouldContain "Likely" }
+        }
     }
 
     test("анализ по ссылке: интервал обновления — из заголовка ответа провайдера; текстом — без времени скачивания") {
-        val s = ScanStand(download = { Fetched("vless://x", mapOf("profile-update-interval" to "6")) })
-        runBlocking { s.analyze(SubscriptionInput.Link("https://a.b/sub")) }.shouldBeInstanceOf<Either.Right<ScanBoard>>()
-        s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://x", fetchedAtMs = 1_000, updateHours = 6)
-        val t = ScanStand()
-        runBlocking { t.analyze(SubscriptionInput.Text("vless://y")) }.shouldBeInstanceOf<Either.Right<ScanBoard>>()
-        t.subscriptions.load() shouldBe Subscription(null, "vless://y")
+        runTest {
+            val s = stand(download = { Fetched("vless://x", mapOf("profile-update-interval" to "6")) })
+            s.analyze(SubscriptionInput.Link("https://a.b/sub")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://x", fetchedAtMs = 1_000, updateHours = 6)
+            val t = stand()
+            t.analyze(SubscriptionInput.Text("vless://y")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            t.subscriptions.load() shouldBe Subscription(null, "vless://y")
+        }
     }
 
     test("обновление подписки: пора — новый текст и время сохранены; не пора — не качаем") {
-        val s = ScanStand(download = { Fetched("vless://новый") })
-        runBlocking {
+        runTest {
+            val s = stand(download = { Fetched("vless://новый") })
             s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый", fetchedAtMs = 0, updateHours = 1))
             s.nowMs = 3_599_999
             s.desk.refreshSubscription()
-            s.downloads.get() shouldBe 0
+            s.downloads shouldBe 0
             s.nowMs = 3_600_000
             s.desk.refreshSubscription()
             s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://новый", fetchedAtMs = 3_600_000, updateHours = 1)
@@ -413,18 +480,18 @@ class ScanDeskTest : FunSpec({
     }
 
     test("обновление: подписка текстом — не качаем; не скачалась или нет серверов — остаёмся на прежней") {
-        runBlocking {
-            val text = ScanStand(download = { Fetched("vless://новый") })
+        runTest {
+            val text = stand(download = { Fetched("vless://новый") })
             text.subscriptions.save(Subscription(null, "vless://текст"))
             text.desk.refreshSubscription()
-            text.downloads.get() shouldBe 0
+            text.downloads shouldBe 0
             val old = Subscription("https://a.b/sub", "vless://старый")
-            val failed = ScanStand(download = { null })
+            val failed = stand(download = { null })
             failed.subscriptions.save(old)
             failed.desk.refreshSubscription()
-            failed.downloads.get() shouldBe 1
+            failed.downloads shouldBe 1
             failed.subscriptions.load() shouldBe old
-            val empty = ScanStand(download = { Fetched("мусор") }, servers = 0)
+            val empty = stand(download = { Fetched("мусор") }, servers = 0)
             empty.subscriptions.save(old)
             empty.desk.refreshSubscription()
             empty.subscriptions.load() shouldBe old
@@ -432,31 +499,31 @@ class ScanDeskTest : FunSpec({
     }
 
     test("белые списки, VPN поднят и выход найден: подписка качается туннелем — SOCKS сервера общего выхода") {
-        val ports = mutableListOf<Int>()
-        val s = ScanStand(line = whiteLine, download = { null }, downloadVia = { _, port -> ports += port; Fetched("vless://туннелем") })
-        runBlocking {
+        runTest {
+            val ports = mutableListOf<Int>()
+            val s = stand(line = whiteLine, download = { null }, downloadVia = { _, port -> ports += port; Fetched("vless://тоннель") })
             s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый"))
             s.start()
             val up = s.up() as SessionState.Up<Live>
-            withTimeout(5_000) { s.desk.open() }
+            s.desk.open()
             up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"))
             s.desk.refreshSubscription()
+            ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
+            s.subscriptions.load()?.text shouldBe "vless://тоннель"
         }
-        ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
-        runBlocking { s.subscriptions.load() }?.text shouldBe "vless://туннелем"
     }
 
     test("белые списки без выхода: туннеля нет — сразу прокси Яндекса") {
-        val asked = mutableListOf<String>()
-        val s = ScanStand(line = whiteLine, download = { url -> asked += url; if ("translate.yandex" in url) Fetched("vless://яндекс") else null })
-        runBlocking {
+        runTest {
+            val asked = mutableListOf<String>()
+            val s = stand(line = whiteLine, download = { url -> asked += url; if ("translate.yandex" in url) Fetched("vless://яндекс") else null })
             s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый"))
             s.start()
             s.up()
-            withTimeout(5_000) { s.desk.open() }
+            s.desk.open()
             s.desk.refreshSubscription()
             s.subscriptions.load()?.text shouldBe "vless://яндекс"
+            asked.size shouldBe 2
         }
-        asked.size shouldBe 2
     }
 })

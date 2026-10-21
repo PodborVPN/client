@@ -6,6 +6,7 @@ import arrow.core.raise.ensure
 import arrow.fx.coroutines.ResourceScope
 import arrow.fx.coroutines.resourceScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +116,8 @@ class Desk(
     private val services: Set<Service> = HARDCODED_SERVICES,
     private val xray: Mutex,
     private val scan: ScanPorts,
+    /** Пул анализа и обновления подписки; тест подставляет свой диспетчер. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val actions = Mutex()
 
@@ -269,7 +272,7 @@ class Desk(
      * VPN после анализа поднимает экран.
      */
     suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
-        withContext(Dispatchers.IO) { scans.withLock { analyzeLocked(input, onBoard) } }
+        withContext(io) { scans.withLock { analyzeLocked(input, onBoard) } }
 
     private suspend fun analyzeLocked(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> = either {
         val got = fetchText(input, scan.download, ::whitelistNow, tunnel()).bind()
@@ -338,7 +341,7 @@ class Desk(
      * своего замера нет. Не скачалось или в новом тексте нет серверов — молча остаёмся на прежнем. Новый текст сессия
      * берёт при следующем подъёме VPN: идущую не рвём.
      */
-    suspend fun refreshSubscription(): Unit = withContext(Dispatchers.IO) {
+    suspend fun refreshSubscription(): Unit = withContext(io) {
         if (!scans.tryLock()) return@withContext
         try {
             val old = scan.subscriptions.load() ?: return@withContext
