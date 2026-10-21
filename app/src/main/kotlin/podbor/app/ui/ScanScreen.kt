@@ -46,7 +46,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
@@ -54,7 +53,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -87,9 +85,6 @@ private val RU = Locale.forLanguageTag("ru")
 
 /** Сколько новейших карточек лента рисует (как в макете: нижняя гаснет градиентом); прочие не композируются. */
 const val FEED_CARDS = 6
-
-/** След композиции карточки по ключу — для теста рекомпозиций; в приложении пустой. */
-internal val LocalCardTrace = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /** Флаг из двухбуквенного кода страны (региональные индикаторы); не код — "". */
 fun flagOf(code: String): String {
@@ -244,8 +239,6 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
 
 @Composable
 private fun Card(card: ServerCard) {
-    val trace = LocalCardTrace.current
-    SideEffect { trace(card.key) }
     val edge by animateColorAsState(if (card.live) PodborColors.Accent.copy(alpha = 0.4f) else Rule, tween(400), label = "рамка")
     Surface(
         shape = RoundedCornerShape(12.dp),

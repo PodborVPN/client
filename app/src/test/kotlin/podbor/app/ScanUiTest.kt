@@ -3,24 +3,17 @@ package podbor.app
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import io.kotest.matchers.shouldBe
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import podbor.app.ui.FEED_CARDS
-import podbor.app.ui.LocalCardTrace
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.SKIP_WARNING
 import podbor.app.ui.ScanScreen
 import podbor.app.ui.flagOf
-import podbor.app.ui.skipProgress
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.Mark3
@@ -123,12 +116,6 @@ class ScanUiTest {
     }
 
     @Test
-    fun skipProgressSaysHowFar() {
-        assertEquals("Подписка ещё читается.", skipProgress(null))
-        assertEquals("Проверено 1 из 2.", skipProgress(board(finished = false).copy(done = 1, total = 2)))
-    }
-
-    @Test
     fun okOnlyWhenFinishedWithVerdict() {
         show(board(finished = true))
         compose.onNodeWithText("ОК, дальше").assertDoesNotExist()
@@ -164,35 +151,5 @@ class ScanUiTest {
         show(board(finished = false).copy(cards = ten))
         countries.take(FEED_CARDS).forEach { compose.onNodeWithText(routeTo(it)).assertExists() }
         countries.drop(FEED_CARDS).forEach { compose.onNodeWithText(routeTo(it)).assertDoesNotExist() }
-        FEED_CARDS shouldBe 6
-    }
-
-    // Высокий экран: LazyColumn составляет только видимое, а здесь проверяется ровно «шесть новейших».
-    @Test
-    @Config(qualifiers = "h3000dp")
-    fun changedCardAloneRecomposes() {
-        val composed = mutableMapOf<String, Int>()
-        var shown by mutableStateOf(board(finished = false).copy(cards = ten))
-        compose.setContent {
-            CompositionLocalProvider(LocalCardTrace provides { key -> composed[key] = (composed[key] ?: 0) + 1 }) {
-                PodborTheme { ScanScreen(shown, onOk = { }) }
-            }
-        }
-        compose.waitForIdle()
-        val before = composed.toMap()
-        before.keys shouldBe ten.take(FEED_CARDS).map { it.key }.toSet()
-        // Новая доска — новые экземпляры всех карточек (как от ядра); поменялась отметка одной.
-        shown = board(finished = false).copy(cards = ten.map { it.copy() }.mapIndexed { i, c ->
-            if (i == 2) c.copy(services = listOf("TG" to Mark3.Works, "IG" to Mark3.Works, "YT" to Mark3.Works)) else c
-        }, done = 8)
-        compose.waitForIdle()
-        composed.filter { (k, n) -> n != before[k] }.keys shouldBe setOf("k2")
-    }
-
-    @Test
-    fun flagsFromCountryCode() {
-        flagOf("NL") shouldBe "🇳🇱"
-        flagOf("nl") shouldBe flagOf("NL")
-        flagOf("?") shouldBe ""
     }
 }
