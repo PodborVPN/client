@@ -18,9 +18,6 @@ class ClassifyTest : FunSpec({
         classify(answered = 3, tcp = Reach.Up) shouldBe Verdict.TelegramDc(3)
         classify(answered = 1, tcp = Reach.Up) shouldBe Verdict.TelegramDc(1)
     }
-    test("проба опрашивает DC1–DC3: 3 соединения к IP:порт кандидата, не больше бюджета") {
-        PROBE_DCS.size shouldBe 3
-    }
     test("Инста: CDN ≥ 96 КБ и www ответил → оба ok") {
         classifyInstagram(InstagramAnswer(200, 98304, 302), Reach.Up) shouldBe Verdict.Instagram(cdnOk = true, wwwOk = true)
     }

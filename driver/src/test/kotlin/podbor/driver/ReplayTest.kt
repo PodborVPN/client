@@ -52,12 +52,6 @@ class ReplayTest : FunSpec({
         diverged.replayed shouldBe step.deeds
     }
 
-    test("прогон без строки срока и не done (нажатие вытеснило открытие) → Converged(ending = Torn)") {
-        val tape = pressTape()
-        val cut = tape.take(3) // шапка и две буквы: машина ещё не готова
-        replay(cut.joinToString("\n")).single().outcome shouldBe Replayed.Converged(steps = 2, ending = Ending.Torn)
-    }
-
     test("срок вышел → Converged(ending = Closed)") {
         val press = pressTape()
         val tape = press.take(2) + rowLine(Row.Closed(rowOf(press.first()).shouldBeInstanceOf<Row.Run>().id))

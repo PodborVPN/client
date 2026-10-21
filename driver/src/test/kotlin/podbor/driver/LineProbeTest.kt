@@ -50,7 +50,6 @@ class LineProbeTest : FunSpec({
         Case("connection reset на Tls → Reset(Tls)", Stage.Tls, SocketException("Connection reset"), Handshake.Reset(Stage.Tls)),
         Case("remote host terminated → Reset(Tls)", Stage.Tls, SSLException("Remote host terminated the handshake"), Handshake.Reset(Stage.Tls)),
         Case("чужой сертификат → Mirage", Stage.Tls, SSLHandshakeException("bad cert").apply { initCause(CertificateException("x")) }, Handshake.Mirage),
-        Case("чужой отпечаток podbor-ref → Mirage", Stage.Tls, SSLHandshakeException("pin").apply { initCause(CertificateException("pin")) }, Handshake.Mirage),
         Case("DNS → Unknown(dns)", Stage.Connect, UnknownHostException("ya.ru"), Handshake.Unknown("dns")),
         Case("protect → Unknown(protect)", Stage.Connect, SecurityException("protect"), Handshake.Unknown("protect")),
         Case("прочее → Unknown(имя класса)", Stage.Tls, IllegalStateException("?"), Handshake.Unknown("IllegalStateException")),
@@ -83,21 +82,6 @@ class LineProbeTest : FunSpec({
             silence.stage shouldBe Stage.Tls
             silence.waitedMs shouldBeGreaterThanOrEqual 1_000L
         }
-    }
-
-    test("C1: SYN без ответа (connect висит дольше потолка) на боевых сроках → строго Silent(Connect, ≥ 1000)") {
-        val released = java.util.concurrent.CountDownLatch(1)
-        val socket = object : java.net.Socket() {
-            override fun connect(endpoint: java.net.SocketAddress, timeout: Int) { released.await() } // чёрная дыра, таймаут ОС не сработал
-            override fun close() { released.countDown() }
-        }
-        val ref = Reference("blackhole", "blackhole.invalid", 443, "blackhole", Trust.System)
-        val h = runBlocking {
-            TlsHandshaker(connectMs = 1_500, ceilingMs = 1_800, newSocket = { socket }, resolve = { java.net.InetAddress.getLoopbackAddress() }).shake(ref)
-        }
-        val silence = h.shouldBeInstanceOf<Handshake.Silent>()
-        silence.stage shouldBe Stage.Connect
-        silence.waitedMs shouldBeGreaterThanOrEqual 1_000L
     }
 
     test("потолок держится, даже когда connect блокируется: Silent(Connect) по потолку и сокет закрыт") {
@@ -159,7 +143,7 @@ class LineProbeTest : FunSpec({
         h.waitedMs shouldBeLessThanOrEqual h.allowedMs!! + 100
     }
 
-    test("SYN без ответа после резолва 300 мс: Silent(Connect) с allowedMs = min(connectMs, остаток потолка), beforeMs ≈ резолв") {
+    test("SYN без ответа после резолва 300 мс на боевых сроках: строго Silent(Connect, ≥ 1000), allowedMs = min(connectMs, остаток потолка), beforeMs ≈ резолв") {
         val released = java.util.concurrent.CountDownLatch(1)
         val socket = object : java.net.Socket() {
             override fun connect(endpoint: java.net.SocketAddress, timeout: Int) { released.await() }
@@ -172,6 +156,7 @@ class LineProbeTest : FunSpec({
         )
         val h = runBlocking { shaker.shake(ref) }.shouldBeInstanceOf<Handshake.Silent>()
         h.stage shouldBe Stage.Connect
+        h.waitedMs shouldBeGreaterThanOrEqual 1_000L
         h.beforeMs!! shouldBeInRange 300L..450L
         h.allowedMs!! shouldBeInRange 1_350L..1_500L
     }

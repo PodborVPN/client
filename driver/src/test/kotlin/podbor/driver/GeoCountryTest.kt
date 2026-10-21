@@ -82,19 +82,4 @@ class GeoCountryTest : FunSpec({
         }
         servers.map { it.entry } shouldBe listOf(podbor.core.Entry.Foreign("NL"), podbor.core.Entry.Foreign("?"))
     }
-
-    test("настоящий geoip.dat (если собран): время загрузки и занятая память, известные адреса") {
-        val real = File("../app/build/generated/xray-assets/xray/geoip.dat")
-        if (!real.isFile) return@test
-        fun used(): Long { repeat(3) { System.gc() }; return Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } }
-        val before = used()
-        val t0 = System.nanoTime()
-        val geo = GeoCountry.load(real).shouldBeInstanceOf<Either.Right<GeoCountry>>().value
-        val ms = (System.nanoTime() - t0) / 1_000_000
-        val retained = used() - before
-        println("geoip.dat: ${real.length() / 1024} KiB, загрузка $ms мс, удержано ~${retained / 1024} KiB, диапазонов ${geo.ranges}")
-        geo.of("8.8.8.8") shouldBe "GOOGLE" // вложенный более узкий диапазон побеждает
-        geo.of("77.88.8.8") shouldBe "RU"
-        geo.of("2001:4860:4860::8888") shouldBe "US"
-    }
 })

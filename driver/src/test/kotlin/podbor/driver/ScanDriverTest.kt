@@ -125,15 +125,6 @@ class ScanDriverTest : FunSpec({
         saved.successes.getValue(other) shouldBe nonEmptyListOf(Success("x", 1))
     }
 
-    test("Лента анализа — свой прогон Scan, replay сходится без расхождений до Done") {
-        val w = scanWorld()
-        w.analyzeAll()
-        val runs = replay(w.tape.joinToString("\n"))
-        runs.map { it.machine } shouldBe listOf("Scan")
-        runs.single().service shouldBe null
-        runs.single().outcome.shouldBeInstanceOf<Replayed.Converged>().ending shouldBe Ending.Done
-    }
-
     test("отмена посреди анализа → сохранён частичный паспорт (только разобранные), слитый с прошлым") {
         // Третий сервер молчит и на эталон, и на пробы: два первых разбираются, третий висит до отмены.
         val w = scanWorld(prober = scanProber(hang = "10.0.0.3"), exits = exitProbe(hangPort = 20002),

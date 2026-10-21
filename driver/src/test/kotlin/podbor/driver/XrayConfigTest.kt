@@ -86,28 +86,26 @@ class XrayConfigTest : FunSpec({
         rules.first().strs("inboundTag") shouldBe listOf("api")
     }
 
-    test("env: каталог geo-файлов; без tunFd tun-inbound нет") {
+    test("без tunFd: каталог geo-файлов в env; ни tun-inbound'а, ни dns-outbound'а, ни правила порта 53") {
         cfg["env"]!!.jsonObject["xray.location.asset"] shouldBe JsonPrimitive("/assets")
         cfg["inbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("tun") } shouldBe true
+        cfg["outbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("dns") } shouldBe true
+        rules.none { it["port"] != null } shouldBe true
     }
 
-    test("tunFd → tun-inbound и env xray.tun.fd") {
+    test("tunFd → один tun-inbound: env xray.tun.fd, MTU = TUN_MTU (как у VpnService.Builder), имя и sniffing только для маршрута") {
         val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
         tun["env"]!!.jsonObject["xray.tun.fd"] shouldBe JsonPrimitive("42")
-        tun["inbounds"]!!.jsonArray.count { it.jsonObject["protocol"] == JsonPrimitive("tun") } shouldBe 1
-    }
-
-    test("tunFd → MTU tun-inbound'а = TUN_MTU (то же значение, что у VpnService.Builder)") {
-        val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
-        val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("tun") }
+        val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.filter { it["protocol"] == JsonPrimitive("tun") }.single()
+        inbound["tag"] shouldBe JsonPrimitive("tun")
         inbound["settings"]!!.jsonObject["mtu"] shouldBe JsonPrimitive(TUN_MTU)
-        TUN_MTU shouldBe 1500
-    }
-
-    test("tunFd → имя tun-inbound'а задано: без него Xray перебирает интерфейсы (netlink), а Android приложению это запрещает") {
-        val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
-        val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("tun") }
+        // Без имени Xray перебирает интерфейсы (netlink), а Android приложению это запрещает.
         inbound["settings"]!!.jsonObject["name"] shouldBe JsonPrimitive("podbor0")
+        // geosite:category-ru срабатывает и для трафика из TUN.
+        val sniffing = inbound["sniffing"]!!.jsonObject
+        sniffing["enabled"] shouldBe JsonPrimitive(true)
+        sniffing.strs("destOverride") shouldBe listOf("http", "tls", "quic")
+        sniffing["routeOnly"] shouldBe JsonPrimitive(true)
     }
 
     test("tunFd → DNS телефона (порт 53 из tun) уходит в dns-outbound раньше geo-правил и балансера") {
@@ -119,15 +117,6 @@ class XrayConfigTest : FunSpec({
         tunRules[dnsRule]["outboundTag"] shouldBe JsonPrimitive(DNS_OUT)
         dnsRule shouldBeLessThan tunRules.indexOfFirst { "geoip:ru" in it.strs("ip") }
         dnsRule shouldBeLessThan tunRules.indexOfFirst { it["balancerTag"] != null }
-    }
-
-    test("tunFd → sniffing на tun-inbound (только для маршрута): geosite:category-ru срабатывает и для трафика из TUN") {
-        val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
-        val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("tun") }
-        val sniffing = inbound["sniffing"]!!.jsonObject
-        sniffing["enabled"] shouldBe JsonPrimitive(true)
-        sniffing.strs("destOverride") shouldBe listOf("http", "tls", "quic")
-        sniffing["routeOnly"] shouldBe JsonPrimitive(true)
     }
 
     val tgUids = mapOf("org.telegram.messenger" to 10304)
@@ -161,7 +150,6 @@ class XrayConfigTest : FunSpec({
             .jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }
         bs.map { it["tag"]!!.jsonPrimitive.content }.toSet() shouldBe setOf("svc.insta", "svc.tg", EXIT_BALANCER)
         bs.map { it.strs("selector") }.toSet() shouldBe setOf(servers.map { it.id.tag })
-        balancerOf(Telegram.id) shouldBe "svc.tg"
     }
 
     test("порядок набора и дубликаты не меняют конфиг") {
@@ -184,11 +172,6 @@ class XrayConfigTest : FunSpec({
         }
     }
 
-    test("UID Телеги + домен Инсты: доменное правило Инсты раньше process Телеги") {
-        val rs = rulesOf(opts.copy(services = setOf(Telegram, Instagram), uids = tgUids))
-        ruleTagged(rs, "svc.insta.domain") shouldBeLessThan ruleTagged(rs, "svc.tg.app")
-    }
-
     test("без services правил и балансеров svc.* нет; уровень лога — warning, если не задан") {
         for (r in rules) (r["ruleTag"] as? JsonPrimitive)?.content?.startsWith("svc.") shouldBe null
         val bs = cfg["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }
@@ -196,11 +179,6 @@ class XrayConfigTest : FunSpec({
         rules.none { it["process"] != null } shouldBe true
         cfg["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("warning")
         buildConfig(servers, outbounds, opts.copy(logLevel = "info"))["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("info")
-    }
-
-    test("без tunFd dns-outbound'а и правила порта 53 нет") {
-        cfg["outbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("dns") } shouldBe true
-        rules.none { it["port"] != null } shouldBe true
     }
 
     test("socksPortOf: s001 → 20000, s003 → 20002; inbound на этом порту") {

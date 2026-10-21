@@ -4,10 +4,8 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
-import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
-import java.nio.file.Files
 import java.security.KeyStore
 import java.security.MessageDigest
 import javax.net.ssl.KeyManagerFactory
@@ -55,17 +53,12 @@ private fun serveExit(c: Socket, reply: String?, tls: SSLContext?) = c.use {
 
 private fun ok(body: String) = "HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
 
-/** Самоподписанный сертификат через keytool JDK: контекст сервера и отпечаток листа в формате эталона. */
+/** Самоподписанный сертификат из ресурсов теста (line-test.p12): контекст сервера и отпечаток листа в формате эталона. */
 private fun selfSigned(): Pair<SSLContext, String> {
-    val dir = Files.createTempDirectory("ref").toFile().apply { deleteOnExit() }
-    val ks = File(dir, "ks.p12")
-    val keytool = File(System.getProperty("java.home"), "bin/keytool").absolutePath
-    val p = ProcessBuilder(keytool, "-genkeypair", "-alias", "ref", "-keyalg", "RSA", "-keysize", "2048", "-dname", "CN=podbor-ref",
-        "-validity", "2", "-storetype", "PKCS12", "-keystore", ks.path, "-storepass", "changeit").redirectErrorStream(true).start()
-    check(p.waitFor() == 0) { p.inputStream.readAllBytes().decodeToString() }
-    val store = KeyStore.getInstance("PKCS12").apply { ks.inputStream().use { load(it, "changeit".toCharArray()) } }
-    val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, "changeit".toCharArray()) }
-    val pin = MessageDigest.getInstance("SHA-256").digest(store.getCertificate("ref").encoded).joinToString("") { "%02X".format(it) }
+    val pass = "podbor".toCharArray()
+    val store = KeyStore.getInstance("PKCS12").apply { ExitProbeTest::class.java.getResourceAsStream("/line-test.p12").use { load(it, pass) } }
+    val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, pass) }
+    val pin = MessageDigest.getInstance("SHA-256").digest(store.getCertificate("line").encoded).joinToString("") { "%02X".format(it) }
     return SSLContext.getInstance("TLS").apply { init(kmf.keyManagers, null, null) } to pin
 }
 

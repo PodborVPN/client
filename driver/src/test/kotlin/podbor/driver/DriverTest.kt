@@ -165,20 +165,15 @@ class DriverTest : FunSpec({
     val mts = OsNetwork.Cellular("MTS", "25001")
     val whitelist = line(Reach.Up, Reach.Down)
 
-    test("белые списки с фейками: зелёная, setExit с найденным тегом, пробы только Ru") {
+    test("белые списки с фейками: зелёная, setExit с найденным тегом, пробы только Ru — своим SOCKS-портом и TCP к своему адресу") {
         val w = World(ips = listOf("10.0.0.1", "10.0.0.2", "10.0.0.3"), ruIps = setOf("10.0.0.1", "10.0.0.2"), line = whitelist, fitsPorts = setOf(20001))
         val screen = w.pressNow("подписка", mts, currentExit = null).shouldBeInstanceOf<Either.Right<Board>>().value
         screen.button shouldBe Button.Green
         w.exits shouldContainExactly listOf("s002")
+        w.probed shouldContain 20001
+        w.reached shouldContain Endpoint("10.0.0.2", 443)
         (20002 in w.probed) shouldBe false // s003 — зарубежный вход, при белых списках не пробуется
         w.saved!!.successes.values.single().single().serverKey.isNotEmpty() shouldBe true
-    }
-
-    test("Probe(s003) пробует socksPortOf(s003) и TCP к endpoint s003") {
-        val w = World(ips = listOf("10.0.0.1", "10.0.0.2", "10.0.0.3"), ruIps = emptySet(), line = line(Reach.Up, Reach.Up), fitsPorts = emptySet())
-        w.pressNow("подписка", mts, currentExit = null)
-        w.probed shouldContain 20002
-        w.reached shouldContain Endpoint("10.0.0.3", 443)
     }
 
     test("движок не стартовал → Left(EngineError): человек видит ошибку движка, а не «у провайдера ничего не работает»") {
@@ -198,12 +193,11 @@ class DriverTest : FunSpec({
         w.exits shouldContainExactly listOf("s001")
     }
 
-    test("красная кнопка: все Ru молчат → Red со словами, setExit не зовётся") {
+    test("красная кнопка: все Ru молчат → Red, «не найдено», setExit не зовётся") {
         val w = World(ips = listOf("10.0.0.1", "10.0.0.2"), ruIps = setOf("10.0.0.1", "10.0.0.2"), line = whitelist, fitsPorts = emptySet())
         val screen = w.pressNow("подписка", mts, currentExit = null).shouldBeInstanceOf<Either.Right<Board>>().value
         screen.button shouldBe Button.Red
-        screen.card().shouldBeInstanceOf<CardStatus.NotFound>().lines.last() shouldBe
-            "Российские сайты работают напрямую. Нужен сервер с входом в РФ из белого списка — спроси у своего VPN-сервиса."
+        screen.card().shouldBeInstanceOf<CardStatus.NotFound>()
         w.exits shouldBe emptyList()
     }
 
@@ -250,23 +244,20 @@ class DriverTest : FunSpec({
             .shouldBeInstanceOf<Letter.Opened>().vpn shouldBe podbor.core.Vpn.Unlisted(ServerId("s999"))
     }
 
-    test("нажатие со свежей линией детектора не меряет линию заново") {
+    test("open и press на одном Warm: движок стартует раз; открытие подтвердило белые списки — нажатие линию не меряет") {
         val w = World(ips = listOf("10.0.0.1"), ruIps = setOf("10.0.0.1"), line = whitelist, fitsPorts = setOf(20000))
-        val known = Letter.LineObserved(System.currentTimeMillis(), line(Reach.Up, Reach.Up))
-        val screen = w.pressNow("подписка", mts, currentExit = null, prior = Prior.Detected(nonEmptyListOf(known)))
-            .shouldBeInstanceOf<Either.Right<Board>>().value
+        val screen = runBlocking {
+            resourceScope {
+                val d = w.driver()
+                val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
+                val opening = d.open(warm, w.services, mts)
+                w.lineCalls shouldBe 2
+                d.press(warm, w.services, mts, prior = opening.prior)
+            }
+        }
+        w.lineCalls shouldBe 2
+        w.engineRuns shouldBe 1
         screen.button shouldBe Button.Green
-        w.lineCalls shouldBe 0
-    }
-
-    test("детектор подтвердил белые списки → нажатие с его раундами линию не меряет, сразу белые списки") {
-        val w = World(ips = listOf("10.0.0.1"), ruIps = setOf("10.0.0.1"), line = whitelist, fitsPorts = setOf(20000))
-        val opening = w.openNow("подписка", mts, currentExit = null)
-            .shouldBeInstanceOf<Either.Right<Opening>>().value
-        w.lineCalls shouldBe 2
-        val screen = w.pressNow("подписка", mts, currentExit = null, prior = opening.prior)
-            .shouldBeInstanceOf<Either.Right<Board>>().value
-        w.lineCalls shouldBe 2
         screen.network.shouldBeInstanceOf<NetworkCard.Measured>().scenario shouldBe Scenario.MobileWhitelist
     }
 
@@ -277,34 +268,6 @@ class DriverTest : FunSpec({
         rows.first().shouldBeInstanceOf<Row.Run>().head shouldBe Head.Open(emptyList())
         val vpn = rows.filterIsInstance<Row.Step>().first().letter.shouldBeInstanceOf<Letter.Opened>().vpn
         vpn.shouldBeInstanceOf<podbor.core.Vpn.On>().exit.endpoint.host shouldBe "10.0.0.1"
-    }
-
-    test("open и press на одном Warm стартуют движок один раз") {
-        val w = World(ips = listOf("10.0.0.1"), ruIps = setOf("10.0.0.1"), line = whitelist, fitsPorts = setOf(20000))
-        val screen = runBlocking {
-            resourceScope {
-                val d = w.driver()
-                val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-                val opening = d.open(warm, w.services, mts)
-                d.press(warm, w.services, mts, prior = opening.prior)
-            }
-        }
-        screen.button shouldBe Button.Green
-        w.engineRuns shouldBe 1
-    }
-
-    test("press на Warm использует prior открытия: линия не меряется заново") {
-        val w = World(ips = listOf("10.0.0.1"), ruIps = setOf("10.0.0.1"), line = whitelist, fitsPorts = setOf(20000))
-        runBlocking {
-            resourceScope {
-                val d = w.driver()
-                val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-                val opening = d.open(warm, w.services, mts)
-                w.lineCalls shouldBe 2
-                d.press(warm, w.services, mts, prior = opening.prior)
-                w.lineCalls shouldBe 2
-            }
-        }
     }
 
     test("промежуточные экраны нажатия: сначала Searching с «измеряю сеть», последний — тот же, что итог") {

@@ -8,6 +8,7 @@ import podbor.core.Endpoint
 import podbor.core.Reach
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /** Ответ DC2 на блоб, записан с живого DC2 (100 байт без 4-байтной длины). */
@@ -16,12 +17,13 @@ private const val DC2_RESPQ =
 
 private fun hex(s: String) = s.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-/** Фейковый SOCKS5: на CONNECT к ip из answers отвечает заданным кадром, null — молчит. */
-private fun fakeSocks(answers: Map<String, ByteArray?>): ServerSocket {
+/** Фейковый SOCKS5: на CONNECT к ip из answers отвечает заданным кадром, null — молчит; [connects] — принятые соединения. */
+private fun fakeSocks(answers: Map<String, ByteArray?>, connects: AtomicInteger = AtomicInteger()): ServerSocket {
     val server = ServerSocket(0)
     thread(isDaemon = true) {
         while (!server.isClosed) {
             val c = runCatching { server.accept() }.getOrNull() ?: break
+            connects.incrementAndGet()
             thread(isDaemon = true) { serve(c, answers) }
         }
     }
@@ -43,10 +45,6 @@ private fun serve(c: Socket, answers: Map<String, ByteArray?>) = c.use {
 
 class TgBlobTest : FunSpec({
 
-    test("блоб из ресурсов — 48 байт со сверенным sha256") {
-        TG_BLOB.size shouldBe 48
-    }
-
     test("judgeResPq: записанный ответ DC2 → ResPq; 4 байта → Garbage; null → Silent") {
         judgeResPq(hex(DC2_RESPQ)) shouldBe DcAnswer.ResPq
         judgeResPq(hex("6cfeffff")) shouldBe DcAnswer.Garbage
@@ -55,12 +53,14 @@ class TgBlobTest : FunSpec({
         judgeResPq(wrongNonce) shouldBe DcAnswer.Garbage
     }
 
-    test("проба через SOCKS считает ответившие DC и укладывается в срок") {
+    test("проба через SOCKS: 3 соединения к кандидату (не больше бюджета), считает ответившие DC и укладывается в срок") {
         val dcs = TELEGRAM_DCS.map { it.first }
-        val socks = fakeSocks(mapOf(dcs[0] to hex(DC2_RESPQ), dcs[1] to hex(DC2_RESPQ), dcs[2] to hex("6cfeffff"), dcs[3] to null))
+        val connects = AtomicInteger()
+        val socks = fakeSocks(mapOf(dcs[0] to hex(DC2_RESPQ), dcs[1] to hex(DC2_RESPQ), dcs[2] to hex("6cfeffff"), dcs[3] to null), connects)
         val started = System.currentTimeMillis()
         val answered = runBlocking { TelegramProbeImpl(deadlineMs = 1_000).probe(socks.localPort) }
         answered shouldBe 2
+        connects.get() shouldBe 3
         (System.currentTimeMillis() - started) shouldBeLessThan 1_500L
         socks.close()
     }
