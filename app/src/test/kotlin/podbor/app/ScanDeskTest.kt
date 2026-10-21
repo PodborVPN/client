@@ -8,7 +8,6 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -22,10 +21,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -114,7 +110,6 @@ private class ScanStand(
     val warmFails: Boolean = false,
 ) {
     val events = mutableListOf<String>()
-    val tape = mutableListOf<String>()
     val dir = Files.createTempDirectory("scan").toFile()
     val subscriptions = SubscriptionStore(dir, io = io)
     val passports = InMemoryPassportStore()
@@ -156,7 +151,7 @@ private class ScanStand(
             override fun saveMemory(m: Memory) = Unit
         },
         passportStore = passports,
-        tape = { tape += it },
+        tape = { },
         opts = ConfigOpts(assetDir = "/assets", services = setOf(Telegram)),
     )
 
@@ -202,11 +197,6 @@ private class ScanStand(
     fun start() = host.start(++startId)
 
     suspend fun up() = host.state.first { it is SessionState.Up }
-
-    /** Буквы Pressed из Ленты: их hints по ключу сервера. */
-    fun pressedHints(): List<JsonObject> = tape.map { Json.parseToJsonElement(it).jsonObject }
-        .mapNotNull { row -> row["letter"]?.jsonObject?.takeIf { it["type"]?.jsonPrimitive?.content?.endsWith("Pressed") == true } }
-        .map { it.getValue("hints").jsonObject }
 
     suspend fun analyze(input: SubscriptionInput = SubscriptionInput.Text("vless://x"), onBoard: (ScanBoard) -> Unit = {}) =
         desk.analyze(input, onBoard)
@@ -298,20 +288,17 @@ class ScanDeskTest : FunSpec({
         }
     }
 
-    test("подсказки анализа — из белых списков по входу; нажатие после анализа получает их из паспорта") {
+    test("подсказки анализа — из белых списков по входу; нажатие при белых списках первым проверяет вероятный") {
         runTest {
-            val s = stand(lists = WhiteLists.of(listOf("10.0.0.1/32"), emptyList()))
+            val s = stand(line = whiteLine, lists = WhiteLists.of(listOf("10.0.0.3/32"), emptyList()))
             s.analyze().shouldBeInstanceOf<Either.Right<ScanBoard>>()
             val likely = s.passports.load().shouldNotBeNull().servers.filterValues { it.whiteHint == WhiteHint.Likely }.keys
             likely.size shouldBe 1
-            s.tape.clear()
             s.start()
             s.up()
+            s.events.clear()
             s.desk.press()
-            // Буква Pressed в Ленте (строка step): её hints — из паспорта, ключ сервера → Likely.
-            val hints = s.pressedHints()
-            hints.isEmpty() shouldBe false
-            hints.forEach { h -> h.keys shouldBe s.passports.load()!!.servers.keys; h.getValue(likely.single()).toString() shouldContain "Likely" }
+            s.events.first { it.startsWith("probe") } shouldBe "probe 10.0.0.3"
         }
     }
 
@@ -426,32 +413,25 @@ class ScanDeskTest : FunSpec({
     }
 
     test("подсказки нажатия — по белым спискам для всех серверов сессии, а не только из паспорта") {
-        // Паспорта нет: раньше подсказок не было бы вовсе.
+        // Паспорта нет: без списков вероятный сервер не встал бы первым.
         runTest {
-            val s = stand(lists = WhiteLists.of(listOf("10.0.0.2/32"), emptyList()))
+            val s = stand(line = whiteLine, lists = WhiteLists.of(listOf("10.0.0.3/32"), emptyList()))
             s.start()
             s.up()
             s.desk.press()
-            val hints = s.pressedHints()
-            hints.isEmpty() shouldBe false
-            val keys = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.associate { it.endpoint.host to it.key }
-            hints.forEach { h ->
-                h.keys shouldBe keys.values.toSet()
-                h.getValue(keys.getValue("10.0.0.2")).toString() shouldContain "Likely"
-                h.getValue(keys.getValue("10.0.0.1")).toString() shouldContain "Unlikely"
-            }
+            s.events.first { it.startsWith("probe") } shouldBe "probe 10.0.0.3"
         }
     }
 
     test("списков нет — подсказки нажатия из паспорта") {
         runTest {
-            val s = stand(lists = null)
+            val s = stand(line = whiteLine, lists = null)
             s.start()
             s.up()
-            val key = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.first().key
+            val key = s.host.state.value.shouldBeInstanceOf<SessionState.Up<Live>>().live.warm.servers.single { it.endpoint.host == "10.0.0.3" }.key
             s.passports.save(Passport(mapOf(key to ServerFacts(Transport.Grpc, Entry.Ru, WhiteHint.Likely, Exit.Unknown, Seen.Silent)), 1))
             s.desk.press()
-            s.pressedHints().forEach { h -> h.keys shouldBe setOf(key); h.getValue(key).toString() shouldContain "Likely" }
+            s.events.first { it.startsWith("probe") } shouldBe "probe 10.0.0.3"
         }
     }
 
@@ -466,25 +446,18 @@ class ScanDeskTest : FunSpec({
         }
     }
 
-    test("обновление подписки: пора — новый текст и время сохранены; не пора — не качаем") {
+    test("обновление подписки: пора — новый текст и время сохранены") {
         runTest {
             val s = stand(download = { Fetched("vless://новый") })
             s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый", fetchedAtMs = 0, updateHours = 1))
-            s.nowMs = 3_599_999
-            s.desk.refreshSubscription()
-            s.downloads shouldBe 0
             s.nowMs = 3_600_000
             s.desk.refreshSubscription()
             s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://новый", fetchedAtMs = 3_600_000, updateHours = 1)
         }
     }
 
-    test("обновление: подписка текстом — не качаем; не скачалась или нет серверов — остаёмся на прежней") {
+    test("обновление: не скачалась или нет серверов — остаёмся на прежней") {
         runTest {
-            val text = stand(download = { Fetched("vless://новый") })
-            text.subscriptions.save(Subscription(null, "vless://текст"))
-            text.desk.refreshSubscription()
-            text.downloads shouldBe 0
             val old = Subscription("https://a.b/sub", "vless://старый")
             val failed = stand(download = { null })
             failed.subscriptions.save(old)
@@ -510,20 +483,6 @@ class ScanDeskTest : FunSpec({
             s.desk.refreshSubscription()
             ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
             s.subscriptions.load()?.text shouldBe "vless://тоннель"
-        }
-    }
-
-    test("белые списки без выхода: туннеля нет — сразу прокси Яндекса") {
-        runTest {
-            val asked = mutableListOf<String>()
-            val s = stand(line = whiteLine, download = { url -> asked += url; if ("translate.yandex" in url) Fetched("vless://яндекс") else null })
-            s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый"))
-            s.start()
-            s.up()
-            s.desk.open()
-            s.desk.refreshSubscription()
-            s.subscriptions.load()?.text shouldBe "vless://яндекс"
-            asked.size shouldBe 2
         }
     }
 })

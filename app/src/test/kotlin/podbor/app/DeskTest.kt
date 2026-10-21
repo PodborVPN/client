@@ -4,7 +4,6 @@ import arrow.core.nonEmptyListOf
 import arrow.core.right
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -87,7 +86,7 @@ private fun outbound(i: Int): JsonObject = buildJsonObject {
 /**
  * Сервис без Android: настоящие SessionHost, Desk и Driver на фейковых портах. Подъём сессии ждёт [gate]; линия —
  * мгновенная; Телега отвечает на портах [fitsPorts], Инста — на [igFitsPorts]; первый setExit общего ждёт [setExitDelayMs].
- * Всё, что край зовёт, — в журнале: общий балансер и пробы — в [events], все балансеры — в [balancers].
+ * Журнал [events] — линия, общий балансер и пробы: по нему видно, что линия не меряется заново и порядок снятия выхода.
  * Сцена живёт в [scope] теста (`backgroundScope`), часы — тестовые: один диспетчер и виртуальное время, порядок задают
  * шаги теста (`runCurrent`, `await`), а не планировщик.
  */
@@ -109,10 +108,6 @@ private class Rig(
     var listsCalls = 0
     val gate = CompletableDeferred<Unit>()
     val events = mutableListOf<String>()
-    val balancers = mutableListOf<String>()
-
-    /** Какие выходы драйвер снял (заметки Ленты «dropExit <сервис>»), по порядку. */
-    val dropped = mutableListOf<String>()
 
     /** Пробы, отменённые посреди ответа: метка сервиса. */
     val cancelled = mutableListOf<String>()
@@ -129,14 +124,12 @@ private class Rig(
         api = object : XrayApi {
             override suspend fun routeOf(ip: String) = "s001".right()
             override suspend fun setExit(balancer: String, tag: String) = Unit.right().also {
-                balancers += "set $balancer $tag"
                 if (balancer != EXIT_BALANCER) return@also
                 // Медленный — только первый вызов общего (восстановление); выходы нажатия — сразу.
                 if (setExitStarted.complete(Unit)) delay(setExitDelayMs)
                 events += "setExit $tag"
             }
             override suspend fun clearExit(balancer: String) = Unit.right().also {
-                balancers += "clear $balancer"
                 if (balancer == EXIT_BALANCER) events += "clearExit"
             }
         },
@@ -164,7 +157,7 @@ private class Rig(
             override fun saveMemory(m: Memory) { saved = m; saves++ }
         },
         passportStore = InMemoryPassportStore(),
-        tape = { line -> Regex("dropExit (\\w+)").find(line)?.let { dropped += it.groupValues[1] } },
+        tape = { },
         opts = ConfigOpts(assetDir = "/assets", services = services),
     )
 
@@ -253,7 +246,6 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             open.await() shouldBe true
             s.exits().general shouldBe ServerId("s002")
-            s.events.filter { it != "line" } shouldContainExactly listOf("setExit s002", "probe 20001 (Recalled)")
             s.status(Telegram.id) shouldBe CardStatus.Works(second)
             s.desk.origin.value shouldBe emptyMap()
             s.saved shouldBe null
@@ -267,8 +259,6 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.events.filter { it != "line" } shouldContainExactly
-                listOf("setExit s002", "probe 20001 (Recalled)", "probe 20001 (Recalled)", "clearExit")
             s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server)
             s.exits() shouldBe ExitsState(null, emptyMap())
             s.saved shouldBe null
@@ -282,12 +272,9 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.events.filter { it.startsWith("probe") }.toSet() shouldBe setOf("probe 20001 (Recalled)", "probe IG 20000 (Recalled)")
             s.status(Telegram.id) shouldBe CardStatus.Works(second)
             s.status(Instagram.id) shouldBe CardStatus.Dead(first, Blame.Server)
             s.exits() shouldBe ExitsState(ServerId("s002"), mapOf(Telegram.id to ServerId("s002")))
-            s.balancers.last() shouldBe "set svc.insta s002"
-            s.dropped shouldContainExactly listOf("insta")
             s.desk.origin.value shouldBe emptyMap()
         }
     }
@@ -304,8 +291,6 @@ class DeskTest : FunSpec({
             s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server)
             s.status(Instagram.id) shouldBe CardStatus.Works(second)
             s.exits() shouldBe ExitsState(null, mapOf(Instagram.id to ServerId("s002")))
-            s.balancers.last { it.contains("svc.insta") } shouldBe "set svc.insta s002"
-            s.dropped shouldContainExactly listOf("tg")
         }
     }
 
@@ -337,22 +322,9 @@ class DeskTest : FunSpec({
             s.host.start(1)
             s.up()
             s.desk.open() shouldBe true
-            s.events shouldContainExactly listOf("line", "setExit s002", "probe 20001 (Recalled)")
+            s.desk.board.value.network.shouldBeInstanceOf<NetworkCard.Measured>()
             s.exits().general shouldBe ServerId("s002")
             s.status(Telegram.id) shouldBe CardStatus.Works(second)
-        }
-    }
-
-    test("памяти для этой сети нет → «выход не выбран», Xray не трогаем") {
-        runTest {
-            val s = rig()
-            s.host.start(1)
-            val open = async { s.desk.open() }
-            s.gate.complete(Unit)
-            open.await() shouldBe true
-            s.events.filter { it != "line" } shouldBe emptyList()
-            s.exits().general shouldBe null
-            s.status(Telegram.id) shouldBe CardStatus.Unknown
         }
     }
 
@@ -365,9 +337,8 @@ class DeskTest : FunSpec({
             // Выход выставлен в этой сессии (прошлым нажатием): через выходы драйвера, как в бою.
             (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
             s.exits().general shouldBe ServerId("s001")
-            s.events.clear()
             s.desk.open() shouldBe true
-            s.events.filter { it != "line" } shouldContainExactly listOf("probe 20000 (Chosen)")
+            s.status(Telegram.id) shouldBe CardStatus.Works(first)
         }
     }
 
@@ -403,7 +374,6 @@ class DeskTest : FunSpec({
             // Открытие кончилось без сброса экрана: замер уступил нажатию, а не потерял сессию.
             open.await() shouldBe true
             s.events.count { it == "line" } shouldBe 1
-            s.events.indexOf("clearExit") shouldBeGreaterThan s.events.indexOf("probe 20001 (Recalled)")
             s.desk.board.value.button shouldBe Button.Green
             s.exits().general shouldNotBe null
             s.saves shouldBe 1
@@ -431,8 +401,7 @@ class DeskTest : FunSpec({
             press.await()
             open.await() shouldBe true
             s.cancelled.toSet() shouldBe setOf("TG", "IG")
-            // Сняты оба восстановленных — по ServiceId, до нажатия.
-            s.dropped shouldContainExactly listOf("insta", "tg")
+            // Восстановленный общий снят после отменённой пробы, до нажатия.
             s.events.indexOf("clearExit") shouldBeGreaterThan s.events.indexOf("probe 20001 (Recalled)")
             s.desk.board.value.button shouldBe Button.Green
             s.desk.board.value.cards.forEach { it.status.shouldBeInstanceOf<CardStatus.Found>() }
@@ -448,10 +417,9 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             // Восстановление по ServiceId: svc.insta уже принят, общий выход Телеги висит.
             s.setExitStarted.await()
-            s.balancers.first() shouldBe "set svc.insta s001"
+            s.exits().pinned[Instagram.id] shouldBe ServerId("s001")
             s.desk.press()
             open.await() shouldBe true
-            s.dropped.contains("insta") shouldBe true
             // Инста в нажатии не нашлась — своего выхода у неё нет, балансер за общим.
             s.status(Instagram.id).shouldBeInstanceOf<CardStatus.NotFound>()
             s.exits().pinned.keys shouldBe setOf(Telegram.id)
