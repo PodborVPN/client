@@ -1,5 +1,7 @@
 # Podbor
 
+[![Скачивания](https://img.shields.io/github/downloads/PodborVPN/client/total?label=скачивания)](https://github.com/PodborVPN/client/releases)
+
 **Телега работает одной кнопкой, без ручного перебора серверов.**
 
 Podbor — преднастроенный VPN-клиент для Android под реалии РФ. Вставляете ссылку на свою подписку (VLESS, Trojan, Shadowsocks) — и всё. Не грузится Телега или Инста — жмёте одну кнопку, Podbor сам находит в подписке сервер, через который сервис реально работает, и переключается на него.
