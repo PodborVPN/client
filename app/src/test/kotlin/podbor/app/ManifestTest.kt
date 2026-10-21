@@ -8,6 +8,19 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /** Приложение только вертикальное — экран A в альбомной раскладке не живёт. */
 class ManifestTest : FunSpec({
+    test("у приложения адаптивная иконка: обычная и круглая, с монохромным слоем") {
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val doc = factory.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+        val android = "http://schemas.android.com/apk/res/android"
+        val app = doc.getElementsByTagName("application").item(0) as Element
+        app.getAttributeNS(android, "icon") shouldBe "@mipmap/ic_launcher"
+        app.getAttributeNS(android, "roundIcon") shouldBe "@mipmap/ic_launcher_round"
+        for (name in listOf("ic_launcher", "ic_launcher_round")) {
+            val icon = factory.newDocumentBuilder().parse(File("src/main/res/mipmap-anydpi-v26/$name.xml")).documentElement
+            listOf("background", "foreground", "monochrome").forEach { icon.getElementsByTagName(it).length shouldBe 1 }
+        }
+    }
+
     test("главная Activity — только портрет") {
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val doc = factory.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))

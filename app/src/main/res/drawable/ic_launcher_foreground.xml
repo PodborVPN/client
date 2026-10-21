@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Иконка: «П» — рупор, из неё зелёные лучи-сигналы. Сетка 108, рисунок ужат в безопасный круг (r ≤ 33). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="56" android:pivotY="53" android:scaleX="0.72" android:scaleY="0.72" android:translateX="-2" android:translateY="1">
+        <path android:fillColor="#4FD18B" android:pathData="M56,48 L84,30 L87,37 Z" />
+        <path android:fillColor="#4FD18B" android:fillAlpha="0.7" android:pathData="M57,54 L88,50 L88,57 Z" />
+        <path android:fillColor="#4FD18B" android:fillAlpha="0.45" android:pathData="M55,42 L74,22 L80,25 Z" />
+        <path android:fillColor="#F2B134" android:pathData="M24,50 H56 V57 H24 Z" />
+        <path android:fillColor="#F2B134" android:pathData="M24,84 V60 H56 V84 H48 V67 H32 V84 Z" />
+        <path android:fillColor="#3A403C" android:pathData="M36,72 H44 V76 H36 Z M36,79 H44 V83 H36 Z" />
+    </group>
+</vector>
