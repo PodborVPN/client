@@ -29,7 +29,8 @@ private data class Live(val n: Int)
  * Фикстура с правилом Android для startId: команды нумеруются как onStartCommand, а `stopSelf(startId)` останавливает
  * сервис, только если после этой команды новых не приходило. В журнал — «ended<id>» и, если правило сработало, «stopped».
  */
-private class Fixture(private val fail: Boolean = false) {
+/** [gate] — подъём ждёт её: состояние между стартом и подъёмом видно без гонки с планировщиком. */
+private class Fixture(private val fail: Boolean = false, private val gate: CompletableDeferred<Unit>? = null) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
     var ups = 0
@@ -37,6 +38,7 @@ private class Fixture(private val fail: Boolean = false) {
     val host = SessionHost<Live>(
         scope = scope,
         bring = {
+            gate?.await()
             val n = ++ups
             install({ events += "open$n" }, { _, _ -> events += "close$n" })
             if (fail) EngineError.Failed("runXray").left() else Live(n).right()
@@ -161,9 +163,11 @@ class SessionHostTest : FunSpec({
     }
 
     test("старт сразу ставит Starting: открытие, ждущее подъёма, не примет прежний Down за итог") {
-        val f = Fixture()
+        val gate = CompletableDeferred<Unit>()
+        val f = Fixture(gate = gate)
         f.start()
         f.host.state.value shouldBe SessionState.Starting
+        gate.complete(Unit)
         f.up()
         f.scope.cancel()
     }
