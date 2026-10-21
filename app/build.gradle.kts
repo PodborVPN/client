@@ -124,6 +124,7 @@ android {
         targetSdk = 37
         versionName = appVersion.first
         versionCode = appVersion.second
+        manifestPlaceholders["appLabel"] = "Podbor"
         // Цель — arm64; libXray собран только под него.
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -147,6 +148,17 @@ android {
         release {
             signingConfig = signingConfigs.getByName(if (signing != null) "release" else "debug")
             isMinifyEnabled = false
+            manifestPlaceholders["appLabel"] = "Podbor"
+        }
+        // Своя сборка для телефона разработчика: как release (не отладочная), но рядом с ним — свой пакет и
+        // debug-ключ, релизный ключ не нужен. Ставится `./gradlew :app:installDev`.
+        create("dev") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            manifestPlaceholders["appLabel"] = "Podbor dev"
         }
     }
     // Android Lint в CI: сборку валят только ошибки (API выше minSdk, манифест, разрешения); предупреждения — в отчёт.
