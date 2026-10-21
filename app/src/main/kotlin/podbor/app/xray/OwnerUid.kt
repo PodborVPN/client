@@ -12,7 +12,7 @@ import java.net.InetSocketAddress
 /**
  * Чьё соединение из TUN для правила `process` Xray: libXray спрашивает UID, правило сравнивает его числом.
  *
- * Версии делит libXray (`controller/controller_android.go`, v1.261017.0): ниже API 30 он сам разбирает `/proc/net/tcp|udp`
+ * Версии делит libXray (`controller/controller_android.go`, v26.10.21): ниже API 30 он сам разбирает `/proc/net/tcp|udp`
  * и зовёт нас, только если разбор не удался; с API 30 — всегда нас. Наш способ — [ConnectivityManager.getConnectionOwnerUid],
  * он есть с API 29 и отвечает только держателю VPN про соединения его туннеля.
  */

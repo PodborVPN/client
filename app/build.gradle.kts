@@ -5,7 +5,6 @@
 
 import java.net.URI
 import java.security.MessageDigest
-import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,14 +18,15 @@ repositories {
     mavenCentral()
 }
 
-/** Скачивает релиз Xray (кэш вне репо), сверяет sha256, кладёт geo-файлы и списки белых в каталог assets. */
+/** Скачивает geo-файлы Xray и списки белых (кэш вне репо), сверяет sha256 с закреплёнными, кладёт в каталог assets. */
 abstract class PrepareXrayAssets : DefaultTask() {
     @get:Input
-    abstract val zipUrl: Property<String>
+    abstract val geoBaseUrl: Property<String>
 
+    /** Строки «sha256  имя-файла» для geoip.dat и geosite.dat (формат sha256sum). */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val shaFile: RegularFileProperty
+    abstract val geoShaFile: RegularFileProperty
 
     @get:Internal
     abstract val cacheDir: DirectoryProperty
@@ -44,45 +44,34 @@ abstract class PrepareXrayAssets : DefaultTask() {
 
     @TaskAction
     fun run() {
-        val expected = shaFile.get().asFile.readText().trim().substringBefore(' ').lowercase()
-        val zip = cacheDir.get().asFile.resolve("Xray-android-arm64-v8a.zip")
-        if (!zip.isFile || sha256(zip) != expected) {
-            zip.parentFile.mkdirs()
-            download(zipUrl.get(), zip)
-        }
-        val actual = sha256(zip)
-        if (actual != expected) {
-            zip.delete()
-            throw GradleException("sha256 архива Xray не совпал: ожидали $expected, получили $actual")
-        }
-
         val out = outputDir.get().asFile
         out.deleteRecursively()
         val xrayDir = out.resolve("xray").also { it.mkdirs() }
-        ZipFile(zip).use { z ->
-            for (name in listOf("geoip.dat", "geosite.dat")) {
-                val entry = z.getEntry(name) ?: throw GradleException("в архиве Xray нет $name")
-                z.getInputStream(entry).use { i -> xrayDir.resolve(name).outputStream().use { i.copyTo(it) } }
-            }
+        for (name in listOf("geoip.dat", "geosite.dat")) {
+            fetchPinned(geoBaseUrl.get(), geoShaFile.get().asFile, name).copyTo(xrayDir.resolve(name))
         }
-
-        val pins = whitelistShaFile.get().asFile.readLines().filter { it.isNotBlank() }
-            .associate { it.trim().substringAfter(' ').trim() to it.trim().substringBefore(' ').lowercase() }
         val wlDir = out.resolve("whitelist").also { it.mkdirs() }
         for ((remote, local) in listOf("ru-mobile-whitelist-ip.txt" to "ip.txt", "ru-mobile-whitelist-sni.txt" to "sni.txt")) {
-            val pin = pins[remote] ?: throw GradleException("в whitelist.sha256 нет строки для $remote")
-            val file = cacheDir.get().asFile.resolve(remote)
-            if (!file.isFile || sha256(file) != pin) {
-                file.parentFile.mkdirs()
-                download("${whitelistBaseUrl.get()}/$remote", file)
-            }
-            val got = sha256(file)
-            if (got != pin) {
-                file.delete()
-                throw GradleException("sha256 списка $remote не совпал: ожидали $pin, получили $got")
-            }
-            file.copyTo(wlDir.resolve(local), overwrite = true)
+            fetchPinned(whitelistBaseUrl.get(), whitelistShaFile.get().asFile, remote).copyTo(wlDir.resolve(local))
         }
+    }
+
+    /** Файл [remote] из кэша, если sha совпал с закреплённым в [pins]; иначе скачивает `base/remote` и сверяет. */
+    private fun fetchPinned(base: String, pins: File, remote: String): File {
+        val pin = pins.readLines().filter { it.isNotBlank() }
+            .associate { it.trim().substringAfter(' ').trim() to it.trim().substringBefore(' ').lowercase() }[remote]
+            ?: throw GradleException("в ${pins.name} нет строки для $remote")
+        val file = cacheDir.get().asFile.resolve(remote)
+        if (!file.isFile || sha256(file) != pin) {
+            file.parentFile.mkdirs()
+            download("$base/$remote", file)
+        }
+        val got = sha256(file)
+        if (got != pin) {
+            file.delete()
+            throw GradleException("sha256 $remote не совпал: ожидали $pin, получили $got")
+        }
+        return file
     }
 
     private fun download(url: String, to: File) {
@@ -98,8 +87,8 @@ abstract class PrepareXrayAssets : DefaultTask() {
 }
 
 val prepareXrayAssets = tasks.register<PrepareXrayAssets>("prepareXrayAssets") {
-    zipUrl.set("https://github.com/XTLS/Xray-core/releases/download/v26.10.17/Xray-android-arm64-v8a.zip")
-    shaFile.set(layout.projectDirectory.file("geo.sha256"))
+    geoBaseUrl.set("https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/202610202206")
+    geoShaFile.set(layout.projectDirectory.file("geo.sha256"))
     cacheDir.set(File(System.getProperty("user.home"), ".cache/podbor"))
     whitelistBaseUrl.set("https://github.com/ancored/ru-mobile-whitelist/releases/download/2026.10.19-10")
     whitelistShaFile.set(layout.projectDirectory.file("whitelist.sha256"))
