@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/PodborVPN/client/compare/v0.7.4...v0.7.5) (2026-10-21)
+
+
+### Исправлено
+
+* скачивание подписки через прокси Яндекса падало на Android 8–12 ([a2280cc](https://github.com/PodborVPN/client/commit/a2280ccc569284ff7972264b87d500b2a307f6de))
+
 ## [0.7.4](https://github.com/PodborVPN/client/compare/v0.7.3...v0.7.4) (2026-10-21)
 
 
