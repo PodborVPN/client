@@ -145,6 +145,12 @@ android {
             isMinifyEnabled = false
         }
     }
+    // Android Lint в CI: сборку валят только ошибки (API выше minSdk, манифест, разрешения); предупреждения — в отчёт.
+    // Проверки свежести зависимостей ходят в сеть и краснели бы без правки кода — выключены.
+    lint {
+        abortOnError = true
+        disable += setOf("NewerVersionAvailable", "GradleDependency", "AndroidGradlePluginVersion")
+    }
     packaging {
         // Дубликаты метаданных из gRPC/protobuf/Arrow.
         resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties", "META-INF/DEPENDENCIES")

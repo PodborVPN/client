@@ -79,7 +79,7 @@ suspend fun fetchText(
 
 /** Ссылка через прокси Яндекс Переводчика: так раздают подписки для белых списков; ссылка уходит Яндексу. */
 fun viaYandex(url: String): String =
-    "https://translate.yandex.ru/translate?url=${URLEncoder.encode(url, Charsets.UTF_8)}&lang=de-de"
+    "https://translate.yandex.ru/translate?url=${URLEncoder.encode(url, "UTF-8")}&lang=de-de"
 
 /**
  * Тело ответа прокси Яндекса. Источник без charset в Content-Type прокси отдаёт байт в байт; с charset (raw.github,

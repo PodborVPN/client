@@ -35,12 +35,14 @@ jobs:
           key: libxray-${{ hashFiles('app/scripts/build-libxray.sh') }}
       - if: steps.libxray.outputs.cache-hit != 'true'
         run: app/scripts/build-libxray.sh
-      - run: ./gradlew :core:test :driver:test :app:testDebugUnitTest :app:assembleRelease
+      - run: ./gradlew :core:test :driver:test :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-reports
-          path: "*/build/reports/tests"
+          path: |
+            */build/reports/tests
+            app/build/reports/lint-results-*
 
   commits:
     runs-on: ubuntu-latest
