@@ -64,7 +64,7 @@ class BoardTest : FunSpec({
     }
 
     test("свойство: перестановка набора не меняет Board") {
-        val extra = service(ServiceId("zz"), "ZZ", "Зет") { probe(ProbeSpec.Instagram) }
+        val extra = service(ServiceId("zz"), "ZZ", "Зет", probe = ProbeSpec.Instagram)
         val all = listOf(Telegram, Instagram, extra)
         val screens = mapOf(Telegram.id to screen(Button.Green, found), Instagram.id to screen(Button.Red, notFound))
         val expected = board(all.toSet(), screens)

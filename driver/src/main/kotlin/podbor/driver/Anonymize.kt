@@ -1,5 +1,6 @@
 package podbor.driver
 
+import arrow.core.Either
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -23,7 +24,7 @@ fun anonymize(tape: String): String {
     val a = Aliases()
     return tape.lineSequence()
         .filter { it.isNotBlank() }
-        .mapNotNull { line -> runCatching { Json.parseToJsonElement(line) }.getOrNull()?.let { a.walk(it).toString() } }
+        .mapNotNull { line -> Either.catch { Json.parseToJsonElement(line) }.getOrNull()?.let { a.walk(it).toString() } }
         .joinToString("") { it + "\n" }
 }
 

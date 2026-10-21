@@ -11,7 +11,7 @@ class ScanBoardTest : FunSpec({
     val mts = OsNetwork.Cellular("MTS", "25001")
     val open = line(Reach.Up, Reach.Up)
     val whitelist = line(Reach.Up, Reach.Down)
-    val yt = service(ServiceId("yt"), "YT", "Ютуб") { probe(ProbeSpec.Telegram) }
+    val yt = service(ServiceId("yt"), "YT", "Ютуб", probe = ProbeSpec.Telegram)
     val two = setOf(Telegram, Instagram)
     val three = setOf(Telegram, Instagram, yt)
     val tgOk = Verdict.TelegramDc(3)

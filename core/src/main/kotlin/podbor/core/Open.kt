@@ -57,11 +57,12 @@ fun OpenState.settled(): Boolean = diagnosis is Diagnosis.Settled && when (opene
 }
 
 /** История букв после последнего Opened, свёрнутая машиной открытия; null — открытия в истории нет. */
-internal fun openStateOf(letters: List<Letter>): OpenState? {
-    val opened = letters.lastOrNull { it is Letter.Opened } as? Letter.Opened ?: return null
-    val after = letters.drop(letters.lastIndexOf(opened) + 1)
-    return after.fold(openStart(opened).first) { s, letter -> openStep(s, letter).first }
-}
+internal fun openStateOf(letters: List<Letter>): OpenState? =
+    (letters.lastOrNull { it is Letter.Opened } as? Letter.Opened)?.let { openStateFrom(letters, it) }
+
+/** Состояние открытия от уже найденного письма Opened — тотально: искать нечего, значит и null неоткуда. */
+internal fun openStateFrom(letters: List<Letter>, opened: Letter.Opened): OpenState =
+    letters.drop(letters.lastIndexOf(opened) + 1).fold(openStart(opened).first) { s, letter -> openStep(s, letter).first }
 
 /** Жизнь выхода по ответам его пробы; внутренняя — наружу уходит ExitState. */
 private enum class Life { Checking, Works, Dead }

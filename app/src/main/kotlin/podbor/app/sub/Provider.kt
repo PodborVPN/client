@@ -1,5 +1,6 @@
 package podbor.app.sub
 
+import arrow.core.Either
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.ZoneId
@@ -46,7 +47,7 @@ fun providerOf(f: Fetched): ProviderInfo? {
 /** `base64:…` — значение в base64 (так шлют имена с эмодзи и кириллицей в заголовке); иначе как есть. */
 private fun decoded(v: String): String? =
     if (!v.startsWith("base64:")) v
-    else runCatching { String(Base64.getDecoder().decode(v.removePrefix("base64:").trim()), Charsets.UTF_8) }.getOrNull()
+    else Either.catch { String(Base64.getDecoder().decode(v.removePrefix("base64:").trim()), Charsets.UTF_8) }.getOrNull()
 
 /** `upload=1; download=2; total=3; expire=4` → числа по именам; не число — пропуск. */
 private fun userinfoOf(v: String): Map<String, Long> =

@@ -1,6 +1,5 @@
 package podbor.core
 
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
@@ -30,19 +29,18 @@ class ServiceTest : FunSpec({
     }
 
     test("построитель: повтор в domains — множество, повтор ничего не меняет") {
-        val s = service(ServiceId("x"), "X", "Икс") {
+        val s = service(ServiceId("x"), "X", "Икс", probe = ProbeSpec.Telegram) {
             match { domains("a"); domains("a", "b") }
-            probe(ProbeSpec.Telegram)
         }
         s.match.domains shouldBe setOf("a", "b")
     }
 
     test("без match {} — пустые множества") {
-        val s = service(ServiceId("x"), "X", "Икс") { probe(ProbeSpec.Instagram) }
+        val s = service(ServiceId("x"), "X", "Икс", probe = ProbeSpec.Instagram)
         s.match shouldBe Match(emptySet(), emptySet(), emptySet())
     }
 
-    test("без probe() — ошибка программиста при сборке") {
-        shouldThrow<IllegalStateException> { service(ServiceId("x"), "X", "Икс") { } }
+    test("проба — та, что передана: сервиса без пробы не построить (не компилируется)") {
+        service(ServiceId("x"), "X", "Икс", probe = ProbeSpec.Instagram).probe shouldBe ProbeSpec.Instagram
     }
 })

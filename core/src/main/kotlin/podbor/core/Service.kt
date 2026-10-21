@@ -29,23 +29,25 @@ data class Service(
     val probe: ProbeSpec,
 )
 
-/** Описание сервиса в духе Ktor: `service(id, "TG", "Телега", "Телегу") { match { … }; probe(…) }`. */
-fun service(id: ServiceId, label: String, title: String, titleAcc: String = title, build: ServiceBuilder.() -> Unit): Service {
-    val b = ServiceBuilder().apply(build)
-    return Service(id, label, title, titleAcc, b.match, checkNotNull(b.probe) { "у сервиса ${id.id} нет probe()" })
-}
+/**
+ * Описание сервиса в духе Ktor: `service(id, "TG", "Телега", "Телегу", ProbeSpec.Telegram) { match { … } }`.
+ * Проба — параметр, а не вызов в блоке: сервис без пробы не компилируется.
+ */
+fun service(
+    id: ServiceId,
+    label: String,
+    title: String,
+    titleAcc: String = title,
+    probe: ProbeSpec,
+    build: ServiceBuilder.() -> Unit = {},
+): Service = Service(id, label, title, titleAcc, ServiceBuilder().apply(build).match, probe)
 
 class ServiceBuilder {
     internal var match = Match(emptySet(), emptySet(), emptySet())
-    internal var probe: ProbeSpec? = null
 
     fun match(build: MatchBuilder.() -> Unit) {
         val b = MatchBuilder().apply(build)
         match = Match(b.domains, b.ips, b.apps)
-    }
-
-    fun probe(spec: ProbeSpec) {
-        probe = spec
     }
 }
 
@@ -67,23 +69,21 @@ class MatchBuilder {
     }
 }
 
-val Telegram = service(ServiceId("tg"), "TG", "Телега", "Телегу") {
+val Telegram = service(ServiceId("tg"), "TG", "Телега", "Телегу", ProbeSpec.Telegram) {
     match {
         domains("telegram")
         ips("telegram")
         app("org.telegram.messenger")
     }
-    probe(ProbeSpec.Telegram)
 }
 
-val Instagram = service(ServiceId("insta"), "IG", "Инста", "Инсту") {
+val Instagram = service(ServiceId("insta"), "IG", "Инста", "Инсту", ProbeSpec.Instagram) {
     match {
         domains("instagram", "facebook")
         // IP Meta без SNI (например, 157.240.0.60, 57.144.244.192, 57.144.245.33) доменом не узнаются.
         ips("facebook")
         app("com.instagram.android")
     }
-    probe(ProbeSpec.Instagram)
 }
 
 /** Зашитый набор v1; позже — из конфига. Порядок объявления ни на что не влияет. */

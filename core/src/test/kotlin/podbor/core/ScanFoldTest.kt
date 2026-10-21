@@ -11,7 +11,7 @@ class ScanFoldTest : FunSpec({
 
     val mts = OsNetwork.Cellular("MTS", "25001")
     val open = line(Reach.Up, Reach.Up)
-    val yt = service(ServiceId("yt"), "YT", "Ютуб") { probe(ProbeSpec.Telegram) }
+    val yt = service(ServiceId("yt"), "YT", "Ютуб", probe = ProbeSpec.Telegram)
     val three = setOf(Telegram, Instagram, yt)
 
     /** 88 серверов, часть делит адрес; ответы разные: работает, сервис молчит, тишина, недоступен. */

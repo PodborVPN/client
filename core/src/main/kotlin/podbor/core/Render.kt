@@ -40,7 +40,7 @@ data class Screen(val network: NetworkCard, val button: Button, val result: Resu
 fun render(letters: List<Letter>, service: Service = Telegram, closed: Boolean = false): Screen {
     val last = letters.lastOrNull { it is Letter.Pressed || it is Letter.Opened }
     // История без края: срока у неё нет, замер не закрыт.
-    if (last is Letter.Opened) return renderOpened(checkNotNull(openStateOf(letters)), closed = false, service = service)
+    if (last is Letter.Opened) return renderOpened(openStateFrom(letters, last), closed = false, service = service)
     val pressed = last as? Letter.Pressed
         ?: return Screen(NetworkCard.Measuring(OsNetwork.None), Button.Idle, ResultCard.Empty)
     val press = letters.drop(letters.lastIndexOf(pressed))

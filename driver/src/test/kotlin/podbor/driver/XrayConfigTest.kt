@@ -174,9 +174,8 @@ class XrayConfigTest : FunSpec({
     }
 
     test("порядок доменов и IP внутри описания сервиса не меняет конфиг: значения отсортированы") {
-        fun svc(vararg names: String) = service(ServiceId("x"), "X", "Икс") {
+        fun svc(vararg names: String) = service(ServiceId("x"), "X", "Икс", probe = ProbeSpec.Telegram) {
             match { domains(*names); ips(*names); app("b.app"); app("a.app") }
-            probe(ProbeSpec.Telegram)
         }
         checkAll(Arb.shuffle(listOf("c", "a", "b"))) { order ->
             val rs = rulesOf(opts.copy(services = setOf(svc(*order.toTypedArray()))))
