@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/PodborVPN/client/compare/v0.7.5...v0.8.0) (2026-10-21)
+
+
+### Новое
+
+* версия приложения справа в строке «Сеть» ([7d21654](https://github.com/PodborVPN/client/commit/7d21654886b6c4e53d6fd8abc6ae912fdf8a1d56))
+* иконка приложения — «П»-рупор с зелёными лучами ([ad4d62c](https://github.com/PodborVPN/client/commit/ad4d62c1437d2d6d6c4620a1fc524734e05be81e))
+
 ## [0.7.5](https://github.com/PodborVPN/client/compare/v0.7.4...v0.7.5) (2026-10-21)
 
 
