@@ -1,6 +1,7 @@
 # Podbor
 
 [![Скачивания](https://img.shields.io/github/downloads/PodborVPN/client/total?label=скачивания)](https://github.com/PodborVPN/client/releases)
+[![Boosty](https://img.shields.io/badge/Boosty-поддержать-F15F2C?logo=boosty&logoColor=white)](https://boosty.to/stasyanrazrab)
 
 **Телега работает одной кнопкой, без ручного перебора серверов.**
 
