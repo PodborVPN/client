@@ -106,6 +106,15 @@ val prepareXrayAssets = tasks.register<PrepareXrayAssets>("prepareXrayAssets") {
     outputDir.set(layout.buildDirectory.dir("generated/xray-assets"))
 }
 
+/** Версия — из `version.txt` (его ведёт release-please): X.Y.Z → versionName, versionCode = X·10000 + Y·100 + Z. */
+val appVersion: Pair<String, Int> = rootProject.file("version.txt").readText().trim().let { v ->
+    val m = Regex("""^(\d+)\.(\d+)\.(\d+)$""").matchEntire(v)
+        ?: error("version.txt: ожидается X.Y.Z, получено «$v»")
+    val (major, minor, patch) = m.destructured.toList().map { it.toInt() }
+    check(minor < 100 && patch < 100) { "version.txt: minor и patch — до 99, получено «$v»" }
+    v to major * 10_000 + minor * 100 + patch
+}
+
 android {
     namespace = "podbor.app"
     compileSdkVersion("android-37.0")
@@ -113,8 +122,8 @@ android {
         applicationId = "podbor.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.7.3"
+        versionName = appVersion.first
+        versionCode = appVersion.second
         // Цель — arm64; libXray собран только под него.
         ndk { abiFilters += "arm64-v8a" }
     }
