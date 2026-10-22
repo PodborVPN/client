@@ -1,7 +1,7 @@
 # Каталог версий: единое место для версий Kotlin и тест-зависимостей.
 
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.21"
 kotest = "5.9.1"
 arrow = "2.2.1.1"
 serialization = "1.8.0"
