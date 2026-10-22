@@ -31,8 +31,8 @@ import podbor.app.sub.InputError
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
-import podbor.app.update.LATEST_RELEASE_API
-import podbor.app.update.Release
+import podbor.screen.LATEST_RELEASE_API
+import podbor.screen.Release
 import podbor.app.vpn.Desk
 import podbor.app.vpn.Live
 import podbor.app.vpn.ScanPorts

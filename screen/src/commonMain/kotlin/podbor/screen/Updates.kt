@@ -1,6 +1,7 @@
-package podbor.app.update
+package podbor.screen
 
 import arrow.core.Either
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -29,9 +30,11 @@ fun versionOf(s: String): Version? =
     NUMBER.find(s.trim())?.destructured?.let { (a, b, c) -> Version(a.toInt(), b.toInt(), c.toInt()) }
 
 /** Релиз: тег и куда вести человека — прямо на APK, а нет его в assets — на страницу релиза. */
+@Serializable
 data class Release(val tag: String, val url: String)
 
 /** Что предложить на экране: версию и ссылку. */
+@Serializable
 data class Offer(val version: String, val url: String)
 
 private val json = Json { ignoreUnknownKeys = true }

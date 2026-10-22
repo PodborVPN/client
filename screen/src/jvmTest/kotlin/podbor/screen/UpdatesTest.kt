@@ -1,14 +1,7 @@
-package podbor.app
+package podbor.screen
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import podbor.app.update.Offer
-import podbor.app.update.Release
-import podbor.app.update.Version
-import podbor.app.update.checkDue
-import podbor.app.update.offerOf
-import podbor.app.update.releaseOf
-import podbor.app.update.versionOf
 
 /** Обновлялка без сети: номер версии, ответ GitHub, есть ли что предложить, пора ли спрашивать. */
 class UpdatesTest : FunSpec({

@@ -25,6 +25,8 @@ kotlin {
         commonMain.dependencies {
             api(project(":core"))
             api(libs.androidx.lifecycle.viewmodel)
+            implementation(project.dependencies.platform(libs.arrow.stack))
+            implementation(libs.arrow.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }

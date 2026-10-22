@@ -44,7 +44,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
 import podbor.app.R
-import podbor.app.update.Offer
+import podbor.screen.Offer
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.core.networkTitle

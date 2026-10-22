@@ -59,10 +59,10 @@ import podbor.app.sub.SubscriptionNote
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.noteOf
-import podbor.app.update.Offer
-import podbor.app.update.Release
-import podbor.app.update.checkDue
-import podbor.app.update.offerOf
+import podbor.screen.Offer
+import podbor.screen.Release
+import podbor.screen.checkDue
+import podbor.screen.offerOf
 import podbor.app.vpn.PodborVpnService
 import podbor.core.Board
 import podbor.core.CardStatus

@@ -33,9 +33,9 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.fetchText
 import podbor.app.sub.fetched
 import podbor.app.sub.refreshDue
-import podbor.app.update.LATEST_RELEASE_API
-import podbor.app.update.Release
-import podbor.app.update.releaseOf
+import podbor.screen.LATEST_RELEASE_API
+import podbor.screen.Release
+import podbor.screen.releaseOf
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus

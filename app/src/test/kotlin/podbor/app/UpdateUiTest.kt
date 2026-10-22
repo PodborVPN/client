@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import podbor.app.ui.NetworkScreen
 import podbor.app.ui.PodborTheme
-import podbor.app.update.Offer
+import podbor.screen.Offer
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 
