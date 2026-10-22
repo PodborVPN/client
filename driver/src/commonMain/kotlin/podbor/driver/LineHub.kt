@@ -1,5 +1,7 @@
 package podbor.driver
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.SendChannel
@@ -16,7 +18,7 @@ import podbor.core.Letter
  * Отписки нет: ящики живут одно нажатие. Сбой замера (не отмена) глотается: хаб сбрасывается, следующий запрос мерит заново.
  */
 class LineHub(private val line: LineProbe, private val clock: Clock, private val scope: CoroutineScope) {
-    private val lock = Any()
+    private val lock = SynchronizedObject()
     private val inboxes = mutableListOf<SendChannel<Letter>>()
     private var running = false
 

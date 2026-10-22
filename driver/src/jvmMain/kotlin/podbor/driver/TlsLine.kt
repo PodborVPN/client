@@ -2,7 +2,6 @@ package podbor.driver
 
 import arrow.core.Either
 import arrow.core.NonEmptyList
-import arrow.core.nonEmptyListOf
 import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parZip
 import arrow.fx.coroutines.resourceScope
@@ -17,7 +16,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import podbor.core.Handshake
 import podbor.core.LineObservation
 import podbor.core.Nel
-import podbor.core.Role
 import podbor.core.Sample
 import podbor.core.Stage
 import java.net.ConnectException
@@ -28,7 +26,6 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -40,43 +37,6 @@ import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
-
-/** Чему верить в сертификате эталона: системному хранилищу или одному зашитому отпечатку (самоподписанный podbor-ref). */
-sealed interface Trust {
-    data object System : Trust
-    data class Pinned(val sha256: String) : Trust
-}
-
-/**
- * Эталон линии. label — публичное имя в Ленте; host — куда идём, sni — что просим в ClientHello.
- * role — чей эталон: Own (наш VPS) закрытым запрещает раунду «открыто» (roundOf).
- */
-data class Reference(val label: String, val host: String, val port: Int, val sni: String, val trust: Trust, val role: Role = Role.Public)
-
-private fun russian(host: String) = Reference(host, host, 443, host, Trust.System)
-
-val RUSSIA_REFS: Nel<Reference> = nonEmptyListOf(russian("ya.ru"), russian("vk.com"), russian("gosuslugi.ru"))
-
-/** Свой эталон на VPS: самоподписанный сертификат под отпечатком; он же отвечает IP запроса (проба выхода). */
-internal val PODBOR_REF = Reference("podbor-ref", "195.133.26.5", 443, "podbor-ref", Trust.Pinned("4F2E4982250AA54D47926DBCD5D63FB8A59EA38B1FF2FF5D0C539F1B65EDD165"), Role.Own)
-
-val ABROAD_REFS: Nel<Reference> = nonEmptyListOf(
-    Reference("one.one.one.one", "1.1.1.1", 443, "one.one.one.one", Trust.System),
-    Reference("dns.google", "8.8.8.8", 443, "dns.google", Trust.System),
-    PODBOR_REF,
-)
-
-/** Одно рукопожатие с эталоном. Любой исход — значение; бросать можно только отмену. */
-fun interface Handshaker {
-    suspend fun shake(ref: Reference): Handshake
-}
-
-fun sha256Hex(der: ByteArray): String =
-    MessageDigest.getInstance("SHA-256").digest(der).joinToString("") { "%02x".format(it) }
-
-/** Отпечаток сошёлся: регистр и двоеточия в ожидаемом не важны. */
-fun pinMatches(expectedSha256Hex: String, der: ByteArray): Boolean =
-    expectedSha256Hex.filter { it != ':' }.equals(sha256Hex(der), ignoreCase = true)
 
 private val RESET_MARKS = listOf("reset", "broken pipe", "terminated the handshake")
 

@@ -1,5 +1,7 @@
 package podbor.driver
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import podbor.core.Endpoint
@@ -11,7 +13,7 @@ import podbor.core.Endpoint
  * Карта растёт по числу адресов; одно нажатие касается ограниченного набора — чистить её незачем.
  */
 class EndpointGate(private val perEndpoint: Int = 1) {
-    private val lock = Any()
+    private val lock = SynchronizedObject()
     private val slots = HashMap<Endpoint, Slot>()
 
     /** Занятые места адреса и очереди ожидающих; место освободившегося передаётся ожидающему напрямую. */

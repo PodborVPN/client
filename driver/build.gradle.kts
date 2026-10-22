@@ -1,70 +1,64 @@
 /*
  * Край Podbor: порты к Xray и миру, их реализации и актор, который исполняет дела ядра.
  * Всё, что умеет Xray, делает Xray; наше — генератор конфига, проба-блоб, линия, актор.
+ * Мультиплатформенный: чистое — commonMain (JVM и iOS), сокеты, TLS, gRPC и процессы — jvmMain.
  */
 
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.protobuf)
 }
 
 repositories {
     mavenCentral()
 }
 
-dependencies {
-    implementation(project(":core"))
-    implementation(platform(libs.arrow.stack))
-    implementation(libs.arrow.core)
-    implementation(libs.arrow.fx.coroutines)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.serialization.json)
-    // gRPC API Xray (RoutingService: TestRoute, OverrideBalancerTarget) — proto из Xray v26.10.17.
-    implementation(libs.protobuf.kotlin)
-    implementation(libs.grpc.protobuf)
-    implementation(libs.grpc.stub)
-    implementation(libs.grpc.kotlin.stub)
-    runtimeOnly(libs.grpc.netty)
-
-    testImplementation(libs.kotest.runner.junit5)
-    testImplementation(libs.kotest.assertions.core)
-    testImplementation(libs.kotest.framework.datatest)
-    testImplementation(libs.kotest.property)
-    testImplementation(libs.kotlinx.coroutines.test)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
 kotlin {
     jvmToolchain(21)
-}
+    jvm()
+    iosArm64()
+    iosSimulatorArm64()
 
-protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}" }
-    plugins {
-        create("grpc") { artifact = "io.grpc:protoc-gen-grpc-java:${libs.versions.grpc.get()}" }
-        create("grpckt") { artifact = "io.grpc:protoc-gen-grpc-kotlin:${libs.versions.grpcKotlin.get()}:jdk8@jar" }
-    }
-    generateProtoTasks {
-        all().forEach {
-            it.plugins {
-                create("grpc")
-                create("grpckt")
-            }
-            it.builtins { create("kotlin") }
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core"))
+            implementation(project.dependencies.platform(libs.arrow.stack))
+            implementation(libs.arrow.core)
+            implementation(libs.arrow.fx.coroutines)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.atomicfu)
+            implementation(libs.kotlincrypto.sha2)
+        }
+        jvmMain.dependencies {
+            implementation(project(":xray-proto"))
+            runtimeOnly(libs.grpc.netty)
+        }
+        jvmTest.dependencies {
+            implementation(libs.kotest.runner.junit5)
+            implementation(libs.kotest.assertions.core)
+            implementation(libs.kotest.framework.datatest)
+            implementation(libs.kotest.property)
+            implementation(libs.kotlinx.coroutines.test)
+            runtimeOnly("org.junit.platform:junit-platform-launcher")
         }
     }
 }
 
-tasks.test {
+tasks.named<Test>("jvmTest") {
     useJUnitPlatform()
     testLogging {
         events("passed", "skipped", "failed")
     }
 }
 
+// `:driver:test` — прежнее имя для команд и CI; компиляция метаданных common ловит java.* в commonMain.
+tasks.register("test") {
+    dependsOn("jvmTest", "compileCommonMainKotlinMetadata")
+}
+
 // Classpath тестов для живых прогонов вне Gradle (в изолированной сети он не стартует — блокировки через loopback).
 tasks.register("printTestClasspath") {
-    val cp = sourceSets["test"].runtimeClasspath
+    val cp = kotlin.jvm().compilations["test"].runtimeDependencyFiles!! + kotlin.jvm().compilations["test"].output.allOutputs
     doLast { println(cp.asPath) }
 }

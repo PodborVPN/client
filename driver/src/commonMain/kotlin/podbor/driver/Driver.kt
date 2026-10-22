@@ -1,9 +1,11 @@
 package podbor.driver
 
 import arrow.core.Either
-import arrow.core.toNonEmptyListOrNull
 import arrow.core.raise.either
+import arrow.core.toNonEmptyListOrNull
 import arrow.fx.coroutines.ResourceScope
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -15,42 +17,42 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import podbor.core.Board
-import podbor.core.GENERAL_FOLLOWS
-import podbor.core.Service
-import podbor.core.ServiceId
-import podbor.core.board
-import podbor.core.merged
 import podbor.core.Deed
 import podbor.core.Diagnosis
 import podbor.core.Endpoint
 import podbor.core.Entry
 import podbor.core.Exit
+import podbor.core.GENERAL_FOLLOWS
+import podbor.core.LINE_FRESH_MS
+import podbor.core.Letter
 import podbor.core.Memory
+import podbor.core.OsNetwork
 import podbor.core.Passport
+import podbor.core.Prior
 import podbor.core.ScanBoard
 import podbor.core.ScanFold
 import podbor.core.ScanState
-import podbor.core.WhiteHint
-import podbor.core.partialPassport
-import podbor.core.LINE_FRESH_MS
-import podbor.core.Letter
-import podbor.core.OsNetwork
-import podbor.core.isBlocked
-import podbor.core.memoryKey
-import podbor.core.observe
-import podbor.core.scenario
-import podbor.core.Prior
 import podbor.core.Screen
 import podbor.core.Server
 import podbor.core.ServerId
-import podbor.core.classify as classifyDrafts
+import podbor.core.Service
+import podbor.core.ServiceId
 import podbor.core.Vpn
+import podbor.core.WhiteHint
+import podbor.core.board
+import podbor.core.classify as classifyDrafts
+import podbor.core.isBlocked
+import podbor.core.memoryKey
+import podbor.core.merged
+import podbor.core.observe
+import podbor.core.partialPassport
 import podbor.core.render
 import podbor.core.renderOpened
+import podbor.core.scenario
 
 /** Страховка: нажатие не висит дольше минуты, даже если мир молчит. Срок — на каждый трубопровод. */
 private const val PRESS_TIMEOUT_MS = 60_000L
@@ -401,7 +403,7 @@ class Driver(
  * [initial] — экраны до первой буквы трубопровода (у нажатия — «ищу»), чтобы сосед не мигал «—».
  */
 private class Boards(private val services: Set<Service>, private val onBoard: (Board) -> Unit, initial: Map<ServiceId, Screen>) {
-    private val lock = Any()
+    private val lock = SynchronizedObject()
     private var screens = initial
 
     fun put(service: ServiceId, screen: Screen) = synchronized(lock) {

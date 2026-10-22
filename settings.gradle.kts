@@ -15,6 +15,7 @@ plugins {
 rootProject.name = "podbor"
 include("core")
 include("driver")
+include("xray-proto")
 include("app")
 
 dependencyResolutionManagement {

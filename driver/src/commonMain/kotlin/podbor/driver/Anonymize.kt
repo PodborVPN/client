@@ -40,7 +40,7 @@ private class Aliases {
     private val names = HashMap<String, String>()
 
     private fun host(v: String) = hosts.getOrPut(v) { "h${hosts.size + 1}" }
-    private fun key(v: String) = keys.getOrPut(v) { "k%015d".format(keys.size + 1) }
+    private fun key(v: String) = keys.getOrPut(v) { "k" + (keys.size + 1).toString().padStart(15, '0') }
     private fun sni(v: String) = snis.getOrPut(v) { "sni${snis.size + 1}" }
     private fun name(v: String) = names.getOrPut(v) { "Сервер №${names.size + 1}" }
 

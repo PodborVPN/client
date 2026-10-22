@@ -4,18 +4,10 @@ import java.net.Authenticator
 import java.net.PasswordAuthentication
 import java.security.SecureRandom
 
-/**
- * Логин и пароль SOCKS-входов Xray на устройстве: без них приложение-сосед по телефону не пройдёт через серверы
- * человека и не узнает, куда они выходят. Случайные на процесс: снаружи их не узнать, и хранить незачем.
- */
-data class SocksAuth(val user: String, val pass: String) {
-    companion object {
-        fun random(): SocksAuth {
-            val rnd = SecureRandom()
-            fun hex() = ByteArray(16).also(rnd::nextBytes).joinToString("") { "%02x".format(it) }
-            return SocksAuth(hex(), hex())
-        }
-    }
+fun SocksAuth.Companion.random(): SocksAuth {
+    val rnd = SecureRandom()
+    fun hex() = ByteArray(16).also(rnd::nextBytes).joinToString("") { "%02x".format(it) }
+    return SocksAuth(hex(), hex())
 }
 
 /** Пароль процесса: его ставит конфиг Xray и предъявляют все клиенты SOCKS; первое обращение ставит [installSocksAuth]. */

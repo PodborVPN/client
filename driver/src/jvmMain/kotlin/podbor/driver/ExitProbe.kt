@@ -26,11 +26,6 @@ val EXIT_PROBE_URL = "https://${PODBOR_REF.host}/ip"
 private const val EXIT_CLOSE_GRACE_MS = 200L
 private const val EXIT_BODY_MAX = 512
 
-/** Внешний IP выхода кандидата: GET к своему эталону через SOCKS-inbound кандидата. null — нет ответа или не IP. */
-fun interface ExitProbe {
-    suspend fun exitIp(socksPort: Int): String?
-}
-
 /**
  * Эталон — свой VPS с самоподписанным сертификатом: доверие только закреплённому отпечатку ([PinnedTrust]), имя не проверяем.
  * Срок — один абсолютный на всё (connect, рукопожатие, чтение): каждая фаза получает остаток, а не полный срок. Блокирующие

@@ -50,6 +50,8 @@ junit-vintage = { module = "org.junit.vintage:junit-vintage-engine", version = "
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 # SHA-256 без java.security: ядро собирается и под iOS.
 kotlincrypto-sha2 = { module = "org.kotlincrypto.hash:sha2", version = "0.7.1" }
+# Замки и атомики в общем коде (synchronized из stdlib — только JVM).
+kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version = "0.33.0" }
 
 [plugins]
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

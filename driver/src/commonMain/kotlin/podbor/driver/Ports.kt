@@ -11,6 +11,7 @@ import podbor.core.ProbeSpec
 import podbor.core.Reach
 import podbor.core.Server
 import podbor.core.Verdict
+import kotlin.concurrent.Volatile
 
 /** Ошибки движка — системные, живут на краю; ядро о них не знает. */
 sealed interface EngineError {
@@ -104,4 +105,9 @@ class InMemoryPassportStore : PassportStore {
 
 fun interface TapeSink {
     fun write(line: String)
+}
+
+/** Внешний IP выхода кандидата: GET к своему эталону через SOCKS-inbound кандидата. null — нет ответа или не IP. */
+fun interface ExitProbe {
+    suspend fun exitIp(socksPort: Int): String?
 }
