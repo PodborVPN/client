@@ -1,5 +1,6 @@
 package podbor.screen
 
+import androidx.lifecycle.SavedStateHandle
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CompletableDeferred
@@ -52,7 +53,8 @@ private fun TestScope.vm(
     memory: UpdateMemory = FakeMemory(),
     selfDistributed: Boolean = true,
     now: Long = 10 * HOUR,
-) = MainViewModel("0.9.1", selfDistributed, memory, { now }, backgroundScope)
+    saved: SavedStateHandle = SavedStateHandle(),
+) = MainViewModel("0.9.1", selfDistributed, memory, { now }, saved, backgroundScope)
 
 /** Пока экран подписан на чип — значение живо (как collectAsStateWithLifecycle). */
 private fun TestScope.watching(vm: MainViewModel): Job = backgroundScope.launch { vm.update.collect {} }
@@ -99,12 +101,58 @@ class MainViewModelTest : FunSpec({
     test("отказ в согласии — «отказано», пока не выдан новый старт") {
         vmTest {
             val vm = vm()
-            vm.consentAsked()
+            vm.asked(Ask.VpnConsent)
             linkOf(vm.facts.value) shouldBe Link.Consent
+            vm.answered()
             vm.refused()
             linkOf(vm.facts.value) shouldBe Link.Refused
             vm.issued()
             linkOf(vm.facts.value) shouldBe Link.Starting
+        }
+    }
+
+    test("спросил человека — вопрос открыт, пока не ответил; ответ закрывает") {
+        vmTest {
+            val vm = vm()
+            vm.ask.value shouldBe null
+            vm.asked(Ask.Disclosure)
+            vm.ask.value shouldBe Ask.Disclosure
+            // Шторка → системный запрос: вопрос сменился, без «ничего не открыто» между ними.
+            vm.asked(Ask.Permissions)
+            vm.ask.value shouldBe Ask.Permissions
+            vm.answered()
+            vm.ask.value shouldBe null
+        }
+    }
+
+    test("процесс убит посреди вопроса — новый ViewModel помнит, что открыто; отвеченный — не помнит") {
+        vmTest {
+            val saved = SavedStateHandle()
+            vm(saved = saved).asked(Ask.Disclosure)
+            vm(saved = saved).ask.value shouldBe Ask.Disclosure
+
+            vm(saved = saved).answered()
+            vm(saved = saved).ask.value shouldBe null
+        }
+    }
+
+    test("процесс убит посреди согласия на VPN — после восстановления «жду согласия», а не «выключен»") {
+        vmTest {
+            val saved = SavedStateHandle()
+            vm(saved = saved).asked(Ask.VpnConsent)
+            linkOf(vm(saved = saved).facts.value) shouldBe Link.Consent
+        }
+    }
+
+    test("отказ переживает смерть процесса; новый старт его снимает — и для следующего восстановления тоже") {
+        vmTest {
+            val saved = SavedStateHandle()
+            vm(saved = saved).refused()
+            val restored = vm(saved = saved)
+            linkOf(restored.facts.value) shouldBe Link.Refused
+
+            restored.issued()
+            linkOf(vm(saved = saved).facts.value) shouldBe Link.Off
         }
     }
 

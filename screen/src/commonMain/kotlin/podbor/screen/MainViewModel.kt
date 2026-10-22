@@ -1,5 +1,6 @@
 package podbor.screen
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,8 @@ class MainViewModel(
     private val selfDistributed: Boolean,
     private val memory: UpdateMemory,
     private val nowMs: () -> Long,
+    // Переживает смерть процесса: открытый вопрос и отказ в согласии.
+    private val saved: SavedStateHandle,
     // Область — как у viewModelScope (Main, гаснет с ViewModel); тесты дают свою, на часах теста.
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : ViewModel(scope) {
@@ -37,7 +40,17 @@ class MainViewModel(
 
     /** Факты экрана о VPN: свой последний шаг, привязка, последнее слово сессии. */
     val facts: StateFlow<LinkFacts>
-        field = MutableStateFlow(LinkFacts())
+        field = MutableStateFlow(
+            when {
+                saved.get<Boolean>(REFUSED) == true -> LinkFacts().refused()
+                saved.get<String>(ASK) == Ask.VpnConsent.name -> LinkFacts().askingConsent()
+                else -> LinkFacts()
+            },
+        )
+
+    /** Открытый вопрос человеку; null — ничего не спрошено. */
+    val ask: StateFlow<Ask?>
+        field = MutableStateFlow(saved.get<String>(ASK)?.let { name -> Ask.entries.firstOrNull { it.name == name } })
 
     val board: StateFlow<Board> =
         service.keepLast { it.board }.stateIn(viewModelScope, SharingStarted.Eagerly, board(HARDCODED_SERVICES, emptyMap()))
@@ -70,22 +83,41 @@ class MainViewModel(
 
     init {
         // Факты — всю жизнь экрана, и пока он в фоне: отзыв VPN из Настроек иначе никто бы не увидел.
-        viewModelScope.launch { service.keepLast { it.session }.collect { s -> facts.update { it.seen(s) } } }
+        viewModelScope.launch { service.keepLast { it.session }.collect { s -> fact { it.seen(s) } } }
     }
 
     fun attach(port: ServicePort) {
-        facts.update { it.bound() }
+        fact { it.bound() }
         service.value = port
     }
 
     fun detach() {
-        facts.update { it.unbound() }
+        fact { it.unbound() }
         service.value = null
     }
 
-    fun consentAsked() = facts.update { it.askingConsent() }
+    /** Спросил человека (вопрос сменяет прежний: шторка → системный запрос). Согласие на VPN — ждём его. */
+    fun asked(a: Ask) {
+        ask.value = a
+        saved[ASK] = a.name
+        if (a == Ask.VpnConsent) fact { it.askingConsent() }
+    }
 
-    fun refused() = facts.update { it.refused() }
+    fun answered() {
+        ask.value = null
+        saved[ASK] = null
+    }
 
-    fun issued() = facts.update { it.issued() }
+    fun refused() = fact { it.refused() }
+
+    fun issued() = fact { it.issued() }
+
+    /** Отказ сохраняется вместе с фактами: восстановленный экран не предложит согласие снова сам. */
+    private fun fact(f: (LinkFacts) -> LinkFacts) {
+        facts.update(f)
+        saved[REFUSED] = facts.value.start == Start.Refused
+    }
 }
+
+private const val ASK = "ask"
+private const val REFUSED = "vpn_refused"

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -66,18 +67,16 @@ import podbor.core.Board
 import podbor.core.CardStatus
 import podbor.core.NetworkCard
 import podbor.core.board
+import podbor.screen.Ask
 import podbor.screen.ExitOrigin
 import podbor.screen.MainViewModel
 import podbor.screen.SessionView
-import podbor.screen.Start
 import podbor.screen.keepLast
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
 private const val ASKED = "permissions_asked"
-private const val REFUSED = "vpn_refused"
 private const val PHASE = "scan_phase"
-private const val DISCLOSING = "location_disclosing"
 
 private fun log(msg: String) {
     Log.i(TAG, msg)
@@ -101,6 +100,7 @@ class MainActivity : FragmentActivity() {
                 MainViewModel(
                     BuildConfig.VERSION_NAME, BuildConfig.SELF_DISTRIBUTED,
                     PrefsUpdateMemory(getSharedPreferences(PREFS, MODE_PRIVATE)), System::currentTimeMillis,
+                    createSavedStateHandle(),
                 )
             }
         }
@@ -132,19 +132,13 @@ class MainActivity : FragmentActivity() {
     private var openPending = false
     private var openedAt = 0L
 
-    /** Идёт системный диалог (разрешения или согласие на VPN): возврат из него не новое открытие. */
-    private var asking = false
-
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        asking = false
+        vm.answered()
         // Спрошено — когда ответ получен: диалог, прерванный уходом экрана, спросится снова.
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ASKED, true).apply()
         log("разрешения: " + granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" })
         afterPermissions()
     }
-
-    /** Шторка «Зачем Podbor геолокация» открыта: ждёт ответа до системного запроса. */
-    private val disclosing = MutableStateFlow(false)
 
     /** Почему Ленту не отдали (слова под «поделиться Лентой»); null — нечего сказать. */
     private val note = MutableStateFlow<String?>(null)
@@ -152,17 +146,17 @@ class MainActivity : FragmentActivity() {
 
     /** Сканер QR (zxing): текст QR — тем же путём, что буфер. Возврат из него — не новое открытие. */
     private val qr = registerForActivityResult(ScanContract()) { r ->
-        asking = false
+        vm.answered()
         r.contents?.let(::input)
     }
 
     /** Системный выбор «куда отправить»: возврат из него — не новое открытие (замер сети не повторяется). */
     private val chooser = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        asking = false
+        vm.answered()
     }
 
     private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        asking = false
+        vm.answered()
         if (r.resultCode == RESULT_OK) {
             startVpn()
         } else {
@@ -234,14 +228,13 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
         openedAt = SystemClock.elapsedRealtime()
-        if (savedInstanceState?.getBoolean(REFUSED) == true) vm.refused()
         setContentView(R.layout.activity_main)
         // Хозяин шторки геолокации: сама шторка — своё окно поверх страниц, месту в разметке не нужна.
         addContentView(
             ComposeView(this).apply {
                 setContent {
-                    val open by disclosing.collectAsStateWithLifecycle()
-                    if (open) PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
+                    val ask by vm.ask.collectAsStateWithLifecycle()
+                    if (ask == Ask.Disclosure) PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
                 }
             },
             ViewGroup.LayoutParams(0, 0),
@@ -255,12 +248,8 @@ class MainActivity : FragmentActivity() {
             opening("холодный старт")
             shared(intent)
         } else {
+            // Открытый вопрос (шторка, окно системы) — во ViewModel: пересоздание его не закрывает и не повторяет.
             restore(savedInstanceState.getString(PHASE))
-            // Шторку пересоздание не закрывает: ответа ещё нет.
-            if (savedInstanceState.getBoolean(DISCLOSING)) {
-                asking = true
-                disclosing.value = true
-            }
         }
     }
 
@@ -272,14 +261,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onRestart() {
         super.onRestart()
-        if (!asking) opening("возврат")
+        if (vm.ask.value == null) opening("возврат")
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(REFUSED, vm.facts.value.start == Start.Refused)
         outState.putString(PHASE, phaseKind(scan.value))
-        outState.putBoolean(DISCLOSING, disclosing.value)
     }
 
     /** Вид фазы для Bundle: доски и ошибки не сохраняем — они выводятся заново. */
@@ -330,8 +317,7 @@ class MainActivity : FragmentActivity() {
                 afterPermissions()
             } else {
                 // Сначала шторка — зачем геолокация; системный запрос — только после ответа в ней.
-                asking = true
-                disclosing.value = true
+                vm.asked(Ask.Disclosure)
             }
         }
     }
@@ -339,15 +325,15 @@ class MainActivity : FragmentActivity() {
     /** Ответ в шторке геолокации → системный запрос (отказ — без геолокации; уведомления спрашиваются всё равно). */
     private fun disclosed(locationAllowed: Boolean) {
         // Второй ответ той же шторки — не второй запрос разрешений.
-        if (!disclosing.value) return
-        disclosing.value = false
+        if (vm.ask.value != Ask.Disclosure) return
         val wanted = permissionsFor(locationAllowed, Build.VERSION.SDK_INT)
         log("шторка геолокации: " + if (locationAllowed) "разрешить" else "не сейчас")
         if (wanted.isEmpty()) {
-            asking = false
+            vm.answered()
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ASKED, true).apply()
             afterPermissions()
         } else {
+            vm.asked(Ask.Permissions)
             permissions.launch(wanted.toTypedArray())
         }
     }
@@ -403,7 +389,7 @@ class MainActivity : FragmentActivity() {
 
     private fun lineIfPending() {
         val s = service.value ?: return
-        if (!linePending || asking) return
+        if (!linePending || vm.ask.value != null) return
         linePending = false
         lifecycleScope.launch { s.measureLine() }
     }
@@ -499,7 +485,7 @@ class MainActivity : FragmentActivity() {
 
     /** Кнопка «QR»: сканер zxing; возврат из него — не новое открытие. */
     internal fun scanQr() {
-        asking = true
+        vm.asked(Ask.Qr)
         qr.launch(
             ScanOptions()
                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -523,8 +509,7 @@ class MainActivity : FragmentActivity() {
         when (val ask = VpnService.prepare(this)) {
             null -> startVpn()
             is Intent -> {
-                asking = true
-                vm.consentAsked()
+                vm.asked(Ask.VpnConsent)
                 consent.launch(ask)
             }
         }
@@ -609,7 +594,7 @@ class MainActivity : FragmentActivity() {
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         send.clipData = ClipData.newRawUri(file.name, uri)
         log("лента: отдаю ${file.length()} байт")
-        asking = true
+        vm.asked(Ask.Chooser)
         chooser.launch(Intent.createChooser(send, "Поделиться Лентой"))
     }
 

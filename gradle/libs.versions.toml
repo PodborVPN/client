@@ -40,6 +40,8 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 # ViewModel — мультиплатформенный (Android, JVM, iOS): общий экран в :screen.
 androidx-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel", version.ref = "lifecycle" }
+# SavedStateHandle — тоже мультиплатформенный: открытый диалог и отказ переживают смерть процесса.
+androidx-lifecycle-viewmodel-savedstate = { module = "androidx.lifecycle:lifecycle-viewmodel-savedstate", version.ref = "lifecycle" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-core = { module = "androidx.core:core", version = "1.18.0" }
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version = "1.9.1" }

@@ -25,6 +25,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":core"))
             api(libs.androidx.lifecycle.viewmodel)
+            api(libs.androidx.lifecycle.viewmodel.savedstate)
             implementation(project.dependencies.platform(libs.arrow.stack))
             implementation(libs.arrow.core)
             implementation(libs.kotlinx.coroutines.core)
