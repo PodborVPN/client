@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.1](https://github.com/PodborVPN/client/compare/v0.9.0...v0.9.1) (2026-10-22)
+
+
+### Исправлено
+
+* секундомер при истёкшем сроке замирает на сроке, не откатывается назад ([042ce0b](https://github.com/PodborVPN/client/commit/042ce0beed110df15a5427121361fbea81a98293))
+* шторка «Пропустить анализ?» — тоже один ответ ([da067b6](https://github.com/PodborVPN/client/commit/da067b6a9177cd3652c26fcc33d83a02d8d68791))
+* шторка геолокации отвечает один раз ([cbc0432](https://github.com/PodborVPN/client/commit/cbc04321a030c817526fa7f3374e124bb5314c6b))
+
 ## [0.9.0](https://github.com/PodborVPN/client/compare/v0.8.0...v0.9.0) (2026-10-22)
 
 
