@@ -20,16 +20,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 
 /**
  * Разрешения после шторки: геолокацию — только с согласия (вышку Android отдаёт лишь с ней); уведомление «Podbor ·
@@ -47,16 +40,7 @@ fun permissionsFor(locationAllowed: Boolean, sdk: Int): List<String> =
 @Composable
 fun LocationSheet(onAllow: () -> Unit, onDecline: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    // Ответ — один: пока шторка уезжает, вторая кнопка, «назад» и смахивание ещё доступны.
-    var answered by remember { mutableStateOf(false) }
-    fun close(then: () -> Unit) {
-        if (answered) return
-        answered = true
-        // Ответ — когда шторка уехала или её анимацию прервал жест (экран жив — ответ в силе). Экран разобран посреди
-        // анимации (поворот, уже после onDestroy) — область отменена: ответа не было, пересозданный экран спросит снова.
-        scope.launch { state.hide() }.invokeOnCompletion { if (scope.isActive) then() }
-    }
+    val close = rememberSheetAnswer(state)
     ModalBottomSheet(
         onDismissRequest = { close(onDecline) },
         sheetState = state,

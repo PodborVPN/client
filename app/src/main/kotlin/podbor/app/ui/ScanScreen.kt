@@ -51,7 +51,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +65,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
-import kotlinx.coroutines.launch
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.Mark3
@@ -342,12 +340,9 @@ private fun Ok(board: ScanBoard?, onOk: () -> Unit) {
 @Composable
 private fun SkipSheet(board: ScanBoard?, onStay: () -> Unit, onSkip: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    fun close(then: () -> Unit) {
-        scope.launch { state.hide() }.invokeOnCompletion { then() }
-    }
+    val close = rememberSheetAnswer(state)
     ModalBottomSheet(
-        onDismissRequest = onStay,
+        onDismissRequest = { close(onStay) },
         sheetState = state,
         containerColor = PodborColors.Surface,
         scrimColor = Color.Black.copy(alpha = 0.6f),
