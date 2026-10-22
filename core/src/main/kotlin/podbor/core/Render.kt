@@ -31,7 +31,8 @@ sealed interface ResultCard {
     data class Exit(val state: ExitState) : ResultCard
 }
 
-data class Screen(val network: NetworkCard, val button: Button, val result: ResultCard)
+/** [stopwatch] — секундомер нажатия; у экрана открытия его нет. */
+data class Screen(val network: NetworkCard, val button: Button, val result: ResultCard, val stopwatch: Stopwatch = Stopwatch.None)
 
 /**
  * Экран — производная истории: render(letters) = f(explain(letters)). Отдельного «состояния сообщений» нет.
@@ -51,20 +52,25 @@ fun render(letters: List<Letter>, service: Service = Telegram, closed: Boolean =
         is Outcome.Found, is Outcome.NotFound -> true
     }
     val card = networkCardOf(pressed.os, e.diagnosis, ended)
+    // Срок вышел посреди перебора — время замирает на последнем письме: другого финиша у нажатия не было.
+    val stopwatch = when (val end = e.endedAtMs ?: press.last().atMs.takeIf { closed }) {
+        null -> Stopwatch.Running(pressed.atMs)
+        else -> Stopwatch.Stopped(pressed.atMs, end)
+    }
     return when (val o = e.outcome) {
         Outcome.InProgress ->
             if (closed) {
-                Screen(card, Button.Red, ResultCard.NotFound(words(e, pressed.servers, service) + timedOutWords(service)))
+                Screen(card, Button.Red, ResultCard.NotFound(words(e, pressed.servers, service) + timedOutWords(service)), stopwatch)
             } else {
-                Screen(card, Button.Searching, ResultCard.Empty)
+                Screen(card, Button.Searching, ResultCard.Empty, stopwatch)
             }
         is Outcome.Found -> {
             val server = pressed.servers.first { it.id == o.server }
             val at = press.filterIsInstance<Letter.ProbeAnswered>().first { it.server == o.server && it.verdict.kind() == VerdictKind.Fits }.atMs
             val coverage = if (o.server == pressed.currentExit) "текущий выход работает" else coverageOf(e.diagnosis.scenario, o)
-            Screen(card, Button.Green, ResultCard.Found(server.name, server.transport, at, coverage))
+            Screen(card, Button.Green, ResultCard.Found(server.name, server.transport, at, coverage), stopwatch)
         }
-        is Outcome.NotFound -> Screen(card, Button.Red, ResultCard.NotFound(words(e, pressed.servers, service)))
+        is Outcome.NotFound -> Screen(card, Button.Red, ResultCard.NotFound(words(e, pressed.servers, service)), stopwatch)
     }
 }
 

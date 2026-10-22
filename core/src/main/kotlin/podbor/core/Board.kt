@@ -17,17 +17,18 @@ sealed interface CardStatus {
     data class NotFound(val lines: List<String>) : CardStatus
 }
 
-data class ServiceCard(val service: ServiceId, val label: String, val status: CardStatus)
+data class ServiceCard(val service: ServiceId, val label: String, val status: CardStatus, val stopwatch: Stopwatch = Stopwatch.None)
 
-/** Сводный экран: одна карточка сети, кнопка на всех, карточка на каждый сервис (по [ServiceId]). */
-data class Board(val network: NetworkCard, val button: Button, val cards: List<ServiceCard>)
+/** Сводный экран: одна карточка сети, кнопка на всех (и общий секундомер), карточка на каждый сервис (по [ServiceId]). */
+data class Board(val network: NetworkCard, val button: Button, val cards: List<ServiceCard>, val stopwatch: Stopwatch = Stopwatch.None)
 
 /** [screens] — экраны трубопроводов; сервис без экрана — Unknown. Сеть — с экрана GENERAL_FOLLOWS, иначе с первого по ServiceId. */
 fun board(services: Set<Service>, screens: Map<ServiceId, Screen>): Board {
     val sorted = services.sortedBy { it.id.id }
     val own = sorted.mapNotNull { screens[it.id] }
     val network = (screens[GENERAL_FOLLOWS] ?: own.firstOrNull())?.network ?: NetworkCard.Measuring(OsNetwork.None)
-    return Board(network, buttonOf(own.map { it.button }), sorted.map { ServiceCard(it.id, it.label, statusOf(screens[it.id])) })
+    val cards = sorted.map { ServiceCard(it.id, it.label, statusOf(screens[it.id]), screens[it.id]?.stopwatch ?: Stopwatch.None) }
+    return Board(network, buttonOf(own.map { it.button }), cards, overall(own.map { it.stopwatch }))
 }
 
 /** Ищу, пока идёт хоть один; зелёная, если нашлось хоть у одного; красная, только если у всех (с экраном) красная. */

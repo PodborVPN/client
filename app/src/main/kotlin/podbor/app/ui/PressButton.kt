@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import podbor.app.R
 import podbor.core.Button
+import podbor.core.Stopwatch
 
 /** Тег большой кнопки для UI-тестов. */
 const val PRESS_TAG = "press"
@@ -96,6 +97,11 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
         Face.TurnOn -> onOn
         Face.Waiting -> null
     }
+    val stopwatch = when (face) {
+        is Face.Press -> face.stopwatch
+        Face.TurnOn, Face.Waiting -> Stopwatch.None
+    }
+    val elapsed = elapsedOf(stopwatch)
     // Лепестки — только при поднятом VPN: выключать нечего, пока его нет.
     val petals = when (face) {
         is Face.Press -> true
@@ -254,6 +260,10 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
                 Icon(painterResource(icon), contentDescription = null, tint = color, modifier = Modifier.size(40.dp))
                 Spacer(Modifier.height(8.dp))
                 Text(label, color = color, style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 0.08.em))
+                // Цифры одной ширины: идущий секундомер не дёргает строку.
+                elapsed?.let {
+                    Text(buttonTime(it), color = color, style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
+                }
             }
         }
     }

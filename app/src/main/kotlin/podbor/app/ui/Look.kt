@@ -12,6 +12,7 @@ import podbor.core.Scenario
 import podbor.core.Service
 import podbor.core.ServiceCard
 import podbor.core.ServiceId
+import podbor.core.Stopwatch
 import podbor.core.exitHead
 import podbor.core.exitNote
 import podbor.core.transportWords
@@ -36,7 +37,7 @@ data class Note(val text: String, val tone: Tone)
 /**
  * Строка блока «текущий VPN», ценность слева направо (вариант A): [отметка + метка сервиса] | [имя сервера] | [протокол];
  * под ней — заметки; [searching] — полоска поиска; [retry] — «повторить» (подъём не удался: повтор одним тапом, а не
- * перезапуском приложения). Строка связи с VPN — без сервиса: [label] пуст.
+ * перезапуском приложения); [stopwatch] — секундомер подбора этого сервиса. Строка связи с VPN — без сервиса: [label] пуст.
  */
 data class ServiceRow(
     val label: String,
@@ -46,6 +47,7 @@ data class ServiceRow(
     val notes: List<Note>,
     val searching: Boolean,
     val retry: Boolean = false,
+    val stopwatch: Stopwatch = Stopwatch.None,
 )
 
 fun toneOf(card: NetworkCard): Tone = when (card) {
@@ -104,7 +106,7 @@ fun rowsOf(
         cards.map { card ->
             val st = card.status
             val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.firstOrNull() == shared
-            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats)
+            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats).copy(stopwatch = card.stopwatch)
         }
     }
 }
@@ -142,3 +144,9 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
         )
     }
 }
+
+/** Время на кнопке — крупно, без долей: «0:08». */
+fun buttonTime(ms: Long): String = (ms / 1000).let { "%d:%02d".format(it / 60, it % 60) }
+
+/** Время на карточке — с десятыми, пока меньше минуты: «8,3 с»; дальше — как на кнопке. */
+fun cardTime(ms: Long): String = if (ms < 60_000) "${ms / 1000},${ms % 1000 / 100} с" else buttonTime(ms)

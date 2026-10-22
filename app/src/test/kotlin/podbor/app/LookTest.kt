@@ -9,6 +9,8 @@ import podbor.app.ui.Note
 import podbor.app.ui.ServiceRow
 import podbor.app.ui.Shield
 import podbor.app.ui.Tone
+import podbor.app.ui.buttonTime
+import podbor.app.ui.cardTime
 import podbor.app.ui.rowsOf
 import podbor.app.ui.shieldOf
 import podbor.app.ui.toneOf
@@ -25,6 +27,7 @@ import podbor.core.Scenario
 import podbor.core.ServerId
 import podbor.core.ServiceCard
 import podbor.core.ServiceId
+import podbor.core.Stopwatch
 import podbor.core.Telegram
 import podbor.core.Transport
 
@@ -159,5 +162,26 @@ class LookTest : FunSpec({
                 searching = false,
             ),
         )
+    }
+
+    test("строка сервиса несёт его секундомер") {
+        val b = Board(
+            NetworkCard.Measuring(mts), Button.Searching,
+            listOf(
+                ServiceCard(Telegram.id, "TG", CardStatus.Found(nl, 900, ""), Stopwatch.Stopped(100, 900)),
+                ServiceCard(Instagram.id, "IG", CardStatus.Searching, Stopwatch.Running(100)),
+            ),
+        )
+        rowsOf(b, Link.Up, emptyMap()).map { it.stopwatch } shouldBe listOf(Stopwatch.Running(100), Stopwatch.Stopped(100, 900))
+    }
+
+    test("время: на кнопке — м:сс, на карточке — секунды с десятыми, дальше минуты") {
+        buttonTime(0) shouldBe "0:00"
+        buttonTime(8_999) shouldBe "0:08"
+        buttonTime(65_000) shouldBe "1:05"
+        cardTime(0) shouldBe "0,0 с"
+        cardTime(8_349) shouldBe "8,3 с"
+        cardTime(59_999) shouldBe "59,9 с"
+        cardTime(65_400) shouldBe "1:05"
     }
 })

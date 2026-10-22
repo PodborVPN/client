@@ -15,6 +15,29 @@ class RenderTest : FunSpec({
     fun pressed(servers: List<Server>) = Letter.Pressed(atMs = 0, os = mts, servers = servers, currentExit = null, memory = Memory.Empty)
     fun answer(tag: String, v: Verdict, at: Long = 100) = Letter.ProbeAnswered(at, ServerId(tag), v)
 
+    test("секундомер: идёт от нажатия, пока ищет; замирает на ответе, давшем «работает»") {
+        val servers = listOf(server("s001", Entry.Ru), server("s002", Entry.Ru))
+        val going = listOf(pressed(servers), *confirmed)
+        render(going).stopwatch shouldBe Stopwatch.Running(startedAtMs = 0)
+        val found = going + answer("s001", Verdict.Unreachable, at = 300) + answer("s002", Verdict.TelegramDc(3), at = 840)
+        render(found).stopwatch shouldBe Stopwatch.Stopped(startedAtMs = 0, stoppedAtMs = 840)
+        // Поздний раунд линии после итога время не двигает.
+        render(found + Letter.LineObserved(2_000, whitelist)).stopwatch shouldBe Stopwatch.Stopped(0, 840)
+    }
+
+    test("секундомер: «не найдено» — на письме, кончившем нажатие; срок вышел — на последнем письме") {
+        val servers = listOf(server("s001", Entry.Ru))
+        val dead = listOf(pressed(servers), *confirmed, answer("s001", Verdict.Unreachable, at = 500))
+        render(dead).stopwatch shouldBe Stopwatch.Stopped(0, 500)
+        render(dead + Letter.LineObserved(2_000, whitelist)).stopwatch shouldBe Stopwatch.Stopped(0, 500)
+        render(listOf(pressed(servers), Letter.LineObserved(10, whitelist)), closed = true).stopwatch shouldBe Stopwatch.Stopped(0, 10)
+    }
+
+    test("секундомер: до нажатия и на экране открытия — нет") {
+        render(emptyList()).stopwatch shouldBe Stopwatch.None
+        render(listOf(Letter.Opened(atMs = 0, os = mts, vpn = Vpn.Off))).stopwatch shouldBe Stopwatch.None
+    }
+
     test("до нажатия — Idle") {
         render(emptyList()).button shouldBe Button.Idle
     }

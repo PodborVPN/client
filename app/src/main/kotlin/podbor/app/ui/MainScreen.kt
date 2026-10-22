@@ -246,7 +246,13 @@ private fun ServiceLine(row: ServiceRow) {
                     Mark.Dead -> "✗" to PodborColors.Fail
                     null -> "–" to Muted
                 }
-                Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.widthIn(min = 44.dp))
+                // Под меткой — секундомер подбора этого сервиса (с десятыми), если подбор был.
+                Column(Modifier.widthIn(min = 44.dp)) {
+                    Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    elapsedOf(row.stopwatch)?.let {
+                        Text(cardTime(it), color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+                    }
+                }
                 VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
             }
             Text(

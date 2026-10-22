@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import podbor.app.vpn.SessionState
 import podbor.core.Board
 import podbor.core.Button
+import podbor.core.Stopwatch
 
 /** Связь экрана с VPN: экран ядра осмыслен только при поднятой сессии; остальное — словами вместо него. */
 enum class Link { Starting, Up, Failed, Off, Consent, Refused }
@@ -78,13 +79,14 @@ fun linkOf(f: LinkFacts): Link = when (f.start) {
  * выключен — «включить»; поднимается, ждёт согласия, отказан, не поднялся — ничего (для неудачи есть «повторить»).
  */
 sealed interface Face {
-    data class Press(val button: Button) : Face
+    /** [stopwatch] — общий секундомер экрана: пока ищет хоть один сервис — идёт. */
+    data class Press(val button: Button, val stopwatch: Stopwatch = Stopwatch.None) : Face
     data object TurnOn : Face
     data object Waiting : Face
 }
 
 fun faceOf(board: Board, link: Link): Face = when (link) {
-    Link.Up -> Face.Press(board.button)
+    Link.Up -> Face.Press(board.button, board.stopwatch)
     Link.Off -> Face.TurnOn
     Link.Starting, Link.Failed, Link.Consent, Link.Refused -> Face.Waiting
 }

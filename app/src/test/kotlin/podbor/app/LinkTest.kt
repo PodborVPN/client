@@ -15,6 +15,7 @@ import podbor.app.ui.faceOf
 import podbor.app.ui.keepLast
 import podbor.app.ui.linkOf
 import podbor.core.Button
+import podbor.core.Stopwatch
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
 import podbor.app.vpn.SessionState
@@ -108,5 +109,9 @@ class LinkTest : FunSpec({
         faceOf(ready, Link.Up) shouldBe Face.Press(Button.Ready)
         faceOf(ready, Link.Off) shouldBe Face.TurnOn
         for (l in listOf(Link.Starting, Link.Failed, Link.Refused, Link.Consent)) faceOf(ready, l) shouldBe Face.Waiting
+    }
+    test("лицо кнопки несёт общий секундомер экрана") {
+        val going = board(HARDCODED_SERVICES, emptyMap()).copy(button = Button.Searching, stopwatch = Stopwatch.Running(5))
+        faceOf(going, Link.Up) shouldBe Face.Press(Button.Searching, Stopwatch.Running(5))
     }
 })

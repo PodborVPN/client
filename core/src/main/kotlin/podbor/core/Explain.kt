@@ -18,6 +18,8 @@ data class Explanation(
     val tried: Map<CandidateClass, Map<VerdictKind, Int>>,
     val skipped: Map<CandidateClass, Map<SkipReason, Int>>,
     val outcome: Outcome,
+    /** Когда нажатие кончилось — время письма, на котором машина пришла в Done; идёт — null. */
+    val endedAtMs: Long?,
 )
 
 /**
@@ -28,7 +30,7 @@ data class Explanation(
 fun explain(letters: List<Letter>): Explanation {
     val press = letters.drop(letters.indexOfLast { it is Letter.Pressed }.coerceAtLeast(0))
     val pressed = press.firstOrNull() as? Letter.Pressed
-        ?: return Explanation(Diagnosis.Pending, null, emptyMap(), emptyMap(), Outcome.InProgress)
+        ?: return Explanation(Diagnosis.Pending, null, emptyMap(), emptyMap(), Outcome.InProgress, endedAtMs = null)
     val trace = replay(press)
     val byId = pressed.servers.associateBy { it.id }
     val diagnosis = when (val st = trace.state) {
@@ -64,7 +66,7 @@ fun explain(letters: List<Letter>): Explanation {
                 Outcome.NotFound(if (admissible.isEmpty()) Conclusion.NoAdmissibleInConfig else Conclusion.NothingWorksOpen)
         }
     }
-    return Explanation(diagnosis, trace.line?.line, tried, skipped, outcome)
+    return Explanation(diagnosis, trace.line?.line, tried, skipped, outcome, trace.endedAtMs)
 }
 
 /** След прогона машины по буквам одного нажатия. */
@@ -76,10 +78,11 @@ private data class Trace(
     /** Линия, по которой машина последний раз выбрала сценарий. */
     val line: Letter.LineObserved?,
     val found: Letter.ProbeAnswered?,
+    val endedAtMs: Long?,
 )
 
 private fun replay(press: List<Letter>): Trace =
-    press.fold(Trace(PressState.Idle, emptyList(), emptySet(), null, null)) { t, letter ->
+    press.fold(Trace(PressState.Idle, emptyList(), emptySet(), null, null, null)) { t, letter ->
         val before = t.state
         val (next, deeds) = step(before, letter)
         val running = before as? PressState.Running
@@ -97,6 +100,7 @@ private fun replay(press: List<Letter>): Trace =
                 else -> t.line
             },
             found = if (accepted && next is PressState.Done && letter.verdict.kind() == VerdictKind.Fits) letter else t.found,
+            endedAtMs = t.endedAtMs ?: letter.atMs.takeIf { next is PressState.Done },
         )
     }
 

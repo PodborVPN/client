@@ -38,6 +38,26 @@ class BoardTest : FunSpec({
         board(setOf(Telegram, Instagram), emptyMap()).button shouldBe Button.Idle
     }
 
+    test("секундомеры: у карточки свой; общий идёт, пока ищет хоть один, и замирает на самом долгом") {
+        val tgDone = screen(Button.Green, found).copy(stopwatch = Stopwatch.Stopped(100, 900))
+        val igGoing = screen(Button.Searching).copy(stopwatch = Stopwatch.Running(50))
+        val going = board(setOf(Telegram, Instagram), mapOf(Telegram.id to tgDone, Instagram.id to igGoing))
+        going.stopwatch shouldBe Stopwatch.Running(50)
+        going.cards.map { it.stopwatch } shouldBe listOf(Stopwatch.Running(50), Stopwatch.Stopped(100, 900))
+        val igDone = screen(Button.Red, notFound).copy(stopwatch = Stopwatch.Stopped(50, 4_000))
+        board(setOf(Telegram, Instagram), mapOf(Telegram.id to tgDone, Instagram.id to igDone)).stopwatch shouldBe Stopwatch.Stopped(50, 4_000)
+        board(setOf(Telegram, Instagram), mapOf(Telegram.id to tgDone)).stopwatch shouldBe Stopwatch.Stopped(100, 900)
+        board(setOf(Telegram, Instagram), emptyMap()).stopwatch shouldBe Stopwatch.None
+    }
+
+    test("секундомер: прошедшее время — от старта до сейчас или до финиша") {
+        Stopwatch.Running(1_000).elapsedMs(nowMs = 3_500) shouldBe 2_500
+        Stopwatch.Stopped(1_000, 1_800).elapsedMs(nowMs = 9_999) shouldBe 800
+        Stopwatch.None.elapsedMs(nowMs = 9_999) shouldBe null
+        // Часы ушли назад (смена времени) — не минус.
+        Stopwatch.Running(1_000).elapsedMs(nowMs = 500) shouldBe 0
+    }
+
     test("сервис без экрана — Unknown") {
         val b = board(setOf(Telegram, Instagram), mapOf(Telegram.id to screen(Button.Green, found)))
         b.cards.first { it.service == Instagram.id }.status shouldBe CardStatus.Unknown
