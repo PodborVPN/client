@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
@@ -256,6 +257,7 @@ class MainActivity : FragmentActivity() {
         onBackPressedDispatcher.addCallback(this, back)
         // Привязка без создания — сразу: к сервису, созданному стартом VPN или анализом, экран подключится сам.
         bindIfStarted()
+        watchUpdates()
         watch(lastBoard)
         showPages()
         if (savedInstanceState == null) {
@@ -562,7 +564,16 @@ class MainActivity : FragmentActivity() {
             if (!s.open()) openPending = true
             s.refreshSubscription()
             loadSubscription()
-            checkUpdate(s)
+        }
+    }
+
+    /**
+     * Пока экран виден — спросить о релизе при подключении к сервису и каждой смене сессии (VPN поднялся — туннель для
+     * белых списков). Один поток — проверки идут по очереди; новая смена отменяет начатую.
+     */
+    private fun watchUpdates() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { service.keepLast { s -> s.session.map { s } }.collectLatest(::checkUpdate) }
         }
     }
 

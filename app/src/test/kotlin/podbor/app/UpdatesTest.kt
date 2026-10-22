@@ -45,10 +45,10 @@ class UpdatesTest : FunSpec({
         offerOf("0.8.0", null) shouldBe null
     }
 
-    test("спрашивать GitHub — не чаще раза в 6 часов; ни разу не спрашивали — пора") {
+    test("спрашивать GitHub — не чаще раза в час; ни разу не спрашивали — пора") {
         checkDue(lastMs = null, nowMs = 0) shouldBe true
-        checkDue(lastMs = 0, nowMs = 6 * 3_600_000L - 1) shouldBe false
-        checkDue(lastMs = 0, nowMs = 6 * 3_600_000L) shouldBe true
+        checkDue(lastMs = 0, nowMs = 3_600_000L - 1) shouldBe false
+        checkDue(lastMs = 0, nowMs = 3_600_000L) shouldBe true
         // Часы ушли назад — спросить.
         checkDue(lastMs = 10_000, nowMs = 0) shouldBe true
     }

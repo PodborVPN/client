@@ -15,8 +15,8 @@ import kotlinx.serialization.json.jsonObject
 /** Последний релиз на GitHub — JSON с тегом и ссылками. */
 const val LATEST_RELEASE_API = "https://api.github.com/repos/PodborVPN/client/releases/latest"
 
-/** Спрашивать GitHub не чаще: релизы выходят днями, а запрос в белых списках идёт туннелем. */
-private const val CHECK_EVERY_MS = 6 * 3_600_000L
+/** Спрашивать GitHub не чаще: спрашиваем при каждом открытии экрана, а запрос в белых списках идёт туннелем. */
+private const val CHECK_EVERY_MS = 3_600_000L
 
 data class Version(val major: Int, val minor: Int, val patch: Int) : Comparable<Version> {
     override fun compareTo(other: Version): Int = compareValuesBy(this, other, Version::major, Version::minor, Version::patch)
