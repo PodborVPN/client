@@ -9,7 +9,13 @@ on:
     branches: [main]
   # PR со стороны: тесты и заголовки, без выпуска (у please — только push).
   pull_request:
+  # Руками с тегом — APK к уже созданному релизу, если выпуск оборвался между тегом и APK.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Тег релиза без APK, например v0.9.1; пусто — обычный прогон
+        type: string
+        required: false
 
 # Без отмены: новый push не обрывает начатый выпуск (релиз без APK).
 concurrency:
@@ -73,22 +79,26 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # Релиз release-please создаёт раньше, чем доделывает остальное (следующий PR): его сбой после тега не отменяет APK.
   apk:
-    needs: please
-    if: needs.please.outputs.release_created == 'true'
+    needs: [build, please]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.please.outputs.release_created == 'true' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
     env:
-      TAG: ${{ needs.please.outputs.tag_name }}
-      APK: podbor-${{ needs.please.outputs.version }}.apk
+      TAG: ${{ needs.please.outputs.tag_name || inputs.tag }}
     steps:
+      - name: Тег и имя APK
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "тег не vX.Y.Z: $TAG" >&2; exit 1; }
+          echo "APK=podbor-${TAG#v}.apk" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ needs.please.outputs.tag_name }}
+          ref: ${{ env.TAG }}
       - uses: ./.github/actions/setup
       # Выпускной libXray — всегда с нуля, без кеша.
       - run: app/scripts/build-libxray.sh force
@@ -123,9 +133,10 @@ jobs:
 
   announce:
     needs: [please, apk]
+    if: ${{ !cancelled() && needs.apk.result == 'success' }}
     uses: ./.github/workflows/announce.yml
     with:
-      tag: ${{ needs.please.outputs.tag_name }}
+      tag: ${{ needs.please.outputs.tag_name || inputs.tag }}
     secrets:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
