@@ -48,10 +48,13 @@ junit4 = { module = "junit:junit", version = "4.13.2" }
 # JUnit 4 (Robolectric) на той же JUnit Platform, что kotest: версия движка = версия платформы (1.11.x ↔ 5.11.x).
 junit-vintage = { module = "org.junit.vintage:junit-vintage-engine", version = "5.11.4" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+# SHA-256 без java.security: ядро собирается и под iOS.
+kotlincrypto-sha2 = { module = "org.kotlincrypto.hash:sha2", version = "0.7.1" }
 
 [plugins]
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

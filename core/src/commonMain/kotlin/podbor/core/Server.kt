@@ -1,6 +1,7 @@
 package podbor.core
 
 import kotlinx.serialization.Serializable
+import kotlin.jvm.JvmInline
 
 /** Тег сервера в нажатии: s001, s002… по порядку в подписке. На Ленте — только он, без адреса. */
 @Serializable

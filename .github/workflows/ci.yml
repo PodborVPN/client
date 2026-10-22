@@ -43,6 +43,11 @@ jobs:
           key: libxray-${{ hashFiles('app/scripts/build-libxray.sh') }}
       - if: steps.libxray.outputs.cache-hit != 'true'
         run: app/scripts/build-libxray.sh
+      # Kotlin/Native для проверки common-кода ядра (:core:test) — по версии Kotlin из каталога.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
       - run: ./gradlew :core:test :driver:test :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

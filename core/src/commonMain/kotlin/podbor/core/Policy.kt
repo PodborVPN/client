@@ -51,7 +51,7 @@ fun plan(
     }
     val remembered = memory.successes[key]?.toList().orEmpty().mapNotNull { m -> admissible.find { it.key == m.serverKey } }
     val rest = admissible - remembered.toSet()
-    val tiers = rest.groupBy { (if (likely(it)) 0 else NOT_LIKELY_SHIFT) + tierOf(scenario, it) }.toSortedMap().values.map { interleaveByHost(it.sortedBy { s -> s.id.tag }) }
+    val tiers = rest.groupBy { (if (likely(it)) 0 else NOT_LIKELY_SHIFT) + tierOf(scenario, it) }.entries.sortedBy { it.key }.map { it.value }.map { interleaveByHost(it.sortedBy { s -> s.id.tag }) }
     return SearchPlan(
         queue = remembered + tiers.flatten(),
         skipped = skips.groupBy({ it.first }, { it.second }).mapValues { (_, rs) -> rs.groupingBy { it }.eachCount() },

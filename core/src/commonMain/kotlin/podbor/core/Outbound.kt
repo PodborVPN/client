@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
-import java.security.MessageDigest
+import org.kotlincrypto.hash.sha2.SHA256
 
 /**
  * Разбор ссылок подписки — не наш код: край превращает подписку в outbound'ы Xray готовым
@@ -53,8 +53,8 @@ private fun transportOf(network: String?, security: String?, flow: String?): Tra
 
 /** Хеш outbound'а без tag: ключ не зависит ни от имени, ни от позиции в подписке, секретов не раскрывает. */
 private fun keyOf(outbound: JsonObject): String =
-    MessageDigest.getInstance("SHA-256").digest(JsonObject(outbound - "tag").toString().toByteArray())
-        .take(8).joinToString("") { "%02x".format(it) }
+    SHA256().digest(JsonObject(outbound - "tag").toString().encodeToByteArray())
+        .take(8).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
 private fun JsonObject.obj(k: String): JsonObject? = this[k] as? JsonObject
 private fun JsonObject.str(k: String): String? =
@@ -64,7 +64,7 @@ private fun JsonObject.str(k: String): String? =
 fun classify(drafts: List<ServerDraft>, entryOf: (Endpoint) -> Entry): List<Server> =
     drafts.mapIndexed { i, d ->
         Server(
-            id = ServerId("s%03d".format(i + 1)),
+            id = ServerId("s" + (i + 1).toString().padStart(3, '0')),
             name = d.name,
             endpoint = d.endpoint,
             transport = d.transport,

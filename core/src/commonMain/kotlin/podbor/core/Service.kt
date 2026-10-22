@@ -1,6 +1,7 @@
 package podbor.core
 
 import kotlinx.serialization.Serializable
+import kotlin.jvm.JvmInline
 
 /** Ключ сервиса в письмах и на Ленте: tg, insta… */
 @Serializable

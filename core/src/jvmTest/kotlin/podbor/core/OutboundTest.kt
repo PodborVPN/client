@@ -66,6 +66,14 @@ class OutboundTest : FunSpec({
         ok("a", a).key shouldNotBe ok("a", b).key
     }
 
+    test("ключ — первые 8 байт SHA-256 outbound'а без tag: как у JDK, память успехов переживает смену платформы") {
+        val body = """{"protocol":"vless","tag":"proxy","settings":{"vnext":[{"address":"h","port":443,"users":[{"id":"u"}]}]}}"""
+        val withoutTag = JsonObject(json(body) - "tag").toString().toByteArray()
+        val jdk = java.security.MessageDigest.getInstance("SHA-256").digest(withoutTag)
+            .take(8).joinToString("") { "%02x".format(it) }
+        ok("a", body).key shouldBe jdk
+    }
+
     test("classify нумерует s001.. по порядку и берёт entry из entryOf") {
         val drafts = listOf(
             ok("a", """{"protocol":"vless","settings":{"address":"1.1.1.1","port":443}}"""),
