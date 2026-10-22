@@ -50,4 +50,16 @@ class DisclosureUiTest {
         compose.waitForIdle()
         assertEquals(listOf("decline"), calls)
     }
+
+    @Test
+    fun secondTapInterruptsClosingYetAnswerArrivesOnce() {
+        show()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("Разрешить").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Не сейчас").performClick()
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(listOf("allow"), calls)
+    }
 }

@@ -345,6 +345,8 @@ class MainActivity : FragmentActivity() {
 
     /** Ответ в шторке геолокации → системный запрос (отказ — без геолокации; уведомления спрашиваются всё равно). */
     private fun disclosed(locationAllowed: Boolean) {
+        // Второй ответ той же шторки — не второй запрос разрешений.
+        if (!disclosing.value) return
         disclosing.value = false
         val wanted = permissionsFor(locationAllowed, Build.VERSION.SDK_INT)
         log("шторка геолокации: " + if (locationAllowed) "разрешить" else "не сейчас")
