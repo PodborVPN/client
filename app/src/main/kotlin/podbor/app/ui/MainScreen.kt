@@ -198,8 +198,8 @@ private fun ShareLink(note: String?, onShare: () -> Unit, onDonate: (() -> Unit)
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Quiet("поделиться Лентой", R.drawable.ic_bug_report, onShare, Modifier.testTag(SHARE_TAG))
-            onDonate?.let { Quiet("Поддержать", R.drawable.ic_favorite, it) }
+            Quiet("поделиться Лентой", R.drawable.ic_bug_report, PodborColors.Accent, onShare, Modifier.testTag(SHARE_TAG))
+            onDonate?.let { Quiet("Поддержать", R.drawable.ic_favorite, PodborColors.Heart, it) }
         }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
@@ -211,9 +211,9 @@ private fun ShareLink(note: String?, onShare: () -> Unit, onDonate: (() -> Unit)
 /** Отступы тихой кнопки — уже стандартных: две кнопки в строку на обычном телефоне. */
 private val QUIET_PADDING = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
 
-/** Тихая кнопка нижней линии: контур, значок серым, слова — текстом. */
+/** Тихая кнопка нижней линии: контур, слова — текстом; цветной только значок ([tint]) — по нему и узнают кнопку. */
 @Composable
-private fun Quiet(text: String, @DrawableRes icon: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun Quiet(text: String, @DrawableRes icon: Int, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(
         onClick = onClick,
         border = BorderStroke(1.dp, Rule),
@@ -221,7 +221,7 @@ private fun Quiet(text: String, @DrawableRes icon: Int, onClick: () -> Unit, mod
         contentPadding = QUIET_PADDING,
         modifier = modifier,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(ButtonDefaults.IconSize))
+        Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(ButtonDefaults.IconSize))
         Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
     }

@@ -22,6 +22,9 @@ object PodborColors {
     val Fail = Color(0xFFFF5F56)
     val Ok = Color(0xFF4FD18B)
     val Text = Color(0xFFD8DBD6)
+
+    /** Сердечко «Поддержать»: мягкий розовый — не путать с красным ошибки [Fail]. */
+    val Heart = Color(0xFFFF8FB8)
 }
 
 /** JetBrains Mono (OFL) с кириллицей: обычный и жирный. */
