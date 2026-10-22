@@ -15,12 +15,12 @@ import org.robolectric.annotation.Config
 import podbor.app.sub.InputError
 import podbor.app.sub.SubscriptionNote
 import podbor.app.sub.wordsOf
-import podbor.app.ui.Link
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.SubscriptionScreen
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
+import podbor.screen.Link
 
 /** Экран «Добавь подписку» и вход в него с главного («⋮» → «Сменить подписку»). Robolectric, без телефона. */
 @RunWith(RobolectricTestRunner::class)

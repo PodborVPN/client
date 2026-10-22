@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.em
 import podbor.app.R
 import podbor.core.Button
 import podbor.core.Stopwatch
+import podbor.screen.Face
 
 /** Тег большой кнопки для UI-тестов. */
 const val PRESS_TAG = "press"

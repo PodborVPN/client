@@ -1,10 +1,9 @@
-package podbor.app.ui
+package podbor.screen
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
-import podbor.app.vpn.SessionState
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.Stopwatch
@@ -26,7 +25,7 @@ enum class Start { None, AwaitingConsent, Refused, Issued, Running }
 data class LinkFacts(
     val start: Start = Start.None,
     val bound: Boolean = false,
-    val session: SessionState<Any>? = null,
+    val session: SessionView? = null,
 ) {
     fun askingConsent() = copy(start = Start.AwaitingConsent)
     fun refused() = copy(start = Start.Refused)
@@ -34,7 +33,7 @@ data class LinkFacts(
      * Старт выдан. Если привязанный сервис уже поднят, старт ничего не меняет и нового Up не будет — ждать нечего,
      * иначе «поднимаю VPN…» висело бы вечно.
      */
-    fun issued() = copy(start = if (bound && session is SessionState.Up) Start.None else Start.Issued)
+    fun issued() = copy(start = if (bound && session == SessionView.Up) Start.None else Start.Issued)
     fun bound() = copy(bound = true)
     fun unbound() = copy(bound = false)
 
@@ -43,16 +42,16 @@ data class LinkFacts(
      * устаревшее значение прежней сессии, старт ждёт дальше. Идущий подъём кончается любым итогом, в том числе Down
      * (стоп посреди подъёма) — иначе «поднимаю VPN…» висело бы вечно.
      */
-    fun seen(s: SessionState<Any>): LinkFacts {
+    fun seen(s: SessionView): LinkFacts {
         val next = when (start) {
             Start.Issued -> when (s) {
-                SessionState.Starting -> Start.Running
-                is SessionState.Up, is SessionState.Failed -> Start.None
-                SessionState.Down -> Start.Issued
+                SessionView.Starting -> Start.Running
+                SessionView.Up, is SessionView.Failed -> Start.None
+                SessionView.Down -> Start.Issued
             }
             Start.Running -> when (s) {
-                SessionState.Starting -> Start.Running
-                is SessionState.Up, is SessionState.Failed, SessionState.Down -> Start.None
+                SessionView.Starting -> Start.Running
+                SessionView.Up, is SessionView.Failed, SessionView.Down -> Start.None
             }
             Start.None, Start.AwaitingConsent, Start.Refused -> start
         }
@@ -67,10 +66,10 @@ fun linkOf(f: LinkFacts): Link = when (f.start) {
     // Идущий подъём — по сессии: Starting, пока сервис привязан; ушёл посреди — Off.
     Start.None, Start.Running -> when (val s = f.session) {
         // Неудачный подъём остаётся итогом и после ухода сервиса.
-        is SessionState.Failed -> Link.Failed
-        null, SessionState.Down -> Link.Off
-        SessionState.Starting -> if (f.bound) Link.Starting else Link.Off
-        is SessionState.Up -> if (f.bound) Link.Up else Link.Off
+        is SessionView.Failed -> Link.Failed
+        null, SessionView.Down -> Link.Off
+        SessionView.Starting -> if (f.bound) Link.Starting else Link.Off
+        SessionView.Up -> if (f.bound) Link.Up else Link.Off
     }
 }
 

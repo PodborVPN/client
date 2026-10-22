@@ -1,30 +1,21 @@
-package podbor.app
+package podbor.screen
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import podbor.app.ui.Link
-import podbor.app.ui.LinkFacts
-import podbor.app.ui.Face
-import podbor.app.ui.faceOf
-import podbor.app.ui.keepLast
-import podbor.app.ui.linkOf
 import podbor.core.Button
 import podbor.core.Stopwatch
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
-import podbor.app.vpn.SessionState
-import podbor.driver.EngineError
 
 /** Связь экрана с VPN: что показать в ярусе «текущий VPN», пока экрана ядра нет. */
 class LinkTest : FunSpec({
-    val up = SessionState.Up(Unit, CoroutineScope(Dispatchers.Unconfined))
-    val failed = SessionState.Failed(EngineError.Failed("runXray"))
+    val up = SessionView.Up
+    val failed = SessionView.Failed("runXray")
     val fresh = LinkFacts()
 
     test("ничего не запускали и сервиса нет — VPN выключен (сервис — единственный держатель VPN)") {
@@ -33,16 +24,16 @@ class LinkTest : FunSpec({
 
     test("свой старт выдан, Up/Failed ещё не видели — «поднимаю VPN», даже без привязки") {
         linkOf(fresh.issued()) shouldBe Link.Starting
-        linkOf(fresh.issued().bound().seen(SessionState.Starting)) shouldBe Link.Starting
+        linkOf(fresh.issued().bound().seen(SessionView.Starting)) shouldBe Link.Starting
         // Устаревший Down до подъёма не гасит «поднимаю»: старт ещё не дождался итога.
-        linkOf(fresh.issued().bound().seen(SessionState.Down)) shouldBe Link.Starting
+        linkOf(fresh.issued().bound().seen(SessionView.Down)) shouldBe Link.Starting
     }
 
     test("стоп посреди подъёма (Starting → Down) кончает свой старт: сервис ушёл — Off, не вечное «поднимаю»") {
-        linkOf(fresh.issued().bound().seen(SessionState.Starting).seen(SessionState.Down).unbound()) shouldBe Link.Off
-        linkOf(fresh.issued().bound().seen(SessionState.Starting).seen(SessionState.Down)) shouldBe Link.Off
+        linkOf(fresh.issued().bound().seen(SessionView.Starting).seen(SessionView.Down).unbound()) shouldBe Link.Off
+        linkOf(fresh.issued().bound().seen(SessionView.Starting).seen(SessionView.Down)) shouldBe Link.Off
         // Пока подъём идёт — «поднимаю».
-        linkOf(fresh.issued().bound().seen(SessionState.Starting)) shouldBe Link.Starting
+        linkOf(fresh.issued().bound().seen(SessionView.Starting)) shouldBe Link.Starting
     }
 
     test("старт дождался итога: Up — экран ядра, Failed — «не поднялся»") {
@@ -57,22 +48,22 @@ class LinkTest : FunSpec({
     test("«повторить» после «не поднялся»: новый старт — «поднимаю», дальше итог нового подъёма") {
         val gone = fresh.issued().bound().seen(failed).unbound()
         linkOf(gone.issued()) shouldBe Link.Starting
-        linkOf(gone.issued().bound().seen(SessionState.Starting).seen(up)) shouldBe Link.Up
+        linkOf(gone.issued().bound().seen(SessionView.Starting).seen(up)) shouldBe Link.Up
         // Сервис не ушёл после неудачи: его прежний Failed уже виден, новый старт ждёт Starting.
         val stayed = fresh.issued().bound().seen(failed)
         linkOf(stayed.issued()) shouldBe Link.Starting
-        linkOf(stayed.issued().seen(SessionState.Starting).seen(failed)) shouldBe Link.Failed
+        linkOf(stayed.issued().seen(SessionView.Starting).seen(failed)) shouldBe Link.Failed
     }
 
     test("отзыв, затем возврат: сервис ушёл, своего старта нет — Off; потом согласие → Starting → Up") {
-        val revoked = fresh.issued().bound().seen(up).seen(SessionState.Down).unbound()
+        val revoked = fresh.issued().bound().seen(up).seen(SessionView.Down).unbound()
         linkOf(revoked) shouldBe Link.Off
         val asking = revoked.askingConsent()
         linkOf(asking) shouldBe Link.Consent
         val starting = asking.issued()
         linkOf(starting) shouldBe Link.Starting
-        linkOf(starting.bound().seen(SessionState.Starting)) shouldBe Link.Starting
-        linkOf(starting.bound().seen(SessionState.Starting).seen(up)) shouldBe Link.Up
+        linkOf(starting.bound().seen(SessionView.Starting)) shouldBe Link.Starting
+        linkOf(starting.bound().seen(SessionView.Starting).seen(up)) shouldBe Link.Up
     }
 
     test("возврат к уже поднятому VPN: старт не меняет сессию (нового Up не будет) — сразу Up, не вечное «поднимаю»") {
@@ -87,8 +78,8 @@ class LinkTest : FunSpec({
 
     test("поднятая сессия без своего старта (сервис уже работал) — по сессии; Down — Off") {
         linkOf(fresh.bound().seen(up)) shouldBe Link.Up
-        linkOf(fresh.bound().seen(up).seen(SessionState.Down)) shouldBe Link.Off
-        linkOf(fresh.bound().seen(SessionState.Starting)) shouldBe Link.Starting
+        linkOf(fresh.bound().seen(up).seen(SessionView.Down)) shouldBe Link.Off
+        linkOf(fresh.bound().seen(SessionView.Starting)) shouldBe Link.Starting
     }
 
     test("сервис ушёл (отвязка после стопа) — последнее состояние остаётся, не «поднимаю VPN»") {

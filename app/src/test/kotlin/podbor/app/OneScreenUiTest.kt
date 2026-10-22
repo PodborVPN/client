@@ -19,7 +19,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import podbor.app.sub.SubscriptionNote
-import podbor.app.ui.Link
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PRESS_TAG
 import podbor.app.ui.PodborTheme
@@ -32,6 +31,7 @@ import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.core.ServiceCard
 import podbor.core.Telegram
+import podbor.screen.Link
 
 /** Главная — один экран: кнопка подбора сверху, Лента и «Поддержать» прижаты к низу, без прокрутки страницы. */
 @RunWith(RobolectricTestRunner::class)

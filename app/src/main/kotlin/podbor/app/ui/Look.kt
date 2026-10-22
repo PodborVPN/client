@@ -16,6 +16,7 @@ import podbor.core.Stopwatch
 import podbor.core.exitHead
 import podbor.core.exitNote
 import podbor.core.transportWords
+import podbor.screen.Link
 
 /*
  * Вид экрана A без Compose (JVM-тесты): цвет по смыслу, щит кнопки, строки блока «текущий VPN».

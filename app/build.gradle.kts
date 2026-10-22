@@ -203,6 +203,7 @@ composeCompiler {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":screen"))
     // На Android netty-shaded не нужен — транспорт gRPC даёт okhttp.
     implementation(project(":driver")) { exclude(group = "io.grpc", module = "grpc-netty-shaded") }
     implementation(libs.grpc.okhttp)

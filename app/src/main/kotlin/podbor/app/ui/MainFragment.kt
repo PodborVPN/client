@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
+import podbor.screen.linkOf
 
 /** Главная страница под сетью: кнопка и текущий VPN. Состояние — потоки Activity и сервиса, не поля фрагмента. */
 class MainFragment : Fragment() {

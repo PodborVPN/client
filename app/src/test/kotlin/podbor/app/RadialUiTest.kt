@@ -16,11 +16,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import podbor.app.ui.Face
 import podbor.app.ui.PRESS_TAG
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.PressButton
 import podbor.core.Button
+import podbor.screen.Face
 
 /** UI радиальной кнопки: тап, лепесток «выкл» долгим нажатием с протяжкой, «включить». Robolectric, без телефона. */
 @RunWith(RobolectricTestRunner::class)

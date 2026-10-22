@@ -10,8 +10,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import podbor.app.ui.Face
-import podbor.app.ui.Link
 import podbor.app.ui.MainScreen
 import podbor.app.ui.LocalNowMs
 import podbor.app.ui.PodborTheme
@@ -27,6 +25,8 @@ import podbor.core.ServiceCard
 import podbor.core.Stopwatch
 import podbor.core.Telegram
 import podbor.core.Transport
+import podbor.screen.Link
+import podbor.screen.Face
 
 /** Секундомер на кнопке: тикает по часам отрисовки, замирает на итоге. Часы — поддельные. */
 @RunWith(RobolectricTestRunner::class)

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import podbor.driver.EngineError
+import podbor.screen.SessionView
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Сессия VPN глазами снаружи: поднимается, поднята, не поднялась или её нет. */
@@ -29,6 +30,16 @@ sealed interface SessionState<out L> {
     /** [scope] — область действий сессии: её отмена (стоп) отменяет их раньше освобождения ресурсов. */
     class Up<L>(val live: L, val scope: CoroutineScope) : SessionState<L>
     data class Failed(val error: EngineError) : SessionState<Nothing>
+}
+
+/** Снимок сессии для экрана: без туннеля и области действий; неудача — с причиной для лога. */
+fun SessionState<*>.view(): SessionView = when (this) {
+    SessionState.Down -> SessionView.Down
+    SessionState.Starting -> SessionView.Starting
+    is SessionState.Up -> SessionView.Up
+    is SessionState.Failed -> when (val e = error) {
+        is EngineError.Failed -> SessionView.Failed(e.what)
+    }
 }
 
 /** Исход действия на сессии: выполнено — или сессии нет (не поднята либо остановлена посреди действия). */

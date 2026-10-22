@@ -65,6 +65,8 @@ import podbor.app.vpn.ExitOrigin
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.ServiceId
+import podbor.screen.Link
+import podbor.screen.faceOf
 
 internal val Muted = Color(0xFF6F7A72)
 internal val Rule = Color(0xFF222622)

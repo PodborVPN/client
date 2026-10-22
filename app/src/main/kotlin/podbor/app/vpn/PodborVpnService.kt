@@ -23,11 +23,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import podbor.app.net.AndroidStore
@@ -41,6 +43,7 @@ import podbor.app.sub.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.app.ui.MainActivity
 import podbor.app.xray.GeoHolder
+import podbor.screen.SessionView
 import podbor.app.xray.LibXrayConverter
 import podbor.app.xray.LibXrayEngine
 import podbor.app.xray.LibXrayInvoke
@@ -161,7 +164,7 @@ class PodborVpnService : VpnService() {
     suspend fun hasSubscription(): Boolean = desk.hasSubscription()
 
     /** Жизнь сессии для экрана: поднимается, поднята, не поднялась, нет. Что внутри поднятой — экрану не нужно. */
-    val session: StateFlow<SessionState<Any>> = host.state
+    val session: StateFlow<SessionView> = host.state.map { it.view() }.stateIn(scope, SharingStarted.Eagerly, SessionView.Down)
 
     /** Номер последней команды Android: отзыв VPN системой приходит без своего. */
     @Volatile

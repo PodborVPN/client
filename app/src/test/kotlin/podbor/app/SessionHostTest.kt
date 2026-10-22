@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
@@ -14,7 +15,9 @@ import kotlinx.coroutines.test.runTest
 import podbor.app.vpn.Acted
 import podbor.app.vpn.SessionHost
 import podbor.app.vpn.SessionState
+import podbor.app.vpn.view
 import podbor.driver.EngineError
+import podbor.screen.SessionView
 
 /** Фейковая сессия: номер подъёма; туннель — запись open/close в журнал. */
 private data class Live(val n: Int)
@@ -161,5 +164,12 @@ class SessionHostTest : FunSpec({
             runCurrent()
             (f.host.state.value as SessionState.Up).live shouldBe Live(1)
         }
+    }
+
+    test("снимок для экрана: без ресурсов сессии, неудача — с причиной") {
+        SessionState.Down.view() shouldBe SessionView.Down
+        SessionState.Starting.view() shouldBe SessionView.Starting
+        SessionState.Up(Live(1), CoroutineScope(Dispatchers.Unconfined)).view() shouldBe SessionView.Up
+        SessionState.Failed(EngineError.Failed("runXray")).view() shouldBe SessionView.Failed("runXray")
     }
 })

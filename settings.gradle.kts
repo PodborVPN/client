@@ -16,6 +16,7 @@ rootProject.name = "podbor"
 include("core")
 include("driver")
 include("xray-proto")
+include("screen")
 include("app")
 
 dependencyResolutionManagement {

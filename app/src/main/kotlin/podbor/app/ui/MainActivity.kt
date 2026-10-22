@@ -65,13 +65,16 @@ import podbor.app.update.checkDue
 import podbor.app.update.offerOf
 import podbor.app.vpn.ExitOrigin
 import podbor.app.vpn.PodborVpnService
-import podbor.app.vpn.SessionState
 import podbor.core.Board
 import podbor.core.CardStatus
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.NetworkCard
 import podbor.core.ServiceId
 import podbor.core.board
+import podbor.screen.LinkFacts
+import podbor.screen.SessionView
+import podbor.screen.Start
+import podbor.screen.keepLast
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
@@ -662,7 +665,7 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    service.keepLast { it.session }.collect { if (it is SessionState.Up) openIfPending() }
+                    service.keepLast { it.session }.collect { if (it == SessionView.Up) openIfPending() }
                 }
                 launch {
                     boards.map { it.button }.distinctUntilChanged().collect { log("экран: кнопка $it") }

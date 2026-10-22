@@ -3,7 +3,6 @@ package podbor.app
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import podbor.app.ui.Link
 import podbor.app.ui.Mark
 import podbor.app.ui.Note
 import podbor.app.ui.ServiceRow
@@ -30,6 +29,7 @@ import podbor.core.ServiceId
 import podbor.core.Stopwatch
 import podbor.core.Telegram
 import podbor.core.Transport
+import podbor.screen.Link
 
 /** Вид экрана без Compose: цвет и щит по состоянию, строки сервисов в блоке «текущий VPN». */
 class LookTest : FunSpec({

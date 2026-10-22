@@ -16,12 +16,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import podbor.app.ui.Link
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.SHARE_TAG
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
+import podbor.screen.Link
 
 /** «поделиться Лентой» — видно, что кнопка: роль, палец помещается, нажатие отдаёт Ленту. */
 @RunWith(RobolectricTestRunner::class)
