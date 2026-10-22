@@ -1,6 +1,5 @@
 package podbor.app.ui
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ComponentName
 import android.content.Intent
@@ -13,19 +12,25 @@ import android.os.IBinder
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import android.view.ViewGroup
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import arrow.core.Either
 import arrow.core.raise.either
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import java.io.File
+import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -61,14 +66,13 @@ import podbor.core.HARDCODED_SERVICES
 import podbor.core.NetworkCard
 import podbor.core.ServiceId
 import podbor.core.board
-import java.io.File
-import java.time.LocalDateTime
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
 private const val ASKED = "permissions_asked"
 private const val REFUSED = "vpn_refused"
 private const val PHASE = "scan_phase"
+private const val DISCLOSING = "location_disclosing"
 
 private fun log(msg: String) {
     Log.i(TAG, msg)
@@ -133,6 +137,9 @@ class MainActivity : FragmentActivity() {
         log("разрешения: " + granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" })
         afterPermissions()
     }
+
+    /** Шторка «Зачем Podbor геолокация» открыта: ждёт ответа до системного запроса. */
+    private val disclosing = MutableStateFlow(false)
 
     /** Почему Ленту не отдали (слова под «поделиться Лентой»); null — нечего сказать. */
     private val note = MutableStateFlow<String?>(null)
@@ -222,6 +229,16 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch { service.keepLast { it.board }.collect { lastBoard.value = it } }
         lifecycleScope.launch { service.keepLast { it.exitOrigin }.collect { lastOrigin.value = it } }
         setContentView(R.layout.activity_main)
+        // Хозяин шторки геолокации: сама шторка — своё окно поверх страниц, месту в разметке не нужна.
+        addContentView(
+            ComposeView(this).apply {
+                setContent {
+                    val open by disclosing.collectAsStateWithLifecycle()
+                    if (open) PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
+                }
+            },
+            ViewGroup.LayoutParams(0, 0),
+        )
         onBackPressedDispatcher.addCallback(this, back)
         // Привязка без создания — сразу: к сервису, созданному стартом VPN или анализом, экран подключится сам.
         bindIfStarted()
@@ -232,6 +249,11 @@ class MainActivity : FragmentActivity() {
             shared(intent)
         } else {
             restore(savedInstanceState.getString(PHASE))
+            // Шторку пересоздание не закрывает: ответа ещё нет.
+            if (savedInstanceState.getBoolean(DISCLOSING)) {
+                asking = true
+                disclosing.value = true
+            }
         }
     }
 
@@ -250,6 +272,7 @@ class MainActivity : FragmentActivity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(REFUSED, knownFacts.value.start == Start.Refused)
         outState.putString(PHASE, phaseKind(scan.value))
+        outState.putBoolean(DISCLOSING, disclosing.value)
     }
 
     /** Вид фазы для Bundle: доски и ошибки не сохраняем — они выводятся заново. */
@@ -299,12 +322,24 @@ class MainActivity : FragmentActivity() {
             if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ASKED, false)) {
                 afterPermissions()
             } else {
+                // Сначала шторка — зачем геолокация; системный запрос — только после ответа в ней.
                 asking = true
-                // Уведомление «Podbor · выход» — Android 13+; вышка — геолокация. Отказ — просто без них.
-                val wanted = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION) +
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
-                permissions.launch(wanted.toTypedArray())
+                disclosing.value = true
             }
+        }
+    }
+
+    /** Ответ в шторке геолокации → системный запрос (отказ — без геолокации; уведомления спрашиваются всё равно). */
+    private fun disclosed(locationAllowed: Boolean) {
+        disclosing.value = false
+        val wanted = permissionsFor(locationAllowed, Build.VERSION.SDK_INT)
+        log("шторка геолокации: " + if (locationAllowed) "разрешить" else "не сейчас")
+        if (wanted.isEmpty()) {
+            asking = false
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ASKED, true).apply()
+            afterPermissions()
+        } else {
+            permissions.launch(wanted.toTypedArray())
         }
     }
 
