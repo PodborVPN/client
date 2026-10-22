@@ -28,11 +28,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -44,11 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import podbor.app.R
 import podbor.app.sub.SubscriptionNote
 import podbor.app.vpn.ExitOrigin
 import podbor.core.Board
@@ -164,21 +170,27 @@ private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, o
     }
 }
 
+/** Тег кнопки «поделиться Лентой» для UI-тестов. */
+const val SHARE_TAG = "share"
+
 /**
- * «поделиться Лентой» — неброская строка под карточкой (серый моноширинный текст, без значка): главная на экране —
- * круглая кнопка. Под ней — почему не отдали (Лента пуста, нашёлся адрес), если так.
+ * «поделиться Лентой» (баг-репорт) — второстепенная кнопка Material: контур и жучок, тише круглой. Под ней — почему не
+ * отдали (Лента пуста, нашёлся адрес), если так.
  */
 @Composable
 private fun ShareLink(note: String?, onShare: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            "поделиться Лентой",
-            color = Muted,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier
-                .clickable(role = Role.Button, onClick = onShare)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        )
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedButton(
+            onClick = onShare,
+            border = BorderStroke(1.dp, Rule),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Text),
+            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+            modifier = Modifier.testTag(SHARE_TAG),
+        ) {
+            Icon(painterResource(R.drawable.ic_bug_report), contentDescription = null, tint = Muted, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text("поделиться Лентой", style = MaterialTheme.typography.bodyMedium)
+        }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
             Text(note.orEmpty(), color = PodborColors.Fail, style = MaterialTheme.typography.labelSmall)
