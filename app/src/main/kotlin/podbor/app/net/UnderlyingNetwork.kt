@@ -83,8 +83,8 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
     val resolver: Resolver = Resolver { host -> Either.catch { resolve(host) }.getOrNull()?.hostAddress }
 
     /**
-     * Тело по ссылке подписки через нижележащую сеть (мимо VPN — его на время анализа нет, но и при поднятом туннель не
-     * нужен). Не 2xx, сеть пропала, срок, больше [SUBSCRIPTION_CAP_BYTES] — null. Ссылка секретна: в лог — только вид сбоя.
+     * Тело по ссылке (подписка, последний релиз на GitHub) через нижележащую сеть (мимо VPN — его на время анализа нет,
+     * но и при поднятом туннель не нужен). Не 2xx, сеть пропала, срок, больше [SUBSCRIPTION_CAP_BYTES] — null. Ссылка секретна: в лог — только вид сбоя.
      * Заголовки ответа — с именами в нижнем регистре (провайдер так передаёт интервал обновления).
      */
     suspend fun download(url: String): Fetched? {
@@ -118,7 +118,7 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
                 c.disconnect()
             }
         }
-    }.onLeft { Log.w("Podbor", "подписка не скачалась: ${it.javaClass.simpleName}") }.getOrNull()
+    }.onLeft { Log.w("Podbor", "не скачалось: ${it.javaClass.simpleName}") }.getOrNull()
 
     /** Заголовки ответа: имя в нижнем регистре → первое значение; строка статуса (имя null) — не заголовок. */
     private fun headersOf(c: HttpURLConnection): Map<String, String> =
