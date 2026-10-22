@@ -106,23 +106,26 @@ fun MainScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
     ) {
+        // Один экран: кнопка сверху, нижняя линия — у нижнего края; середина берёт всё, что между, и прокручивается
+        // только сама, если однажды не влезет (длинное «не нашёл» у двух сервисов).
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             PressButton(faceOf(board, link), onPress, onOff, onOn)
             Tier("ТЕКУЩИЙ VPN")
-            VpnCard(rowsOf(board, link, origin), onRetry)
-            subscription?.announce?.let { Announce(it) }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                VpnCard(rowsOf(board, link, origin), onRetry)
+                subscription?.announce?.let { Announce(it) }
+            }
             ShareLink(shareNote, onShare, onDonate)
         }
         Menu(subscription, onSupport, onChangeSubscription, Modifier.align(Alignment.TopEnd))
     }
 }
 
-/** Объявление провайдера (`announce`): серым под карточкой — его слова, не наши. */
+/** Объявление провайдера (`announce`): серым под карточкой — его слова, не наши; длинное — две строки и многоточие. */
 @Composable
 private fun Announce(text: String) {
     Text(
@@ -130,6 +133,8 @@ private fun Announce(text: String) {
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
     )
 }
