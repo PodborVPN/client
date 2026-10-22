@@ -1,19 +1,8 @@
-package podbor.app
+package podbor.screen
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import podbor.app.ui.Mark
-import podbor.app.ui.Note
-import podbor.app.ui.ServiceRow
-import podbor.app.ui.Shield
-import podbor.app.ui.Tone
-import podbor.app.ui.buttonTime
-import podbor.app.ui.cardTime
-import podbor.app.ui.rowsOf
-import podbor.app.ui.shieldOf
-import podbor.app.ui.toneOf
-import podbor.app.vpn.ExitOrigin
 import podbor.core.Blame
 import podbor.core.Board
 import podbor.core.Button
@@ -29,7 +18,6 @@ import podbor.core.ServiceId
 import podbor.core.Stopwatch
 import podbor.core.Telegram
 import podbor.core.Transport
-import podbor.screen.Link
 
 /** Вид экрана без Compose: цвет и щит по состоянию, строки сервисов в блоке «текущий VPN». */
 class LookTest : FunSpec({

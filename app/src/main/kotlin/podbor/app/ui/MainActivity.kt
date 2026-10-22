@@ -63,7 +63,6 @@ import podbor.app.update.Offer
 import podbor.app.update.Release
 import podbor.app.update.checkDue
 import podbor.app.update.offerOf
-import podbor.app.vpn.ExitOrigin
 import podbor.app.vpn.PodborVpnService
 import podbor.core.Board
 import podbor.core.CardStatus
@@ -75,6 +74,7 @@ import podbor.screen.LinkFacts
 import podbor.screen.SessionView
 import podbor.screen.Start
 import podbor.screen.keepLast
+import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"

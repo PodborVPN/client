@@ -24,7 +24,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import podbor.app.sub.SubscriptionStore
 import podbor.app.vpn.Desk
-import podbor.app.vpn.ExitOrigin
 import podbor.app.vpn.Live
 import podbor.app.vpn.ScanPorts
 import podbor.app.vpn.SessionHost
@@ -69,6 +68,7 @@ import podbor.driver.XrayApi
 import podbor.driver.XrayEngine
 import podbor.driver.detectLine
 import java.nio.file.Files
+import podbor.screen.ExitOrigin
 
 private val mts = OsNetwork.Cellular("MTS", "25001")
 

@@ -59,6 +59,10 @@ import podbor.app.R
 import podbor.core.Button
 import podbor.core.Stopwatch
 import podbor.screen.Face
+import podbor.screen.Shield
+import podbor.screen.toneOf
+import podbor.screen.shieldOf
+import podbor.screen.buttonTime
 
 /** Тег большой кнопки для UI-тестов. */
 const val PRESS_TAG = "press"

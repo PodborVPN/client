@@ -50,6 +50,7 @@ import podbor.core.OsNetwork
 import podbor.core.networkTitle
 import podbor.core.operatorOf
 import podbor.core.towerLine
+import podbor.screen.toneOf
 
 /** Сеть — всегда сверху, над любой страницей: плашка из сводного экрана сервиса (и до VPN — замер линии мимо туннеля). */
 class NetworkFragment : Fragment() {

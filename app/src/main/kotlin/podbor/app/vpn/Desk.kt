@@ -63,6 +63,7 @@ import podbor.driver.Opening
 import podbor.driver.PassportStore
 import podbor.driver.Warm
 import podbor.driver.paced
+import podbor.screen.ExitOrigin
 
 /** Замер открытия вытеснен нажатием (не стоп сессии). */
 private class Superseded : CancellationException("замер вытеснен нажатием")
@@ -100,9 +101,6 @@ class ScanPorts(
     /** Часы обновления подписки: когда скачана, пора ли снова. */
     val clock: Clock = Clock { System.currentTimeMillis() },
 )
-
-/** Откуда выход сервиса в замере открытия: выбран (нажатием в этой сессии) или восстановлен из памяти сети. */
-enum class ExitOrigin { Chosen, Recalled }
 
 /**
  * Открытие и нажатие без Android: сводный экран ядра, который видит Activity, и порядок действий на сессии [host].

@@ -21,3 +21,7 @@ sealed interface SessionView {
     @Serializable
     data class Failed(val reason: String) : SessionView
 }
+
+/** Откуда выход сервиса в замере открытия: выбран (нажатием в этой сессии) или восстановлен из памяти сети. */
+@Serializable
+enum class ExitOrigin { Chosen, Recalled }

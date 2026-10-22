@@ -1,6 +1,5 @@
-package podbor.app.ui
+package podbor.screen
 
-import podbor.app.vpn.ExitOrigin
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus
@@ -16,7 +15,6 @@ import podbor.core.Stopwatch
 import podbor.core.exitHead
 import podbor.core.exitNote
 import podbor.core.transportWords
-import podbor.screen.Link
 
 /*
  * Вид экрана A без Compose (JVM-тесты): цвет по смыслу, щит кнопки, строки блока «текущий VPN».
@@ -147,7 +145,7 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
 }
 
 /** Время на кнопке — крупно, без долей: «0:08». */
-fun buttonTime(ms: Long): String = (ms / 1000).let { "%d:%02d".format(it / 60, it % 60) }
+fun buttonTime(ms: Long): String = (ms / 1000).let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" }
 
 /** Время на карточке — с десятыми, пока меньше минуты: «8,3 с»; дальше — как на кнопке. */
 fun cardTime(ms: Long): String = if (ms < 60_000) "${ms / 1000},${ms % 1000 / 100} с" else buttonTime(ms)

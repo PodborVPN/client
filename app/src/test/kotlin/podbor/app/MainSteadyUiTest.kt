@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.ServiceLine
-import podbor.app.ui.ServiceRow
+import podbor.screen.ServiceRow
 
 /** Полоска поиска в строке сервиса появляется и уходит, не двигая то, что под строкой. */
 @RunWith(RobolectricTestRunner::class)

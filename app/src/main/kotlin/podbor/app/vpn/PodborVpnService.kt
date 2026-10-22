@@ -72,6 +72,7 @@ import podbor.driver.TlsHandshaker
 import podbor.driver.detectLine
 import podbor.driver.draftsOf
 import podbor.driver.xrayApi
+import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
 private const val CHANNEL = "vpn"

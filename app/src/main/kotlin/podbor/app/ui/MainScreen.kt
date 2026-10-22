@@ -61,12 +61,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import podbor.app.R
 import podbor.app.sub.SubscriptionNote
-import podbor.app.vpn.ExitOrigin
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.ServiceId
 import podbor.screen.Link
 import podbor.screen.faceOf
+import podbor.screen.Tone
+import podbor.screen.Mark
+import podbor.screen.ServiceRow
+import podbor.screen.rowsOf
+import podbor.screen.cardTime
+import podbor.screen.ExitOrigin
 
 internal val Muted = Color(0xFF6F7A72)
 internal val Rule = Color(0xFF222622)
