@@ -12,8 +12,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import podbor.app.sub.InputError
-import podbor.app.sub.SubscriptionNote
+import podbor.screen.InputError
+import podbor.screen.SubscriptionNote
 import podbor.app.sub.wordsOf
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme

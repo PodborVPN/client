@@ -36,8 +36,6 @@ import com.journeyapps.barcodescanner.ScanOptions
 import java.io.File
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +46,6 @@ import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import podbor.app.BuildConfig
@@ -57,8 +54,6 @@ import podbor.app.share.bundleOf
 import podbor.app.share.readTapes
 import podbor.app.share.wordsOf
 import podbor.app.share.writeShare
-import podbor.app.sub.SubscriptionInput
-import podbor.app.sub.SubscriptionNote
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.noteOf
@@ -70,8 +65,8 @@ import podbor.core.board
 import podbor.screen.Ask
 import podbor.screen.ExitOrigin
 import podbor.screen.MainViewModel
-import podbor.screen.SessionView
-import podbor.screen.keepLast
+import podbor.screen.Page
+import podbor.screen.ScanPhase
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
@@ -83,53 +78,27 @@ private fun log(msg: String) {
 }
 
 /**
- * Экран A: сеть сверху (фрагмент, всегда), под ней страница по [pageOf] — «Добавь подписку»/анализ или главный.
- * Открытие (холодный старт или возврат из фона) — разрешения при первом открытии; на главном — согласие на VPN, сервис
- * (поднимается, если не запущен) и `open()`; без подписки VPN не поднимается — только замер линии для плашки сети.
- * Экран и жизнь сессии — последние, что сказал сервис: его уход после стопа не превращается в «поднимаю VPN…».
- * Состояние страниц — здесь и в сервисе (потоки), фрагменты только читают.
+ * Экран A: сеть сверху (фрагмент, всегда), под ней страница по [MainViewModel.page] — «Добавь подписку»/анализ или
+ * главный. Решает ViewModel; здесь — вид и мост к системе: разрешения, согласие на VPN, старт и привязка сервиса,
+ * «поделиться», QR. Открытие (холодный старт или возврат из фона) — [MainViewModel.opened].
  */
 class MainActivity : FragmentActivity() {
-    private val service = MutableStateFlow<PodborVpnService?>(null)
-    private var bound = false
-
     /** Значения экрана — в общем ViewModel: переживают пересоздание, фрагменты подписаны на них. */
     internal val vm: MainViewModel by viewModels {
         viewModelFactory {
             initializer {
+                val store = SubscriptionStore(filesDir)
                 MainViewModel(
                     BuildConfig.VERSION_NAME, BuildConfig.SELF_DISTRIBUTED,
                     PrefsUpdateMemory(getSharedPreferences(PREFS, MODE_PRIVATE)), System::currentTimeMillis,
                     createSavedStateHandle(),
+                    { store.load()?.let { noteOf(it, System.currentTimeMillis()) } },
                 )
             }
         }
     }
 
-    /** Сохранена ли подписка; null — ещё не прочитали (страницы нет). */
-    private val hasSubscription = MutableStateFlow<Boolean?>(null)
-    internal val subscribed: StateFlow<Boolean?> = hasSubscription.asStateFlow()
-
-    private val scan = MutableStateFlow<ScanPhase>(ScanPhase.Idle)
-    internal val phase: StateFlow<ScanPhase> = scan.asStateFlow()
-
-    /** Идущий анализ: «ОК, дальше» и «назад» его прерывают (частичный паспорт сохраняет драйвер). */
-    private var scanJob: Job? = null
-
-    /** «ОК» уже нажато: выход с анализа идёт. */
-    private var finishing = false
-
-    private val subscriptions by lazy { SubscriptionStore(filesDir) }
-
-    /** Что показать о подписке в «⋮»: пересчитывается, когда подписка прочитана заново. */
-    private val subNote = MutableStateFlow<SubscriptionNote?>(null)
-    internal val subscriptionNote: StateFlow<SubscriptionNote?> = subNote.asStateFlow()
-
-    /** Снять плашку сети без VPN, как только сервис привязан (страница подписки). */
-    private var linePending = false
-
-    /** Замерить сеть, как только сессия поднята: на каждом открытии и после прерванного замера. */
-    private var openPending = false
+    /** Метка открытия — для замеров в logcat. */
     private var openedAt = 0L
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
@@ -137,20 +106,19 @@ class MainActivity : FragmentActivity() {
         // Спрошено — когда ответ получен: диалог, прерванный уходом экрана, спросится снова.
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ASKED, true).apply()
         log("разрешения: " + granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" })
-        afterPermissions()
     }
 
     /** Почему Ленту не отдали (слова под «поделиться Лентой»); null — нечего сказать. */
     private val note = MutableStateFlow<String?>(null)
     internal val shareNote: StateFlow<String?> = note.asStateFlow()
 
-    /** Сканер QR (zxing): текст QR — тем же путём, что буфер. Возврат из него — не новое открытие. */
+    /** Сканер QR (zxing): текст QR — тем же путём, что буфер. */
     private val qr = registerForActivityResult(ScanContract()) { r ->
         vm.answered()
         r.contents?.let(::input)
     }
 
-    /** Системный выбор «куда отправить»: возврат из него — не новое открытие (замер сети не повторяется). */
+    /** Системный выбор «куда отправить». */
     private val chooser = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         vm.answered()
     }
@@ -160,67 +128,48 @@ class MainActivity : FragmentActivity() {
         if (r.resultCode == RESULT_OK) {
             startVpn()
         } else {
+            // VPN не будет — сервис экрану держать незачем ([MainViewModel.hold]).
             vm.refused()
-            // VPN не будет — сервис экрану держать незачем.
-            release()
             log("согласие на VPN не дано")
         }
     }
 
-    private val connection = object : ServiceConnection {
+    private val connection: ServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-            val s = (binder as PodborVpnService.LocalBinder).service
-            vm.attach(s)
-            service.value = s
-            openIfPending()
-            lineIfPending()
+            vm.attach((binder as PodborVpnService.LocalBinder).service)
         }
 
-        override fun onServiceDisconnected(name: ComponentName) {
-            vm.detach()
-            service.value = null
-        }
+        override fun onServiceDisconnected(name: ComponentName) = vm.detach()
 
         /** Привязка умерла насовсем: отвязаться и привязаться заново — к следующему запуску сервиса. */
         override fun onBindingDied(name: ComponentName) {
             log("экран: привязка к сервису умерла — привязываюсь заново")
-            unbindService(this)
-            bound = false
+            linked.unbind()
             vm.detach()
-            service.value = null
-            bindIfStarted()
+            linked.bind()
         }
     }
 
+    /** Основная привязка без BIND_AUTO_CREATE: экран не держит сервис живым и не создаёт его сам. */
+    private val linked: Binding = Binding(connection, 0)
+
     /**
-     * Держит сервис, пока VPN нет, а нужен анализ или плашка сети (страница подписки): привязка с BIND_AUTO_CREATE.
-     * Сервис ею создаётся без foreground и без VPN; основная привязка ([connection], без создания) подключается к нему.
-     * Отпускается, когда стартует VPN (дальше сервис держит старт) и с уходом экрана.
+     * Держит сервис, пока он нужен экрану без VPN ([MainViewModel.hold]): привязка с BIND_AUTO_CREATE. Сервис ею
+     * создаётся без foreground и без VPN; основная привязка ([connection]) подключается к нему.
      */
     private val keeper = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             // Основная привязка подключается к созданному сервису сама; это — на случай, если она опоздала.
-            if (service.value == null) {
-                val s = (binder as PodborVpnService.LocalBinder).service
-                vm.attach(s)
-                service.value = s
-            }
-            lineIfPending()
+            if (vm.service.value == null) vm.attach((binder as PodborVpnService.LocalBinder).service)
         }
 
         override fun onServiceDisconnected(name: ComponentName) = Unit
     }
-    private var kept = false
+    private val kept = Binding(keeper, BIND_AUTO_CREATE)
 
-    /** «назад»: на анализе — прервать его (частичное сохраняется); на странице подписки при сохранённой — к главному. */
+    /** «назад» — когда ViewModel говорит, что есть куда ([MainViewModel.canGoBack]). */
     private val back = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() {
-            when (pageOf(hasSubscription.value == true, scan.value)) {
-                is Page.Scanning -> finishScan()
-                Page.AddSubscription -> backToMain()
-                Page.Main -> Unit
-            }
-        }
+        override fun handleOnBackPressed() = vm.back()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -241,14 +190,14 @@ class MainActivity : FragmentActivity() {
         )
         onBackPressedDispatcher.addCallback(this, back)
         // Привязка без создания — сразу: к сервису, созданному стартом VPN или анализом, экран подключится сам.
-        bindIfStarted()
+        linked.bind()
         watch(vm.board)
         showPages()
+        bridge()
         if (savedInstanceState == null) {
             opening("холодный старт")
             shared(intent)
         } else {
-            // Открытый вопрос (шторка, окно системы) — во ViewModel: пересоздание его не закрывает и не повторяет.
             restore(savedInstanceState.getString(PHASE))
         }
     }
@@ -259,6 +208,7 @@ class MainActivity : FragmentActivity() {
         shared(intent)
     }
 
+    /** Возврат из открытого вопроса (окно системы, шторка) — не новое открытие. */
     override fun onRestart() {
         super.onRestart()
         if (vm.ask.value == null) opening("возврат")
@@ -266,7 +216,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putString(PHASE, phaseKind(scan.value))
+        outState.putString(PHASE, phaseKind(vm.scan.value))
     }
 
     /** Вид фазы для Bundle: доски и ошибки не сохраняем — они выводятся заново. */
@@ -277,49 +227,28 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * Пересоздание Activity: «Сменить подписку» остаётся выбором; прерванный пересозданием анализ (или неудачная
-     * попытка — она могла погасить VPN) — заново через открытие: есть подписка — главный и VPN, нет — «Добавь подписку».
+     * Пересоздание Activity. ViewModel пережил его — всё на месте. Новый (процесс убит): «Сменить подписку» остаётся
+     * выбором; прерванный анализ (или неудачная попытка — она могла погасить VPN) — заново через открытие.
      */
     private fun restore(kind: String?) {
+        if (vm.scan.value != ScanPhase.Idle) return
         when (kind) {
-            "choosing" -> scan.value = ScanPhase.Choosing
-            "scan" -> {
-                opening("пересоздание")
-                return
-            }
+            "choosing" -> vm.changeSubscription()
+            "scan" -> opening("пересоздание")
         }
-        lifecycleScope.launch { hasSubscription.value = loadSubscription() }
     }
 
     override fun onDestroy() {
-        if (bound) unbindService(connection)
-        bound = false
-        release()
+        linked.unbind()
+        kept.unbind()
         super.onDestroy()
     }
 
-    /**
-     * Новое открытие экрана: метка для замера, разрешения (один раз), дальше — по странице: на главном VPN и замер
-     * сети, на странице подписки — только замер линии (VPN без подписки не поднимается), на анализе — ничего.
-     */
+    /** Новое открытие экрана: метка для замера; решает ViewModel, разрешения — один раз. */
     private fun opening(why: String) {
         openedAt = SystemClock.elapsedRealtime()
         log("экран: открыт ($why); от старта процесса ${openedAt - Process.getStartElapsedRealtime()} мс")
-        lifecycleScope.launch {
-            val has = loadSubscription()
-            hasSubscription.value = has
-            when (pageOf(has, scan.value)) {
-                Page.Main -> openPending = true
-                Page.AddSubscription -> linePending = true
-                is Page.Scanning -> return@launch
-            }
-            if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ASKED, false)) {
-                afterPermissions()
-            } else {
-                // Сначала шторка — зачем геолокация; системный запрос — только после ответа в ней.
-                vm.asked(Ask.Disclosure)
-            }
-        }
+        vm.opened(askPermissions = !getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ASKED, false))
     }
 
     /** Ответ в шторке геолокации → системный запрос (отказ — без геолокации; уведомления спрашиваются всё равно). */
@@ -331,40 +260,25 @@ class MainActivity : FragmentActivity() {
         if (wanted.isEmpty()) {
             vm.answered()
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ASKED, true).apply()
-            afterPermissions()
         } else {
             vm.asked(Ask.Permissions)
             permissions.launch(wanted.toTypedArray())
         }
     }
 
-    /** Разрешения спрошены: на главном — VPN, на странице подписки — плашка сети. */
-    private fun afterPermissions() {
-        when (pageOf(hasSubscription.value == true, scan.value)) {
-            Page.Main -> ensureVpn()
-            Page.AddSubscription -> lineIfPending()
-            is Page.Scanning -> Unit
-        }
-    }
-
     /**
-     * Страница под сетью — по [pageOf]: смена вида страницы — транзакция FragmentManager (без back stack; «назад» —
-     * [back]). Пока экран виден: транзакции после onSaveInstanceState запрещены, а вернувшись, экран догонит последнюю.
+     * Страница под сетью — по [MainViewModel.page]: смена вида страницы — транзакция FragmentManager (без back stack;
+     * «назад» — [back]). Пока экран виден: транзакции после onSaveInstanceState запрещены, а вернувшись, экран догонит
+     * последнюю.
      */
     private fun showPages() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                combine(hasSubscription.filterNotNull(), scan, ::pageOf).collect { page ->
-                    back.isEnabled = when (page) {
-                        is Page.Scanning -> true
-                        Page.AddSubscription -> hasSubscription.value == true
-                        Page.Main -> false
-                    }
+                vm.page.filterNotNull().collect { page ->
                     val kind = when (page) {
                         Page.Main -> MainFragment::class.java
                         Page.AddSubscription, is Page.Scanning -> SubscriptionFragment::class.java
                     }
-                    if (page !is Page.Main) keep()
                     if (supportFragmentManager.findFragmentById(R.id.page)?.javaClass != kind) {
                         log("экран: страница ${kind.simpleName}")
                         supportFragmentManager.beginTransaction()
@@ -378,80 +292,28 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun keep() {
-        if (!kept) kept = bindService(Intent(this, PodborVpnService::class.java), keeper, BIND_AUTO_CREATE)
-    }
-
-    private fun release() {
-        if (kept) unbindService(keeper)
-        kept = false
-    }
-
-    private fun lineIfPending() {
-        val s = service.value ?: return
-        if (!linePending || vm.ask.value != null) return
-        linePending = false
-        lifecycleScope.launch { s.measureLine() }
+    /**
+     * Мост к системе: сервис держится, пока он нужен без VPN (и в фоне — анализ идёт); старт VPN выдаётся, когда
+     * ViewModel его ждёт, — только при видимом экране: согласие — окно системы.
+     */
+    private fun bridge() {
+        lifecycleScope.launch { vm.hold.collect { if (it) kept.bind() else kept.unbind() } }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { vm.canGoBack.collect { back.isEnabled = it } }
+                launch { vm.needsStart.collect { if (it) ensureVpn() } }
+            }
+        }
     }
 
     /** Текст подписки (буфер, QR, «поделиться»): не принялся — словами на странице подписки, иначе — анализ. */
     internal fun input(raw: String) {
-        // Посреди анализа новый вход (поделиться, QR) не перебивает идущий и не подменяет его доску ошибкой.
-        if (scanJob?.isActive == true) return
-        when (val r = inputOf(raw)) {
-            is Either.Left -> scan.value = ScanPhase.Failed(r.value)
-            is Either.Right -> analyze(r.value)
-        }
+        log("подписка: вход на анализ")
+        vm.input(inputOf(raw))
     }
 
-    /**
-     * Анализ в сервисе (VPN гаснет на его время): доски — из IO в [scan], экран их только читает. Один за раз: вход,
-     * пришедший посреди, не перебивает идущий.
-     */
-    private fun analyze(input: SubscriptionInput) {
-        if (scanJob?.isActive == true) return
-        scan.value = ScanPhase.Running(null)
-        keep()
-        log("подписка: анализ начат")
-        scanJob = lifecycleScope.launch {
-            val s = service.filterNotNull().first()
-            val out = s.analyze(input) { b -> scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it } }
-            hasSubscription.value = loadSubscription()
-            scan.value = when (out) {
-                is Either.Left -> ScanPhase.Failed(out.value)
-                is Either.Right -> ScanPhase.Done(out.value)
-            }
-            log("подписка: анализ " + if (out.isRight()) "кончился" else "не принялся")
-        }
-    }
+    internal fun finishScan() = vm.finishScan()
 
-    /**
-     * «ОК» (или «ОК, дальше», «назад» на анализе): идущий анализ прерывается — драйвер сохраняет частичный паспорт;
-     * подписка сохранена — главный и VPN, как при открытии; не успела сохраниться — снова «Добавь подписку».
-     */
-    internal fun finishScan() {
-        // Двойное «ОК» — один выход: второе ждало бы ту же отмену и открывало бы экран повторно.
-        if (finishing) return
-        finishing = true
-        lifecycleScope.launch {
-            scanJob?.cancelAndJoin()
-            scanJob = null
-            val has = loadSubscription()
-            hasSubscription.value = has
-            scan.value = ScanPhase.Idle
-            finishing = false
-            if (has) opening("подписка принята")
-        }
-    }
-
-    /** Подписка прочитана заново: есть ли она; заметка для «⋮» — по ней же. */
-    private suspend fun loadSubscription(): Boolean {
-        val s = subscriptions.load()
-        subNote.value = s?.let { noteOf(it, System.currentTimeMillis()) }
-        return s != null
-    }
-
-    /** «⋮» → «Поддержка провайдера»: ссылка провайдера — браузером или его приложением; открыть нечем — молча. */
     /** Чип «обновить до …»: ссылка на APK — качает и ставит сам Android. */
     internal fun openLink(url: String) {
         log("экран: обновить")
@@ -464,24 +326,13 @@ class MainActivity : FragmentActivity() {
         Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(BuildConfig.DONATE_URL))) }
     }
 
+    /** «⋮» → «Поддержка провайдера»: ссылка провайдера — браузером или его приложением; открыть нечем — молча. */
     internal fun openSupport(url: String) {
         log("экран: поддержка провайдера")
         Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
     }
 
-    /** «⋮» → «Сменить подписку». VPN не трогаем: его погасит анализ новой подписки, если до него дойдёт. */
-    internal fun changeSubscription() {
-        scan.value = ScanPhase.Choosing
-    }
-
-    /** «назад» со страницы подписки при сохранённой: к главному; анализ мог погасить VPN — открытие его поднимет. */
-    private fun backToMain() {
-        val tried = scan.value is ScanPhase.Failed
-        scan.value = ScanPhase.Idle
-        // Попытка могла погасить VPN — открытие его поднимет (и отпустит привязку в startVpn); иначе VPN как был —
-        // сервис держит его старт, экрану держать незачем.
-        if (tried) opening("назад к главному") else release()
-    }
+    internal fun changeSubscription() = vm.changeSubscription()
 
     /** Кнопка «QR»: сканер zxing; возврат из него — не новое открытие. */
     internal fun scanQr() {
@@ -516,31 +367,10 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun startVpn() {
+        // Сначала старт: дальше сервис держит он, и отпущенная после него привязка ([MainViewModel.hold]) его не гасит.
+        startForegroundService(Intent(this, PodborVpnService::class.java).setAction(PodborVpnService.ACTION_START))
         vm.issued()
-        val intent = Intent(this, PodborVpnService::class.java)
-        startForegroundService(Intent(intent).setAction(PodborVpnService.ACTION_START))
-        bindIfStarted()
-        // Дальше сервис держит старт: экран его живым не держит (как до страницы подписки).
-        release()
-        openIfPending()
-    }
-
-    /** Привязка без BIND_AUTO_CREATE: экран не держит сервис живым и не создаёт его сам. */
-    private fun bindIfStarted() {
-        if (!bound) bound = bindService(Intent(this, PodborVpnService::class.java), connection, 0)
-    }
-
-    private fun openIfPending() {
-        val s = service.value ?: return
-        if (!openPending) return
-        openPending = false
-        // Действие живёт в сессии сервиса: уход экрана отменяет только ожидание, не замер.
-        // Замера не было (быстрое выкл→вкл, неудачный подъём) — ждём следующего подъёма.
-        lifecycleScope.launch {
-            if (!s.open()) openPending = true
-            s.refreshSubscription()
-            loadSubscription()
-        }
+        linked.bind()
     }
 
     /** «повторить» после неудачного подъёма: тот же путь, что при входе — согласие могли отозвать, prepare спросит. */
@@ -559,9 +389,8 @@ class MainActivity : FragmentActivity() {
     internal fun turnOn() = opening("включить")
 
     internal fun press() {
-        val s = service.value ?: return
         log("экран: нажатие")
-        lifecycleScope.launch { s.press() }
+        vm.press()
     }
 
     /**
@@ -598,16 +427,24 @@ class MainActivity : FragmentActivity() {
         chooser.launch(Intent.createChooser(send, "Поделиться Лентой"))
     }
 
-    /**
-     * Пока экран виден: подъём сессии открывает отложенный замер; метки в logcat — без имён и адресов
-     * (смена кнопки, плашка сети после открытия).
-     */
+    /** Привязка к сервису с [flags]: держится до [unbind]; повторная — ничего. */
+    private inner class Binding(private val conn: ServiceConnection, private val flags: Int) {
+        private var held = false
+
+        fun bind() {
+            if (!held) held = bindService(Intent(this@MainActivity, PodborVpnService::class.java), conn, flags)
+        }
+
+        fun unbind() {
+            if (held) unbindService(conn)
+            held = false
+        }
+    }
+
+    /** Пока экран виден: метки в logcat — без имён и адресов (смена кнопки, плашка сети после открытия). */
     private fun watch(boards: Flow<Board>) {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch {
-                    service.keepLast { it.session }.collect { if (it == SessionView.Up) openIfPending() }
-                }
                 launch {
                     boards.map { it.button }.distinctUntilChanged().collect { log("экран: кнопка $it") }
                 }

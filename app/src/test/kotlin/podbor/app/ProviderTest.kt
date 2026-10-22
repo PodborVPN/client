@@ -5,7 +5,7 @@ import io.kotest.matchers.shouldBe
 import podbor.app.sub.Fetched
 import podbor.app.sub.ProviderInfo
 import podbor.app.sub.Subscription
-import podbor.app.sub.SubscriptionNote
+import podbor.screen.SubscriptionNote
 import podbor.app.sub.fetched
 import podbor.app.sub.noteOf
 import podbor.app.sub.providerOf

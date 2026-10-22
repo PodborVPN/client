@@ -13,3 +13,13 @@ enum class Ask {
     Chooser,
     Qr,
 }
+
+/**
+ * Чего экран ждёт после открытия в [Open.atMs]/[Line.atMs]: на главном — сессию и замер сети на ней, на странице
+ * подписки — плашку сети без VPN. Каждое открытие — новое значение: оно сменяет недоделанное прежнее.
+ */
+sealed interface Want {
+    data object Idle : Want
+    data class Open(val atMs: Long) : Want
+    data class Line(val atMs: Long) : Want
+}

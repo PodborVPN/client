@@ -23,7 +23,7 @@ class MainFragment : Fragment() {
                 val known by screen.vm.facts.collectAsStateWithLifecycle()
                 val note by screen.shareNote.collectAsStateWithLifecycle()
                 val origin by screen.vm.origin.collectAsStateWithLifecycle()
-                val subscription by screen.subscriptionNote.collectAsStateWithLifecycle()
+                val subscription by screen.vm.subscriptionNote.collectAsStateWithLifecycle()
                 PodborTheme {
                     MainScreen(
                         board, linkOf(known), origin, note, subscription,

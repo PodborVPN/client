@@ -36,8 +36,8 @@ import podbor.app.net.Telephony
 import podbor.app.net.UnderlyingNetwork
 import podbor.app.redact
 import podbor.app.sub.FilePassportStore
-import podbor.app.sub.InputError
-import podbor.app.sub.SubscriptionInput
+import podbor.screen.InputError
+import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.app.ui.MainActivity
 import podbor.app.xray.GeoHolder
@@ -219,21 +219,21 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     /** Экран открыт: см. [Desk.open]. `false` — замера не было, экран откроет его на следующем подъёме. */
-    suspend fun open(): Boolean = desk.open()
+    override suspend fun open(): Boolean = desk.open()
 
     /** Плашка сети без VPN (страница подписки): см. [Desk.measureLine]. */
-    suspend fun measureLine() = desk.measureLine()
+    override suspend fun measureLine() = desk.measureLine()
 
     /** Тихое обновление подписки по ссылке. */
-    suspend fun refreshSubscription() = desk.refreshSubscription()
+    override suspend fun refreshSubscription() = desk.refreshSubscription()
 
     override suspend fun latestRelease() = desk.latestRelease()
 
     /** Нажатие: см. [Desk.press]. */
-    suspend fun press() = desk.press()
+    override suspend fun press() = desk.press()
 
     /** Анализ подписки: см. [Desk.analyze] — VPN гаснет на время анализа, Xray анализа без TUN. */
-    suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
+    override suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
         desk.analyze(input, onBoard)
 
     /** Сессия и выход общего балансера в ней ([podbor.driver.ExitsState.general]): у новой сессии — свои выходы. */

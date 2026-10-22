@@ -6,8 +6,8 @@ import io.kotest.datatest.withData
 import io.kotest.matchers.shouldBe
 import podbor.app.net.readCapped
 import podbor.app.sub.Fetched
-import podbor.app.sub.InputError
-import podbor.app.sub.SubscriptionInput
+import podbor.screen.InputError
+import podbor.screen.SubscriptionInput
 import podbor.app.sub.fetchText
 import podbor.app.sub.inputOf
 import podbor.app.sub.unwrapTranslated

@@ -1,11 +1,7 @@
-package podbor.app
+package podbor.screen
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import podbor.app.sub.InputError
-import podbor.app.ui.Page
-import podbor.app.ui.ScanPhase
-import podbor.app.ui.pageOf
 import podbor.core.ScanBoard
 
 private val board = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(), finished = false)

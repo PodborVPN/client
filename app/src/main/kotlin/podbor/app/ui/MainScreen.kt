@@ -60,7 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import podbor.app.R
-import podbor.app.sub.SubscriptionNote
+import podbor.screen.SubscriptionNote
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.ServiceId

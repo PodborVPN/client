@@ -6,6 +6,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import podbor.screen.SubscriptionNote
 
 /**
  * Что провайдер сказал о подписке в ответе: стандарт панелей (Marzban, Remnawave, Happ) —
@@ -55,14 +56,6 @@ private fun userinfoOf(v: String): Map<String, Long> =
         val (k, n) = part.split('=', limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
         n.trim().toLongOrNull()?.let { k.trim().lowercase() to it }
     }.toMap()
-
-/** Что показать о подписке: имя, строки сведений, ссылка поддержки, объявление провайдера. */
-data class SubscriptionNote(
-    val title: String?,
-    val lines: List<String>,
-    val supportUrl: String?,
-    val announce: String?,
-)
 
 private val DAY = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 

@@ -1,6 +1,5 @@
-package podbor.app.ui
+package podbor.screen
 
-import podbor.app.sub.InputError
 import podbor.core.ScanBoard
 
 /** Страница под сетью: добавить подписку, анализ подписки, главный экран. */

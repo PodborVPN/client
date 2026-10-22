@@ -27,9 +27,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import podbor.app.sub.Fetched
-import podbor.app.sub.InputError
+import podbor.screen.InputError
 import podbor.app.sub.Subscription
-import podbor.app.sub.SubscriptionInput
+import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.screen.LATEST_RELEASE_API
 import podbor.screen.Release

@@ -26,11 +26,15 @@ import podbor.screen.Offer
 @Config(sdk = [35])
 class MainViewModelWiringTest {
 
-    /** Служба не запущена: привязка без создания не удаётся (как на телефоне до первого старта VPN). */
+    /**
+     * Служба не запущена: привязка без создания не удаётся (как на телефоне до первого старта VPN). Разрешения уже
+     * спрошены: шторка геолокации — своё окно, и пересозданный видимый экран крутил бы её кадры без конца.
+     */
     @Before
-    fun noService() {
+    fun noServiceAndAsked() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         shadowOf(app).declareComponentUnbindable(ComponentName(app, PodborVpnService::class.java))
+        app.getSharedPreferences("podbor", Context.MODE_PRIVATE).edit().putBoolean("permissions_asked", true).commit()
     }
 
     @Test

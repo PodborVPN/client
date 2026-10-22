@@ -18,47 +18,6 @@ import podbor.core.HARDCODED_SERVICES
 import podbor.core.ServiceId
 import podbor.core.board
 
-/** Сервис глазами экрана: значения — потоками, релиз — по запросу (счётчик вызовов, ответ подменяется). */
-private class FakePort : ServicePort {
-    override val session = MutableStateFlow<SessionView>(SessionView.Down)
-    override val board = MutableStateFlow(board(HARDCODED_SERVICES, emptyMap()))
-    override val exitOrigin = MutableStateFlow<Map<ServiceId, ExitOrigin>>(emptyMap())
-    var asked = 0
-    var answer: suspend () -> Release? = { null }
-
-    override suspend fun latestRelease(): Release? {
-        asked++
-        return answer()
-    }
-}
-
-private class FakeMemory(var at: Long? = null, var release: Release? = null) : UpdateMemory {
-    val remembered = mutableListOf<Pair<Long, Release>>()
-    override fun checkedAtMs(): Long? = at
-    override fun known(): Release? = release
-    override fun remember(atMs: Long, release: Release) {
-        remembered += atMs to release
-        at = atMs
-        this.release = release
-    }
-}
-
-private const val HOUR = 3_600_000L
-private val NEWER = Release("v0.9.2", "https://example.org/podbor-0.9.2.apk")
-
-/** ViewModel на часах теста: его область — фоновая область теста, гаснет с концом теста. */
-private fun vmTest(block: suspend TestScope.() -> Unit) = runTest { block() }
-
-private fun TestScope.vm(
-    memory: UpdateMemory = FakeMemory(),
-    selfDistributed: Boolean = true,
-    now: Long = 10 * HOUR,
-    saved: SavedStateHandle = SavedStateHandle(),
-) = MainViewModel("0.9.1", selfDistributed, memory, { now }, saved, backgroundScope)
-
-/** Пока экран подписан на чип — значение живо (как collectAsStateWithLifecycle). */
-private fun TestScope.watching(vm: MainViewModel): Job = backgroundScope.launch { vm.update.collect {} }
-
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest : FunSpec({
 

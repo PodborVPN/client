@@ -14,6 +14,9 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import podbor.screen.Page
+import podbor.screen.pageOf
+import podbor.screen.errorOf
 
 /**
  * Страница подписки под сетью: «Добавь подписку» и анализ — одна страница, переход между ними внутри (плавно), без
@@ -25,8 +28,8 @@ class SubscriptionFragment : Fragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             val screen = requireActivity() as MainActivity
             setContent {
-                val phase by screen.phase.collectAsStateWithLifecycle()
-                val has by screen.subscribed.collectAsStateWithLifecycle()
+                val phase by screen.vm.scan.collectAsStateWithLifecycle()
+                val has by screen.vm.subscribed.collectAsStateWithLifecycle()
                 PodborTheme {
                     // По виду страницы, не по доске: новая доска анализа — не новый переход.
                     AnimatedContent(

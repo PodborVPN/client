@@ -26,9 +26,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import podbor.app.sub.Fetched
-import podbor.app.sub.InputError
+import podbor.screen.InputError
 import podbor.app.sub.Subscription
-import podbor.app.sub.SubscriptionInput
+import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.fetchText
 import podbor.app.sub.fetched
