@@ -71,6 +71,22 @@ class SessionHost<L : Any>(
     private val stateFlow = MutableStateFlow<SessionState<L>>(SessionState.Down)
     val state: StateFlow<SessionState<L>> = stateFlow.asStateFlow()
 
+    /**
+     * Снимок для экрана — тут же, за каждой записью [state], без своей области: сервис, гаснущий на итоге, не теряет
+     * его. Пишется из нового значения [state], а не из своего: при гонке записей сходится к последнему.
+     */
+    val view: StateFlow<SessionView>
+        field = MutableStateFlow<SessionView>(SessionView.Down)
+
+    private fun set(s: SessionState<L>) {
+        stateFlow.value = s
+        publish()
+    }
+
+    private fun publish() {
+        view.value = stateFlow.value.view()
+    }
+
     private val commands = Channel<Command>(Channel.UNLIMITED)
 
     /**
@@ -108,6 +124,7 @@ class SessionHost<L : Any>(
                 SessionState.Starting, is SessionState.Up -> it
             }
         }
+        publish()
         commands.trySend(Command.Start(startId))
     }
 
@@ -119,20 +136,20 @@ class SessionHost<L : Any>(
         lastStart.set(startId)
         if (job?.isActive == true) return
         job?.join()
-        stateFlow.value = SessionState.Starting
+        set(SessionState.Starting)
         job = scope.launch {
             val failed = resourceScope {
                 when (val r = bring()) {
                     is Either.Left -> r
                     // supervisorScope: сбой одного действия не роняет VPN; отмена сессии отменяет все действия.
                     is Either.Right -> supervisorScope {
-                        stateFlow.value = SessionState.Up(r.value, this)
+                        set(SessionState.Up(r.value, this))
                         awaitCancellation()
                     }
                 }
             }
             // Сюда доходит только неудачный подъём: область уже освобождена. Failed остаётся итогом.
-            stateFlow.value = SessionState.Failed(failed.value)
+            set(SessionState.Failed(failed.value))
             ended(lastStart.get())
         }
     }
@@ -143,7 +160,7 @@ class SessionHost<L : Any>(
         // Неудачный подъём остаётся итогом (Failed), остальное — Down.
         when (stateFlow.value) {
             is SessionState.Failed -> Unit
-            SessionState.Down, SessionState.Starting, is SessionState.Up -> stateFlow.value = SessionState.Down
+            SessionState.Down, SessionState.Starting, is SessionState.Up -> set(SessionState.Down)
         }
         stopsFlow.update { it + 1 }
         // Сервис мог быть создан самим стопом — его тоже надо отпустить; старт после стопа Android сохранит сам.

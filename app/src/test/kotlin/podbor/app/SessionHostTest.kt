@@ -172,4 +172,21 @@ class SessionHostTest : FunSpec({
         SessionState.Up(Live(1), CoroutineScope(Dispatchers.Unconfined)).view() shouldBe SessionView.Up
         SessionState.Failed(EngineError.Failed("runXray")).view() shouldBe SessionView.Failed("runXray")
     }
+
+    test("снимок для экрана — вместе с состоянием: сервис, гаснущий на неудаче, уже видит Failed") {
+        runTest {
+            var seenAtEnd: SessionView? = null
+            lateinit var host: SessionHost<Live>
+            host = SessionHost(
+                scope = backgroundScope,
+                bring = { EngineError.Failed("runXray").left() },
+                // Здесь Android зовёт stopSelf → onDestroy гасит область сервиса: снимок должен быть готов до этого.
+                ended = { seenAtEnd = host.view.value },
+            )
+            host.start(1)
+            host.view.value shouldBe SessionView.Starting
+            runCurrent()
+            seenAtEnd shouldBe SessionView.Failed("runXray")
+        }
+    }
 })
