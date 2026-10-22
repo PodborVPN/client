@@ -61,8 +61,8 @@ class NetworkFragment : Fragment() {
             consumeWindowInsets = false
             val screen = requireActivity() as MainActivity
             setContent {
-                val board by screen.boards.collectAsStateWithLifecycle()
-                val update by screen.update.collectAsStateWithLifecycle()
+                val board by screen.vm.board.collectAsStateWithLifecycle()
+                val update by screen.vm.update.collectAsStateWithLifecycle()
                 PodborTheme { NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink) }
             }
         }

@@ -19,10 +19,10 @@ class MainFragment : Fragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             val screen = requireActivity() as MainActivity
             setContent {
-                val board by screen.boards.collectAsStateWithLifecycle()
-                val known by screen.facts.collectAsStateWithLifecycle()
+                val board by screen.vm.board.collectAsStateWithLifecycle()
+                val known by screen.vm.facts.collectAsStateWithLifecycle()
                 val note by screen.shareNote.collectAsStateWithLifecycle()
-                val origin by screen.origin.collectAsStateWithLifecycle()
+                val origin by screen.vm.origin.collectAsStateWithLifecycle()
                 val subscription by screen.subscriptionNote.collectAsStateWithLifecycle()
                 PodborTheme {
                     MainScreen(

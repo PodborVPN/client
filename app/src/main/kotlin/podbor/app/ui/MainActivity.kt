@@ -17,6 +17,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.FileProvider
@@ -25,6 +26,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import arrow.core.Either
 import arrow.core.raise.either
 import com.journeyapps.barcodescanner.ScanContract
@@ -38,7 +41,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
@@ -59,22 +61,16 @@ import podbor.app.sub.SubscriptionNote
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.noteOf
-import podbor.screen.Offer
-import podbor.screen.Release
-import podbor.screen.checkDue
-import podbor.screen.offerOf
 import podbor.app.vpn.PodborVpnService
 import podbor.core.Board
 import podbor.core.CardStatus
-import podbor.core.HARDCODED_SERVICES
 import podbor.core.NetworkCard
-import podbor.core.ServiceId
 import podbor.core.board
-import podbor.screen.LinkFacts
+import podbor.screen.ExitOrigin
+import podbor.screen.MainViewModel
 import podbor.screen.SessionView
 import podbor.screen.Start
 import podbor.screen.keepLast
-import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
@@ -82,9 +78,6 @@ private const val ASKED = "permissions_asked"
 private const val REFUSED = "vpn_refused"
 private const val PHASE = "scan_phase"
 private const val DISCLOSING = "location_disclosing"
-private const val UPDATE_CHECKED = "update_checked_at"
-private const val UPDATE_TAG = "update_tag"
-private const val UPDATE_URL = "update_url"
 
 private fun log(msg: String) {
     Log.i(TAG, msg)
@@ -101,17 +94,17 @@ class MainActivity : FragmentActivity() {
     private val service = MutableStateFlow<PodborVpnService?>(null)
     private var bound = false
 
-    /**
-     * Состояние экрана, а не подписки: факты о VPN и последний экран сервиса. Заполняются сборщиком на всю жизнь
-     * Activity — и пока экран в фоне (иначе Down при отзыве из Настроек никто бы не увидел).
-     */
-    private val knownFacts = MutableStateFlow(LinkFacts())
-    private val lastBoard = MutableStateFlow(board(HARDCODED_SERVICES, emptyMap()))
-    private val lastOrigin = MutableStateFlow<Map<ServiceId, ExitOrigin>>(emptyMap())
-
-    internal val facts: StateFlow<LinkFacts> = knownFacts.asStateFlow()
-    internal val boards: StateFlow<Board> = lastBoard.asStateFlow()
-    internal val origin: StateFlow<Map<ServiceId, ExitOrigin>> = lastOrigin.asStateFlow()
+    /** Значения экрана — в общем ViewModel: переживают пересоздание, фрагменты подписаны на них. */
+    internal val vm: MainViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                MainViewModel(
+                    BuildConfig.VERSION_NAME, BuildConfig.SELF_DISTRIBUTED,
+                    PrefsUpdateMemory(getSharedPreferences(PREFS, MODE_PRIVATE)), System::currentTimeMillis,
+                )
+            }
+        }
+    }
 
     /** Сохранена ли подписка; null — ещё не прочитали (страницы нет). */
     private val hasSubscription = MutableStateFlow<Boolean?>(null)
@@ -150,10 +143,6 @@ class MainActivity : FragmentActivity() {
         afterPermissions()
     }
 
-    /** Есть новее на GitHub — что предложить (чип в строке сети); нет или сборка не с GitHub — null. */
-    private val offer = MutableStateFlow<Offer?>(null)
-    internal val update: StateFlow<Offer?> = offer.asStateFlow()
-
     /** Шторка «Зачем Podbor геолокация» открыта: ждёт ответа до системного запроса. */
     private val disclosing = MutableStateFlow(false)
 
@@ -177,7 +166,7 @@ class MainActivity : FragmentActivity() {
         if (r.resultCode == RESULT_OK) {
             startVpn()
         } else {
-            knownFacts.update { it.refused() }
+            vm.refused()
             // VPN не будет — сервис экрану держать незачем.
             release()
             log("согласие на VPN не дано")
@@ -186,14 +175,15 @@ class MainActivity : FragmentActivity() {
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-            knownFacts.update { it.bound() }
-            service.value = (binder as PodborVpnService.LocalBinder).service
+            val s = (binder as PodborVpnService.LocalBinder).service
+            vm.attach(s)
+            service.value = s
             openIfPending()
             lineIfPending()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
-            knownFacts.update { it.unbound() }
+            vm.detach()
             service.value = null
         }
 
@@ -202,7 +192,7 @@ class MainActivity : FragmentActivity() {
             log("экран: привязка к сервису умерла — привязываюсь заново")
             unbindService(this)
             bound = false
-            knownFacts.update { it.unbound() }
+            vm.detach()
             service.value = null
             bindIfStarted()
         }
@@ -216,7 +206,11 @@ class MainActivity : FragmentActivity() {
     private val keeper = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             // Основная привязка подключается к созданному сервису сама; это — на случай, если она опоздала.
-            if (service.value == null) service.value = (binder as PodborVpnService.LocalBinder).service
+            if (service.value == null) {
+                val s = (binder as PodborVpnService.LocalBinder).service
+                vm.attach(s)
+                service.value = s
+            }
             lineIfPending()
         }
 
@@ -240,13 +234,8 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
         openedAt = SystemClock.elapsedRealtime()
-        if (savedInstanceState?.getBoolean(REFUSED) == true) knownFacts.update { it.refused() }
-        lifecycleScope.launch { service.keepLast { it.session }.collect { s -> knownFacts.update { it.seen(s) } } }
-        lifecycleScope.launch { service.keepLast { it.board }.collect { lastBoard.value = it } }
-        lifecycleScope.launch { service.keepLast { it.exitOrigin }.collect { lastOrigin.value = it } }
+        if (savedInstanceState?.getBoolean(REFUSED) == true) vm.refused()
         setContentView(R.layout.activity_main)
-        // Последний известный релиз — сразу: чип виден и до новой проверки, и без сети.
-        if (BuildConfig.SELF_DISTRIBUTED) offer.value = offerOf(BuildConfig.VERSION_NAME, knownRelease())
         // Хозяин шторки геолокации: сама шторка — своё окно поверх страниц, месту в разметке не нужна.
         addContentView(
             ComposeView(this).apply {
@@ -260,8 +249,7 @@ class MainActivity : FragmentActivity() {
         onBackPressedDispatcher.addCallback(this, back)
         // Привязка без создания — сразу: к сервису, созданному стартом VPN или анализом, экран подключится сам.
         bindIfStarted()
-        watchUpdates()
-        watch(lastBoard)
+        watch(vm.board)
         showPages()
         if (savedInstanceState == null) {
             opening("холодный старт")
@@ -289,7 +277,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(REFUSED, knownFacts.value.start == Start.Refused)
+        outState.putBoolean(REFUSED, vm.facts.value.start == Start.Refused)
         outState.putString(PHASE, phaseKind(scan.value))
         outState.putBoolean(DISCLOSING, disclosing.value)
     }
@@ -536,14 +524,14 @@ class MainActivity : FragmentActivity() {
             null -> startVpn()
             is Intent -> {
                 asking = true
-                knownFacts.update { it.askingConsent() }
+                vm.consentAsked()
                 consent.launch(ask)
             }
         }
     }
 
     private fun startVpn() {
-        knownFacts.update { it.issued() }
+        vm.issued()
         val intent = Intent(this, PodborVpnService::class.java)
         startForegroundService(Intent(intent).setAction(PodborVpnService.ACTION_START))
         bindIfStarted()
@@ -568,38 +556,6 @@ class MainActivity : FragmentActivity() {
             s.refreshSubscription()
             loadSubscription()
         }
-    }
-
-    /**
-     * Пока экран виден — спросить о релизе при подключении к сервису и каждой смене сессии (VPN поднялся — туннель для
-     * белых списков). Один поток — проверки идут по очереди; новая смена отменяет начатую.
-     */
-    private fun watchUpdates() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) { service.keepLast { s -> s.session.map { s } }.collectLatest(::checkUpdate) }
-        }
-    }
-
-    /**
-     * Спросить GitHub о последнем релизе — не чаще [checkDue]; ответ запоминается, чип — по нему. Не вышло — время не
-     * ставим: спросим при следующем открытии.
-     */
-    private suspend fun checkUpdate(s: PodborVpnService) {
-        if (!BuildConfig.SELF_DISTRIBUTED) return
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val now = System.currentTimeMillis()
-        if (!checkDue(prefs.getLong(UPDATE_CHECKED, -1).takeIf { it >= 0 }, now)) return
-        val got = s.latestRelease() ?: return
-        prefs.edit().putLong(UPDATE_CHECKED, now).putString(UPDATE_TAG, got.tag).putString(UPDATE_URL, got.url).apply()
-        log("обновлялка: на GitHub ${got.tag}")
-        offer.value = offerOf(BuildConfig.VERSION_NAME, got)
-    }
-
-    private fun knownRelease(): Release? {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val tag = prefs.getString(UPDATE_TAG, null) ?: return null
-        val url = prefs.getString(UPDATE_URL, null) ?: return null
-        return Release(tag, url)
     }
 
     /** «повторить» после неудачного подъёма: тот же путь, что при входе — согласие могли отозвать, prepare спросит. */
@@ -672,7 +628,7 @@ class MainActivity : FragmentActivity() {
                 }
                 launch {
                     // Ярус «текущий VPN» — только вид состояния и откуда выход по сервисам, без имён: метка для замера на телефоне.
-                    combine(boards, lastOrigin) { b, origin ->
+                    combine(boards, vm.origin) { b, origin ->
                         b.cards.joinToString(" ") { "${it.label}:${kindOf(it.status)}/${origin[it.service] ?: ExitOrigin.Chosen}" }
                     }
                         .distinctUntilChanged()

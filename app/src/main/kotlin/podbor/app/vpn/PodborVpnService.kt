@@ -43,6 +43,7 @@ import podbor.app.sub.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.app.ui.MainActivity
 import podbor.app.xray.GeoHolder
+import podbor.screen.ServicePort
 import podbor.screen.SessionView
 import podbor.app.xray.LibXrayConverter
 import podbor.app.xray.LibXrayEngine
@@ -96,7 +97,7 @@ private fun log(msg: String) {
  * (стоп, отзыв VPN системой, уничтожение сервиса) освобождает их в обратном порядке: Xray остановлен → fd закрыт.
  * Наружу — сводный экран ядра и два действия ядра через [LocalBinder].
  */
-class PodborVpnService : VpnService() {
+class PodborVpnService : VpnService(), ServicePort {
 
     inner class LocalBinder : Binder() {
         val service: PodborVpnService get() = this@PodborVpnService
@@ -156,16 +157,16 @@ class PodborVpnService : VpnService() {
     }
 
     /** Сводный экран ядра для Activity: замер линии до подъёма, открытие, нажатие — карточка на сервис. */
-    val board: StateFlow<Board> get() = desk.board
+    override val board: StateFlow<Board> get() = desk.board
 
     /** Чьи выходы в замере открытия восстановлены — для слов «последний рабочий: … — проверяю». */
-    val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
+    override val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
 
     /** Подписка сохранена: без неё экран зовёт «Добавь подписку». */
     suspend fun hasSubscription(): Boolean = desk.hasSubscription()
 
     /** Жизнь сессии для экрана: поднимается, поднята, не поднялась, нет. Что внутри поднятой — экрану не нужно. */
-    val session: StateFlow<SessionView> = host.state.map { it.view() }.stateIn(scope, SharingStarted.Eagerly, SessionView.Down)
+    override val session: StateFlow<SessionView> = host.state.map { it.view() }.stateIn(scope, SharingStarted.Eagerly, SessionView.Down)
 
     /** Номер последней команды Android: отзыв VPN системой приходит без своего. */
     @Volatile
@@ -228,7 +229,7 @@ class PodborVpnService : VpnService() {
     /** Тихое обновление подписки по ссылке. */
     suspend fun refreshSubscription() = desk.refreshSubscription()
 
-    suspend fun latestRelease() = desk.latestRelease()
+    override suspend fun latestRelease() = desk.latestRelease()
 
     /** Нажатие: см. [Desk.press]. */
     suspend fun press() = desk.press()
