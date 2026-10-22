@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -226,7 +227,9 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
         if (list.firstVisibleItemIndex <= 1) list.requestScrollToItem(0)
     }
     LazyColumn(
-        modifier.fillMaxWidth(),
+        // Обрезка снаружи ленты: карточки, уходящие и въезжающие с анимацией, рисуются слоями и иначе на миг ложатся
+        // поверх вердикта и «ОК» под лентой.
+        modifier.fillMaxWidth().clipToBounds(),
         state = list,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
