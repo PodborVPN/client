@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/PodborVPN/client/compare/v0.9.2...v0.9.3) (2026-10-22)
+
+
+### Исправлено
+
+* экран анализа — карточки ленты на въезде и уходе не налезают на вердикт и «ОК» ([a64cc11](https://github.com/PodborVPN/client/commit/a64cc11e3d38d8cf6f38da6474a41038ae5cdc06))
+
 ## [0.9.2](https://github.com/PodborVPN/client/compare/v0.9.1...v0.9.2) (2026-10-22)
 
 
