@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/PodborVPN/client/compare/v0.9.1...v0.9.2) (2026-10-22)
+
+
+### Исправлено
+
+* обновлялка спрашивает о релизе при каждом открытии экрана, не только после нажатия ([e19b9a4](https://github.com/PodborVPN/client/commit/e19b9a4519962d97c618aeeca9108efbad2e7c83))
+
 ## [0.9.1](https://github.com/PodborVPN/client/compare/v0.9.0...v0.9.1) (2026-10-22)
 
 
