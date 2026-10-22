@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import podbor.app.BuildConfig
 import podbor.app.R
 import podbor.app.share.bundleOf
 import podbor.app.share.readTapes
@@ -57,6 +58,10 @@ import podbor.app.sub.SubscriptionNote
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.noteOf
+import podbor.app.update.Offer
+import podbor.app.update.Release
+import podbor.app.update.checkDue
+import podbor.app.update.offerOf
 import podbor.app.vpn.ExitOrigin
 import podbor.app.vpn.PodborVpnService
 import podbor.app.vpn.SessionState
@@ -73,6 +78,9 @@ private const val ASKED = "permissions_asked"
 private const val REFUSED = "vpn_refused"
 private const val PHASE = "scan_phase"
 private const val DISCLOSING = "location_disclosing"
+private const val UPDATE_CHECKED = "update_checked_at"
+private const val UPDATE_TAG = "update_tag"
+private const val UPDATE_URL = "update_url"
 
 private fun log(msg: String) {
     Log.i(TAG, msg)
@@ -137,6 +145,10 @@ class MainActivity : FragmentActivity() {
         log("разрешения: " + granted.entries.joinToString { "${it.key.substringAfterLast('.')}=${it.value}" })
         afterPermissions()
     }
+
+    /** Есть новее на GitHub — что предложить (чип в строке сети); нет или сборка не с GitHub — null. */
+    private val offer = MutableStateFlow<Offer?>(null)
+    internal val update: StateFlow<Offer?> = offer.asStateFlow()
 
     /** Шторка «Зачем Podbor геолокация» открыта: ждёт ответа до системного запроса. */
     private val disclosing = MutableStateFlow(false)
@@ -229,6 +241,8 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch { service.keepLast { it.board }.collect { lastBoard.value = it } }
         lifecycleScope.launch { service.keepLast { it.exitOrigin }.collect { lastOrigin.value = it } }
         setContentView(R.layout.activity_main)
+        // Последний известный релиз — сразу: чип виден и до новой проверки, и без сети.
+        if (BuildConfig.SELF_DISTRIBUTED) offer.value = offerOf(BuildConfig.VERSION_NAME, knownRelease())
         // Хозяин шторки геолокации: сама шторка — своё окно поверх страниц, месту в разметке не нужна.
         addContentView(
             ComposeView(this).apply {
@@ -457,6 +471,18 @@ class MainActivity : FragmentActivity() {
     }
 
     /** «⋮» → «Поддержка провайдера»: ссылка провайдера — браузером или его приложением; открыть нечем — молча. */
+    /** Чип «обновить до …»: ссылка на APK — качает и ставит сам Android. */
+    internal fun openLink(url: String) {
+        log("экран: обновить")
+        Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+    }
+
+    /** «Поддержать»: страница проекта на Boosty. */
+    internal fun donate() {
+        log("экран: поддержать")
+        Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(BuildConfig.DONATE_URL))) }
+    }
+
     internal fun openSupport(url: String) {
         log("экран: поддержка провайдера")
         Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
@@ -534,7 +560,30 @@ class MainActivity : FragmentActivity() {
             if (!s.open()) openPending = true
             s.refreshSubscription()
             loadSubscription()
+            checkUpdate(s)
         }
+    }
+
+    /**
+     * Спросить GitHub о последнем релизе — не чаще [checkDue]; ответ запоминается, чип — по нему. Не вышло — время не
+     * ставим: спросим при следующем открытии.
+     */
+    private suspend fun checkUpdate(s: PodborVpnService) {
+        if (!BuildConfig.SELF_DISTRIBUTED) return
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (!checkDue(prefs.getLong(UPDATE_CHECKED, -1).takeIf { it >= 0 }, now)) return
+        val got = s.latestRelease() ?: return
+        prefs.edit().putLong(UPDATE_CHECKED, now).putString(UPDATE_TAG, got.tag).putString(UPDATE_URL, got.url).apply()
+        log("обновлялка: на GitHub ${got.tag}")
+        offer.value = offerOf(BuildConfig.VERSION_NAME, got)
+    }
+
+    private fun knownRelease(): Release? {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val tag = prefs.getString(UPDATE_TAG, null) ?: return null
+        val url = prefs.getString(UPDATE_URL, null) ?: return null
+        return Release(tag, url)
     }
 
     /** «повторить» после неудачного подъёма: тот же путь, что при входе — согласие могли отозвать, prepare спросит. */

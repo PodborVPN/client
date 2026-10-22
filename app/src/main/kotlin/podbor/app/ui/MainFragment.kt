@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import podbor.app.BuildConfig
 
 /** Главная страница под сетью: кнопка и текущий VPN. Состояние — потоки Activity и сервиса, не поля фрагмента. */
 class MainFragment : Fragment() {
@@ -27,6 +28,7 @@ class MainFragment : Fragment() {
                         board, linkOf(known), origin, note, subscription,
                         onPress = screen::press, onOff = screen::turnOff, onOn = screen::turnOn, onRetry = screen::retry,
                         onShare = screen::share, onChangeSubscription = screen::changeSubscription, onSupport = screen::openSupport,
+                        onDonate = if (BuildConfig.SELF_DISTRIBUTED) screen::donate else null,
                     )
                 }
             }

@@ -5,6 +5,8 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.fx.coroutines.ResourceScope
 import arrow.fx.coroutines.resourceScope
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -31,6 +33,9 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.fetchText
 import podbor.app.sub.fetched
 import podbor.app.sub.refreshDue
+import podbor.app.update.LATEST_RELEASE_API
+import podbor.app.update.Release
+import podbor.app.update.releaseOf
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus
@@ -58,8 +63,6 @@ import podbor.driver.Opening
 import podbor.driver.PassportStore
 import podbor.driver.Warm
 import podbor.driver.paced
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /** Замер открытия вытеснен нажатием (не стоп сессии). */
 private class Superseded : CancellationException("замер вытеснен нажатием")
@@ -356,6 +359,15 @@ class Desk(
         } finally {
             scans.unlock()
         }
+    }
+
+    /**
+     * Последний релиз на GitHub: напрямую, не вышло — туннелем найденного выхода (в белых списках GitHub закрыт).
+     * Не скачался или ответ не разобрать — null, молча: обновлялка не главное.
+     */
+    suspend fun latestRelease(): Release? = withContext(io) {
+        val got = scan.download(LATEST_RELEASE_API) ?: tunnel()?.invoke(LATEST_RELEASE_API)
+        got?.body?.let(::releaseOf)
     }
 
     private fun searching() {

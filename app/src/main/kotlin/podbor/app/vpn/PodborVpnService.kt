@@ -224,6 +224,8 @@ class PodborVpnService : VpnService() {
     /** Тихое обновление подписки по ссылке. */
     suspend fun refreshSubscription() = desk.refreshSubscription()
 
+    suspend fun latestRelease() = desk.latestRelease()
+
     /** Нажатие: см. [Desk.press]. */
     suspend fun press() = desk.press()
 

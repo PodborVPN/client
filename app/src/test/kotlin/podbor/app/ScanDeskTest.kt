@@ -9,6 +9,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import java.nio.file.Files
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +31,8 @@ import podbor.app.sub.InputError
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
+import podbor.app.update.LATEST_RELEASE_API
+import podbor.app.update.Release
 import podbor.app.vpn.Desk
 import podbor.app.vpn.Live
 import podbor.app.vpn.ScanPorts
@@ -40,19 +43,19 @@ import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.GENERAL_FOLLOWS
 import podbor.core.Handshake
-import podbor.core.Passport
-import podbor.core.Seen
-import podbor.core.ServerFacts
-import podbor.core.ServerId
-import podbor.core.Transport
 import podbor.core.LineObservation
 import podbor.core.Memory
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
+import podbor.core.Passport
 import podbor.core.Reach
 import podbor.core.Sample
 import podbor.core.ScanBoard
+import podbor.core.Seen
+import podbor.core.ServerFacts
+import podbor.core.ServerId
 import podbor.core.Telegram
+import podbor.core.Transport
 import podbor.core.WhiteHint
 import podbor.core.WhiteLists
 import podbor.driver.Clock
@@ -67,7 +70,6 @@ import podbor.driver.XrayApi
 import podbor.driver.XrayEngine
 import podbor.driver.classify
 import podbor.driver.detectLine
-import java.nio.file.Files
 
 private val mts = OsNetwork.Cellular("MTS", "25001")
 
@@ -483,6 +485,29 @@ class ScanDeskTest : FunSpec({
             s.desk.refreshSubscription()
             ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
             s.subscriptions.load()?.text shouldBe "vless://тоннель"
+        }
+    }
+
+    test("последний релиз: напрямую с GitHub; не вышло и выхода нет — null") {
+        runTest {
+            val body = """{"tag_name":"v0.10.0","html_url":"https://example.org/rel","assets":[]}"""
+            val asked = mutableListOf<String>()
+            val ok = stand(download = { url -> asked += url; Fetched(body) })
+            ok.desk.latestRelease() shouldBe Release("v0.10.0", "https://example.org/rel")
+            asked shouldBe listOf(LATEST_RELEASE_API)
+            stand(download = { null }).desk.latestRelease() shouldBe null
+        }
+    }
+
+    test("последний релиз: напрямую не вышло, VPN поднят и выход найден — туннелем") {
+        runTest {
+            val body = """{"tag_name":"v0.10.0","html_url":"https://example.org/rel","assets":[]}"""
+            val s = stand(line = whiteLine, download = { null }, downloadVia = { _, _ -> Fetched(body) })
+            s.start()
+            val up = s.up() as SessionState.Up<Live>
+            s.desk.open()
+            up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"))
+            s.desk.latestRelease() shouldBe Release("v0.10.0", "https://example.org/rel")
         }
     }
 })

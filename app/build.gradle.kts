@@ -125,6 +125,10 @@ android {
         versionName = appVersion.first
         versionCode = appVersion.second
         manifestPlaceholders["appLabel"] = "Podbor"
+        // Сборка раздаётся APK с GitHub: обновлялка (чип «обновить до …») и кнопка «Поддержать». В сборке для магазина
+        // — false: магазин запрещает обновляться в обход себя и донаты мимо своей оплаты.
+        buildConfigField("boolean", "SELF_DISTRIBUTED", "true")
+        buildConfigField("String", "DONATE_URL", "\"https://boosty.to/stasyanrazrab\"")
         // Цель — arm64; libXray собран только под него.
         ndk { abiFilters += "arm64-v8a" }
     }

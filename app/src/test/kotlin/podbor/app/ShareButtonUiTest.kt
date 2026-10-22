@@ -6,6 +6,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assert
@@ -34,11 +35,13 @@ class ShareButtonUiTest {
     @Test
     fun shareIsAButton() {
         var shared = 0
+        var donated = 0
         compose.setContent {
             PodborTheme {
                 MainScreen(
                     board(HARDCODED_SERVICES, emptyMap()), Link.Up, emptyMap(), null, null,
                     onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = { shared++ }, onChangeSubscription = {},
+                    onDonate = { donated++ },
                 )
             }
         }
@@ -48,5 +51,21 @@ class ShareButtonUiTest {
             .assertHeightIsAtLeast(48.dp)
             .performClick()
         assertEquals(1, shared)
+        compose.onNodeWithText("Поддержать").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+        assertEquals(1, donated)
+    }
+
+    @Test
+    fun noDonateWhereNotAllowed() {
+        compose.setContent {
+            PodborTheme {
+                MainScreen(
+                    board(HARDCODED_SERVICES, emptyMap()), Link.Up, emptyMap(), null, null,
+                    onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = {}, onChangeSubscription = {},
+                    onDonate = null,
+                )
+            }
+        }
+        compose.onNodeWithText("Поддержать").assertDoesNotExist()
     }
 }

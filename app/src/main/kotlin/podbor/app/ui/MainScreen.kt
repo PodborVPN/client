@@ -1,14 +1,19 @@
 package podbor.app.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -92,6 +97,8 @@ fun MainScreen(
     onShare: () -> Unit,
     onChangeSubscription: () -> Unit,
     onSupport: (String) -> Unit = {},
+    /** «Поддержать» проект; null — кнопки нет (сборка для магазина: там донаты только через его оплату). */
+    onDonate: (() -> Unit)? = null,
 ) {
     Box(
         Modifier
@@ -109,7 +116,7 @@ fun MainScreen(
             Tier("ТЕКУЩИЙ VPN")
             VpnCard(rowsOf(board, link, origin), onRetry)
             subscription?.announce?.let { Announce(it) }
-            ShareLink(shareNote, onShare)
+            ShareLink(shareNote, onShare, onDonate)
         }
         Menu(subscription, onSupport, onChangeSubscription, Modifier.align(Alignment.TopEnd))
     }
@@ -174,27 +181,44 @@ private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, o
 const val SHARE_TAG = "share"
 
 /**
- * «поделиться Лентой» (баг-репорт) — второстепенная кнопка Material: контур и жучок, тише круглой. Под ней — почему не
- * отдали (Лента пуста, нашёлся адрес), если так.
+ * Нижняя линия — второстепенные кнопки Material с контуром, тише круглой: «поделиться Лентой» (баг-репорт, жучок) и
+ * «Поддержать» ([onDonate], если есть). Под ними — почему Ленту не отдали (Лента пуста, нашёлся адрес), если так.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ShareLink(note: String?, onShare: () -> Unit) {
+private fun ShareLink(note: String?, onShare: () -> Unit, onDonate: (() -> Unit)?) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        OutlinedButton(
-            onClick = onShare,
-            border = BorderStroke(1.dp, Rule),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Text),
-            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-            modifier = Modifier.testTag(SHARE_TAG),
+        // Узкий экран или крупный шрифт — вторая кнопка уходит на новую строку, а не обрезается.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(painterResource(R.drawable.ic_bug_report), contentDescription = null, tint = Muted, modifier = Modifier.size(ButtonDefaults.IconSize))
-            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-            Text("поделиться Лентой", style = MaterialTheme.typography.bodyMedium)
+            Quiet("поделиться Лентой", R.drawable.ic_bug_report, onShare, Modifier.testTag(SHARE_TAG))
+            onDonate?.let { Quiet("Поддержать", R.drawable.ic_favorite, it) }
         }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
             Text(note.orEmpty(), color = PodborColors.Fail, style = MaterialTheme.typography.labelSmall)
         }
+    }
+}
+
+/** Отступы тихой кнопки — уже стандартных: две кнопки в строку на обычном телефоне. */
+private val QUIET_PADDING = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+
+/** Тихая кнопка нижней линии: контур, значок серым, слова — текстом. */
+@Composable
+private fun Quiet(text: String, @DrawableRes icon: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(
+        onClick = onClick,
+        border = BorderStroke(1.dp, Rule),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Text),
+        contentPadding = QUIET_PADDING,
+        modifier = modifier,
+    ) {
+        Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(ButtonDefaults.IconSize))
+        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+        Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
     }
 }
 

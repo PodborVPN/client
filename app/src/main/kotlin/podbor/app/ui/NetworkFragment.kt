@@ -13,12 +13,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +44,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
 import podbor.app.R
+import podbor.app.update.Offer
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.core.networkTitle
@@ -56,14 +61,19 @@ class NetworkFragment : Fragment() {
             val screen = requireActivity() as MainActivity
             setContent {
                 val board by screen.boards.collectAsStateWithLifecycle()
-                PodborTheme { NetworkScreen(board.network, BuildConfig.VERSION_NAME) }
+                val update by screen.update.collectAsStateWithLifecycle()
+                PodborTheme { NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink) }
             }
         }
 }
 
-/** Ярус «СЕТЬ»: сценарий цветом, оператор и вышка, улика; справа в строке яруса — версия. Отступ сверху — под строку состояния. */
+/**
+ * Ярус «СЕТЬ»: сценарий цветом, оператор и вышка, улика; справа в строке яруса — версия, а есть новее на GitHub ([update])
+ * — янтарный чип с новой версией: эта строка видна на любой странице, сколько бы карточек ни было ниже. Отступ сверху —
+ * под строку состояния.
+ */
 @Composable
-fun NetworkScreen(card: NetworkCard, version: String) {
+fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onUpdate: (String) -> Unit = {}) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -72,10 +82,26 @@ fun NetworkScreen(card: NetworkCard, version: String) {
             .padding(horizontal = 20.dp)
             .padding(top = 12.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Высота строки одна с чипом и без: появившись, чип не сдвигает страницу.
+        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
             Tier("СЕТЬ")
             Spacer(Modifier.weight(1f))
-            Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
+            if (update == null) {
+                Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
+            } else {
+                AssistChip(
+                    onClick = { onUpdate(update.url) },
+                    label = { Text("обновить до ${update.version}", style = MaterialTheme.typography.labelMedium) },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_download), contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = PodborColors.Accent,
+                        labelColor = PodborColors.Background,
+                        leadingIconContentColor = PodborColors.Background,
+                    ),
+                    border = null,
+                )
+            }
         }
         NetworkTier(card)
     }
