@@ -1,6 +1,6 @@
 /*
  * PodborKit.xcframework — общий Kotlin-код одной статической библиотекой для iOS-приложения: ядро, край, экран.
- * Своего кода нет, только сборка: :ios-kit:assemblePodborKitReleaseXCFramework.
+ * Своего кода — только точка входа для Swift (kitCheck); сборка: :ios-kit:assemblePodborKitReleaseXCFramework.
  */
 
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework

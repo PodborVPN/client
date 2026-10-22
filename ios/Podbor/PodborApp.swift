@@ -6,7 +6,7 @@ import SwiftUI
 struct PodborApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Podbor · ядро \(String(LineKt.sha256Hex(der: KotlinByteArray(size: 0)).prefix(8)))")
+            Text("Podbor · ядро \(KitKt.kitCheck())")
         }
     }
 }
