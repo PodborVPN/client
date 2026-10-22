@@ -1,0 +1,6 @@
+# Генерируется: XcodeGen (проект, Info.plist, entitlements), scripts/build-libxray.sh, xcodebuild.
+Podbor.xcodeproj/
+*/Info.plist
+*/*.entitlements
+Frameworks/
+build/

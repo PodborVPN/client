@@ -1,0 +1,59 @@
+# Проект Xcode генерируется XcodeGen из этого файла (Podbor.xcodeproj в git не едет).
+# Библиотеки: LibXray.xcframework — scripts/build-libxray.sh, PodborKit.xcframework — :ios-kit:assemblePodborKitReleaseXCFramework.
+name: Podbor
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Podbor:
+    type: application
+    platform: iOS
+    sources: [Podbor]
+    info:
+      path: Podbor/Info.plist
+      properties:
+        CFBundleDisplayName: Podbor
+        UILaunchScreen: {}
+    entitlements:
+      path: Podbor/Podbor.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.podbor.app]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: podbor.app
+    dependencies:
+      - target: PacketTunnel
+      - framework: ../ios-kit/build/XCFrameworks/release/PodborKit.xcframework
+        embed: false
+  PacketTunnel:
+    type: app-extension
+    platform: iOS
+    sources: [PacketTunnel]
+    info:
+      path: PacketTunnel/Info.plist
+      properties:
+        CFBundleDisplayName: Podbor Tunnel
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    entitlements:
+      path: PacketTunnel/PacketTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.podbor.app]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: podbor.app.tunnel
+        # Go-рантайм libXray резолвит имена через libresolv.
+        OTHER_LDFLAGS: ["$(inherited)", "-lresolv"]
+    dependencies:
+      - framework: Frameworks/LibXray.xcframework
+        embed: false
+      - sdk: NetworkExtension.framework

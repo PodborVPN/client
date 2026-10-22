@@ -17,6 +17,7 @@ include("core")
 include("driver")
 include("xray-proto")
 include("screen")
+include("ios-kit")
 include("app")
 
 dependencyResolutionManagement {
