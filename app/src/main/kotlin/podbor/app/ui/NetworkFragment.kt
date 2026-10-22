@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
 import podbor.app.R
 import podbor.core.NetworkCard
+import podbor.core.OsNetwork
 import podbor.core.networkTitle
 import podbor.core.operatorOf
 import podbor.core.towerLine
@@ -107,9 +108,12 @@ private fun NetworkTier(card: NetworkCard) {
         Text(networkTitle(card).uppercase(), color = color, style = MaterialTheme.typography.titleMedium)
     }
     HorizontalDivider(thickness = 1.dp, color = Rule)
-    // Вышка — только с разрешением геолокации; без него в строке только оператор. Wi-Fi дважды не пишем.
-    val operator = listOfNotNull(operatorOf(os), towerLine(os)).joinToString(" · ")
-    if (operator.isNotEmpty() && operator != networkTitle(card)) IconRow(R.drawable.ic_cell_tower, operator)
+    // Строка оператора — только у сотовой и всегда, от замера до итога: есть она или нет, решает сеть ОС, а не
+    // заголовок, иначе страница под сетью прыгает. Wi-Fi назван в заголовке. Вышка — только с разрешением геолокации.
+    when (os) {
+        is OsNetwork.Cellular -> IconRow(R.drawable.ic_cell_tower, listOfNotNull(operatorOf(os), towerLine(os)).joinToString(" · "))
+        OsNetwork.Wifi, OsNetwork.None -> Unit
+    }
     // Строка улики держит место и во время замера (прошлая улика приглушена): страница под сетью не прыгает.
     val last = remember { mutableStateOf<String?>(null) }
     SideEffect { if (evidence != null) last.value = evidence }

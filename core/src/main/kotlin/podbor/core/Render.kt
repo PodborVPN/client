@@ -150,9 +150,12 @@ fun transportWords(t: Transport): String = when (t) {
     is Transport.Other -> t.name
 }
 
-/** Заголовок карточки сети: пока линия молчит — «измеряю сеть…», потом сценарий. */
+/** Заголовок карточки сети: пока линия молчит — «измеряю сеть…» (Wi-Fi — так и называем), потом сценарий. */
 fun networkTitle(card: NetworkCard): String = when (card) {
-    is NetworkCard.Measuring -> "измеряю сеть…"
+    is NetworkCard.Measuring -> when (card.os) {
+        OsNetwork.Wifi -> "измеряю Wi-Fi…"
+        is OsNetwork.Cellular, OsNetwork.None -> "измеряю сеть…"
+    }
     is NetworkCard.Measured -> titleOf(card.scenario)
 }
 

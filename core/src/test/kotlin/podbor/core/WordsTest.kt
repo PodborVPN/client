@@ -55,6 +55,7 @@ class WordsTest : FunSpec({
         withData(
             nameFn = { it.second },
             NetworkCard.Measuring(mts) to "измеряю сеть…",
+            NetworkCard.Measuring(OsNetwork.Wifi) to "измеряю Wi-Fi…",
             NetworkCard.Measured(mts, Scenario.MobileWhitelist, "") to "Белые списки",
             NetworkCard.Measured(mts, Scenario.SuspectWhitelist, "") to "Похоже на белые списки",
             NetworkCard.Measured(mts, Scenario.MobileOpen, "") to "Сеть чистая",
