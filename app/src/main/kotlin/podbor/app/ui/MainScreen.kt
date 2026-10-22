@@ -1,6 +1,8 @@
 package podbor.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -236,61 +238,64 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
 
 /** Одна строка карточки: отметка с меткой сервиса, имя, протокол; ниже — заметки и полоска поиска этой строки. */
 @Composable
-private fun ServiceLine(row: ServiceRow) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-            if (row.label.isNotEmpty()) {
-                val (sign, color) = when (row.mark) {
-                    Mark.Checking -> "…" to PodborColors.Accent
-                    Mark.Works -> "✓" to PodborColors.Ok
-                    Mark.Dead -> "✗" to PodborColors.Fail
-                    null -> "–" to Muted
+internal fun ServiceLine(row: ServiceRow) {
+    Box {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                if (row.label.isNotEmpty()) {
+                    val (sign, color) = when (row.mark) {
+                        Mark.Checking -> "…" to PodborColors.Accent
+                        Mark.Works -> "✓" to PodborColors.Ok
+                        Mark.Dead -> "✗" to PodborColors.Fail
+                        null -> "–" to Muted
+                    }
+                    // Под меткой — секундомер подбора этого сервиса (с десятыми), если подбор был.
+                    Column(Modifier.widthIn(min = 44.dp)) {
+                        Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        elapsedOf(row.stopwatch)?.let {
+                            Text(cardTime(it), color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+                        }
+                    }
+                    VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
                 }
-                // Под меткой — секундомер подбора этого сервиса (с десятыми), если подбор был.
-                Column(Modifier.widthIn(min = 44.dp)) {
-                    Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                    elapsedOf(row.stopwatch)?.let {
-                        Text(cardTime(it), color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+                Text(
+                    row.name,
+                    color = PodborColors.Text,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                row.protocol?.let { p ->
+                    VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+                    Column {
+                        Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            p,
+                            color = PodborColors.Text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 96.dp),
+                        )
                     }
                 }
-                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
             }
-            Text(
-                row.name,
-                color = PodborColors.Text,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            row.protocol?.let { p ->
-                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
-                Column {
-                    Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall)
-                    Text(
-                        p,
-                        color = PodborColors.Text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 96.dp),
-                    )
+            row.notes.forEach { n ->
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                    Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(n.tone)) }
+                    Spacer(Modifier.width(10.dp))
+                    Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
-        row.notes.forEach { n ->
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
-                Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(n.tone)) }
-                Spacer(Modifier.width(10.dp))
-                Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        // Полоска — только во время поиска: после результата «1 из 92» читалась бы как 1 %. Появляется плавно.
-        AnimatedVisibility(visible = row.searching) {
+        // Полоска — только во время поиска: после результата «1 из 92» читалась бы как 1 %. Лежит поверх нижнего отступа
+        // строки, а не своей строкой: появляясь и уходя, не двигает то, что ниже.
+        AnimatedVisibility(visible = row.searching, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             LinearProgressIndicator(
                 color = PodborColors.Accent,
                 trackColor = Rule,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 5.dp),
             )
         }
     }

@@ -56,9 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.AnnotatedString
@@ -219,12 +216,11 @@ private fun Placeholders(variants: List<AnnotatedString>, style: TextStyle) {
 }
 
 /**
- * Лента: [FEED_CARDS] новейших, новейшая сверху; внизу — затухание в фон, как в макете. LazyColumn + animateItem: въезд,
+ * Лента: [FEED_CARDS] новейших, новейшая сверху. LazyColumn + animateItem: въезд,
  * сдвиг соседей и уход — анимации размещения (фаза отрисовки), без перекладки всей ленты на каждом кадре.
  */
 @Composable
 private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
-    val fade = MaterialTheme.colorScheme.background
     val list = rememberLazyListState()
     val shown = cards.take(FEED_CARDS)
     // LazyColumn держит якорь на прежней первой карточке: новая сверху ушла бы за край. Пока смотрят в начало — вернуть.
@@ -232,16 +228,10 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
         if (list.firstVisibleItemIndex <= 1) list.requestScrollToItem(0)
     }
     LazyColumn(
-        modifier
-            .fillMaxWidth()
-            .drawWithContent {
-                drawContent()
-                val h = 72.dp.toPx().coerceAtMost(size.height)
-                drawRect(Brush.verticalGradient(listOf(Color.Transparent, fade), startY = size.height - h, endY = size.height), Offset(0f, size.height - h))
-            },
+        modifier.fillMaxWidth(),
         state = list,
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(bottom = 48.dp),
+        contentPadding = PaddingValues(bottom = 8.dp),
     ) {
         items(shown, key = { it.key }) { card ->
             Box(Modifier.animateItem(fadeInSpec = tween(450), placementSpec = tween(450), fadeOutSpec = tween(300))) { Card(card) }
