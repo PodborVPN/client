@@ -11,8 +11,6 @@ import kotlinx.serialization.json.Json
 import podbor.core.Passport
 import podbor.driver.PassportStore
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * Подписка человека: ссылка (если вставил ссылку) и скачанный/вставленный текст. Секрет — в логи и Ленту не пишется.
@@ -34,14 +32,9 @@ private val json = Json { ignoreUnknownKeys = true }
 private fun <T> readJson(file: File, read: (String) -> T): T? =
     Either.catch { read(file.readText()) }.getOrElse { null }
 
-/** Пишет атомарно (временный файл + rename); сбой логируется (без содержимого) и не пробрасывается. */
+/** Пишет атомарно ([podbor.app.net.writeAtomic]); сбой логируется (без содержимого) и не пробрасывается. */
 private fun writeAtomic(file: File, what: String, text: String, warn: (String) -> Unit) {
-    Either.catch {
-        file.parentFile?.mkdirs()
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        tmp.writeText(text)
-        Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    }.onLeft { warn("$what не записан: ${it.javaClass.simpleName}") }
+    podbor.app.net.writeAtomic(file, text).onLeft { warn("$what не записан: ${it.javaClass.simpleName}") }
 }
 
 class SubscriptionStore(

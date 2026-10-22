@@ -7,8 +7,6 @@ import kotlinx.serialization.json.Json
 import podbor.core.Memory
 import podbor.driver.Store
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicReference
 
 /** Тот же JSON, что у CLI (memory.json): память переносима между JVM-прогоном и телефоном. */
@@ -50,12 +48,9 @@ class AndroidStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podb
     override fun saveMemory(m: Memory) {
         when (disk.get()) {
             Disk.Unreadable -> warn("память не записана: файл не читался")
-            // Запись через временный файл и атомарный move: оборванная запись не оставляет полу-JSON.
-            Disk.Writable -> Either.catch {
-                val tmp = File(file.parentFile, "${file.name}.tmp")
-                tmp.writeText(json.encodeToString(Memory.serializer(), m))
-                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            }.onLeft { warn("память не записана: ${it.javaClass.simpleName}") }
+            // Атомарно: оборванная запись не оставляет полу-JSON.
+            Disk.Writable -> writeAtomic(file, json.encodeToString(Memory.serializer(), m))
+                .onLeft { warn("память не записана: ${it.javaClass.simpleName}") }
         }
     }
 }
