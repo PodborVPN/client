@@ -16,10 +16,14 @@ import java.net.InetAddress
  * RoutingService Xray по gRPC: вход в РФ — TestRoute против его же правила geoip:ru; выход — OverrideBalancerTarget.
  * Канал — ресурс области: закрывается при выходе из неё, что бы с областью ни случилось.
  */
-suspend fun ResourceScope.xrayApi(port: Int, host: String = "127.0.0.1"): XrayApi {
-    val channel = install({ ManagedChannelBuilder.forAddress(host, port).usePlaintext().build() }, { c, _ -> c.shutdownNow() })
+suspend fun ResourceScope.xrayApi(open: () -> ManagedChannel): XrayApi {
+    val channel = install({ open() }, { c, _ -> c.shutdownNow() })
     return GrpcXrayApi(channel)
 }
+
+/** API на loopback-порту ([ApiListen.Tcp]) — JVM на десктопе. */
+suspend fun ResourceScope.xrayApi(port: Int, host: String = "127.0.0.1"): XrayApi =
+    xrayApi { ManagedChannelBuilder.forAddress(host, port).usePlaintext().build() }
 
 private class GrpcXrayApi(channel: ManagedChannel) : XrayApi {
     private val stub = RoutingServiceGrpcKt.RoutingServiceCoroutineStub(channel)

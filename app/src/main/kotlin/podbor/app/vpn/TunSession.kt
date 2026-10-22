@@ -12,6 +12,7 @@ import arrow.fx.coroutines.ResourceScope
 import kotlinx.serialization.json.JsonObject
 import podbor.driver.EngineError
 import podbor.driver.TUN_MTU
+import podbor.driver.XrayApi
 import podbor.driver.XrayEngine
 
 /** Адрес телефона в TUN и адрес DNS там же: DNS-запросы уходят в TUN, их отвечает блок `dns` Xray (правило порта 53). */
@@ -79,5 +80,15 @@ fun XrayEngine.reporting(stopped: () -> Unit): XrayEngine {
             onRelease { stopped() }
             return with(inner) { run(config) }
         }
+    }
+}
+
+/** API Xray, сообщающий о сбоях вызовов (в лог): без этого неудачное переключение выхода видно только в Ленте. */
+fun XrayApi.reporting(failed: (String) -> Unit): XrayApi {
+    val inner = this
+    return object : XrayApi {
+        override suspend fun routeOf(ip: String) = inner.routeOf(ip).onLeft { failed("routeOf $ip: $it") }
+        override suspend fun setExit(balancer: String, tag: String) = inner.setExit(balancer, tag).onLeft { failed("setExit $balancer → $tag: $it") }
+        override suspend fun clearExit(balancer: String) = inner.clearExit(balancer).onLeft { failed("clearExit $balancer: $it") }
     }
 }

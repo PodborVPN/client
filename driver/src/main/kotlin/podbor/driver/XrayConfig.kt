@@ -14,12 +14,21 @@ import podbor.core.ServiceId
 import podbor.core.ServerId
 
 /**
- * Параметры конфига: порты api и SOCKS-inbound'ов, каталог geo-файлов, fd TUN (только на Android),
+ * Где слушает API Xray. Tcp — loopback-порт (JVM на десктопе: соседей-приложений нет); Unix — сокет в личной папке
+ * приложения: чужое приложение на телефоне до него не дотянется (права каталога), в отличие от порта на 127.0.0.1.
+ */
+sealed interface ApiListen {
+    data class Tcp(val port: Int = 10085) : ApiListen
+    data class Unix(val path: String) : ApiListen
+}
+
+/**
+ * Параметры конфига: где слушает api ([ApiListen]), порты SOCKS-inbound'ов, каталог geo-файлов, fd TUN (только на Android),
  * набор сервисов ([services]: правила и балансер на каждый), UID установленных приложений ([uids]: пакет → UID,
  * правило `process`), уровень лога Xray и пароль SOCKS-входов ([socksAuth]).
  */
 data class ConfigOpts(
-    val apiPort: Int = 10085,
+    val api: ApiListen = ApiListen.Tcp(),
     val socksBase: Int = 20000,
     val assetDir: String,
     val tunFd: Int? = null,
@@ -75,8 +84,14 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
             addJsonObject {
                 put("tag", "api")
                 put("protocol", "dokodemo-door")
-                put("listen", "127.0.0.1")
-                put("port", opts.apiPort)
+                when (val at = opts.api) {
+                    is ApiListen.Tcp -> {
+                        put("listen", "127.0.0.1")
+                        put("port", at.port)
+                    }
+                    // Путь в listen — Xray слушает Unix-сокет, порт не нужен.
+                    is ApiListen.Unix -> put("listen", at.path)
+                }
                 putJsonObject("settings") { put("address", "127.0.0.1") }
             }
             servers.forEach { s ->

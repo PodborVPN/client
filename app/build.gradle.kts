@@ -202,6 +202,8 @@ dependencies {
     // На Android netty-shaded не нужен — транспорт gRPC даёт okhttp.
     implementation(project(":driver")) { exclude(group = "io.grpc", module = "grpc-netty-shaded") }
     implementation(libs.grpc.okhttp)
+    // UdsChannelBuilder: API Xray на Unix-сокете в личной папке, а не на порту loopback.
+    implementation(libs.grpc.android)
     implementation(files("libs/libXray.aar"))
     implementation(platform(libs.arrow.stack))
     implementation(libs.arrow.core)

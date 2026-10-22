@@ -86,6 +86,14 @@ class XrayConfigTest : FunSpec({
         rules.first().strs("inboundTag") shouldBe listOf("api")
     }
 
+    test("api на Unix-сокете: listen — путь, порта нет; правило api то же") {
+        val unix = buildConfig(servers, outbounds, opts.copy(api = ApiListen.Unix("/data/podbor/no_backup/xray-api.sock")))
+        val api = unix["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("api") }
+        api["listen"] shouldBe JsonPrimitive("/data/podbor/no_backup/xray-api.sock")
+        api["port"] shouldBe null
+        unix["routing"]!!.jsonObject["rules"]!!.jsonArray.first().jsonObject.strs("inboundTag") shouldBe listOf("api")
+    }
+
     test("без tunFd: каталог geo-файлов в env; ни tun-inbound'а, ни dns-outbound'а, ни правила порта 53") {
         cfg["env"]!!.jsonObject["xray.location.asset"] shouldBe JsonPrimitive("/assets")
         cfg["inbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("tun") } shouldBe true

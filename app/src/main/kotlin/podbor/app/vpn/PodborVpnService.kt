@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.LocalSocketAddress
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -14,6 +15,8 @@ import android.os.IBinder
 import android.util.Log
 import arrow.core.Either
 import arrow.fx.coroutines.ResourceScope
+import io.grpc.android.UdsChannelBuilder
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,29 +35,30 @@ import podbor.app.net.FileTape
 import podbor.app.net.Telephony
 import podbor.app.net.UnderlyingNetwork
 import podbor.app.redact
+import podbor.app.sub.FilePassportStore
 import podbor.app.sub.InputError
 import podbor.app.sub.SubscriptionInput
+import podbor.app.sub.SubscriptionStore
 import podbor.app.ui.MainActivity
+import podbor.app.xray.GeoHolder
 import podbor.app.xray.LibXrayConverter
 import podbor.app.xray.LibXrayEngine
 import podbor.app.xray.LibXrayInvoke
-import podbor.app.sub.FilePassportStore
-import podbor.app.sub.SubscriptionStore
-import podbor.app.xray.GeoHolder
+import podbor.app.xray.WhiteHolder
 import podbor.app.xray.geoDir
 import podbor.app.xray.registerOwnerFinder
-import podbor.app.xray.WhiteHolder
 import podbor.core.Board
-import podbor.core.ScanBoard
 import podbor.core.HARDCODED_SERVICES
+import podbor.core.ScanBoard
 import podbor.core.ServerId
 import podbor.core.ServiceId
+import podbor.driver.ApiListen
 import podbor.driver.Clock
 import podbor.driver.ConfigOpts
 import podbor.driver.Driver
 import podbor.driver.EndpointGate
-import podbor.driver.ExitProbeImpl
 import podbor.driver.EngineError
+import podbor.driver.ExitProbeImpl
 import podbor.driver.InstagramProbeImpl
 import podbor.driver.LOCAL_SOCKS
 import podbor.driver.LineProbeImpl
@@ -65,11 +69,13 @@ import podbor.driver.TlsHandshaker
 import podbor.driver.detectLine
 import podbor.driver.draftsOf
 import podbor.driver.xrayApi
-import java.io.File
 
 private const val TAG = "Podbor"
 private const val CHANNEL = "vpn"
 private const val NOTIFICATION_ID = 1
+
+/** Файл Unix-сокета API Xray в noBackupFilesDir: путь короткий — у сокета предел 108 байт. */
+private const val API_SOCKET = "xray-api.sock"
 
 /** Сколько прогрев ждёт загрузку geoip.dat: дольше — идём без страны, VPN важнее. */
 private const val GEO_WAIT_MS = 3_000L
@@ -243,19 +249,24 @@ class PodborVpnService : VpnService() {
 
     /** Xray в этой области ресурсов: на fd туннеля (сессия) или без TUN ([tunFd] = null — анализ, пробы через SOCKS). */
     private suspend fun ResourceScope.live(tunFd: Int?, subscription: String): Either<EngineError, Live> {
+        // API Xray — Unix-сокет в личной папке: порт на 127.0.0.1 открыт любому приложению на телефоне, каталог — нет.
+        // Сокет от убитого процесса Xray не снимает сам («address already in use») — убираем до старта.
+        val apiSocket = File(noBackupFilesDir, API_SOCKET).apply { delete() }
         val opts = ConfigOpts(
             assetDir = geoDir(this@PodborVpnService).absolutePath,
             tunFd = tunFd,
             services = HARDCODED_SERVICES,
             uids = HARDCODED_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
             socksAuth = LOCAL_SOCKS,
+            api = ApiListen.Unix(apiSocket.path),
         )
         // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
         val geo = GeoHolder.await(GEO_WAIT_MS)
         val driver = Driver(
             converter = LibXrayConverter(LibXrayInvoke),
             engine = LibXrayEngine(LibXrayInvoke).reporting { log("Xray остановлен") },
-            api = xrayApi(port = opts.apiPort),
+            api = xrayApi { UdsChannelBuilder.forPath(apiSocket.path, LocalSocketAddress.Namespace.FILESYSTEM).build() }
+                .reporting { log("API Xray: $it") },
             prober = ProberImpl(TelegramProbeImpl(auth = LOCAL_SOCKS), InstagramProbeImpl(), SocketTcpReach()),
             exitProbe = ExitProbeImpl(),
             gate = EndpointGate(),

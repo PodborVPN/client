@@ -13,6 +13,7 @@ import podbor.app.vpn.reporting
 import podbor.app.vpn.tunFdOf
 import podbor.app.vpn.tunSession
 import podbor.driver.EngineError
+import podbor.driver.XrayApi
 import podbor.driver.XrayEngine
 
 /** Фейковый движок: остановка — запись «stopXray» в журнал из release своего install. */
@@ -71,5 +72,19 @@ class TunTest : FunSpec({
             }
         }
         events.takeLast(3) shouldBe listOf("stopXray", "Xray остановлен", "closeFd")
+    }
+
+    test("reporting API: сбой вызова — в отчёт с именем вызова, успех — молча; ответ не меняется") {
+        val failed = mutableListOf<String>()
+        val boom = EngineError.Failed("UNAVAILABLE")
+        val api = object : XrayApi {
+            override suspend fun routeOf(ip: String) = "direct".right()
+            override suspend fun setExit(balancer: String, tag: String) = boom.left()
+            override suspend fun clearExit(balancer: String) = Unit.right()
+        }.reporting { failed += it }
+        api.routeOf("192.0.2.1") shouldBe "direct".right()
+        api.setExit("svc.tg", "s001") shouldBe boom.left()
+        api.clearExit("svc.tg") shouldBe Unit.right()
+        failed shouldBe listOf("setExit svc.tg → s001: $boom")
     }
 })
