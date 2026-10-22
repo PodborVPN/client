@@ -25,12 +25,13 @@ class RenderTest : FunSpec({
         render(found + Letter.LineObserved(2_000, whitelist)).stopwatch shouldBe Stopwatch.Stopped(0, 840)
     }
 
-    test("секундомер: «не найдено» — на письме, кончившем нажатие; срок вышел — на последнем письме") {
+    test("секундомер: «не найдено» — на письме, кончившем нажатие; срок вышел — на сроке") {
         val servers = listOf(server("s001", Entry.Ru))
         val dead = listOf(pressed(servers), *confirmed, answer("s001", Verdict.Unreachable, at = 500))
         render(dead).stopwatch shouldBe Stopwatch.Stopped(0, 500)
         render(dead + Letter.LineObserved(2_000, whitelist)).stopwatch shouldBe Stopwatch.Stopped(0, 500)
-        render(listOf(pressed(servers), Letter.LineObserved(10, whitelist)), closed = true).stopwatch shouldBe Stopwatch.Stopped(0, 10)
+        // Письма в момент срока нет: время замирает на сроке, а не откатывается к последнему ответу.
+        render(listOf(pressed(servers), Letter.LineObserved(10, whitelist)), closedAtMs = 30_000).stopwatch shouldBe Stopwatch.Stopped(0, 30_000)
     }
 
     test("секундомер: до нажатия и на экране открытия — нет") {
@@ -50,13 +51,13 @@ class RenderTest : FunSpec({
 
     test("срок трубопровода вышел посреди перебора → Red, «не найдено» со словами о сроке; подозрение без «проверяю»") {
         val letters = listOf(pressed(listOf(server("s001", Entry.Ru), server("s002", Entry.Ru))), Letter.LineObserved(10, whitelist))
-        val screen = render(letters, Instagram, closed = true)
+        val screen = render(letters, Instagram, closedAtMs = 30_000)
         screen.button shouldBe Button.Red
         screen.network.shouldBeInstanceOf<NetworkCard.Measured>().evidence shouldBe "заграница не отвечает, РФ работает"
         screen.result.shouldBeInstanceOf<ResultCard.NotFound>().lines.last() shouldBe
             "Инста: за отведённое время рабочий сервер не нашёлся — нажми ещё раз."
         // Кончившееся нажатие срок не меняет.
-        render(letters + answer("s001", Verdict.TelegramDc(3)), closed = true).button shouldBe Button.Green
+        render(letters + answer("s001", Verdict.TelegramDc(3)), closedAtMs = 30_000).button shouldBe Button.Green
     }
 
     test("повторное нажатие: выход подтвердился после линии → «текущий выход работает»") {

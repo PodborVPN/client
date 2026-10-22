@@ -54,8 +54,9 @@ class BoardTest : FunSpec({
         Stopwatch.Running(1_000).elapsedMs(nowMs = 3_500) shouldBe 2_500
         Stopwatch.Stopped(1_000, 1_800).elapsedMs(nowMs = 9_999) shouldBe 800
         Stopwatch.None.elapsedMs(nowMs = 9_999) shouldBe null
-        // Часы ушли назад (смена времени) — не минус.
+        // Часы ушли назад (смена времени) — не минус, ни у идущего, ни у замершего.
         Stopwatch.Running(1_000).elapsedMs(nowMs = 500) shouldBe 0
+        Stopwatch.Stopped(1_000, 500).elapsedMs(nowMs = 9_999) shouldBe 0
     }
 
     test("сервис без экрана — Unknown") {

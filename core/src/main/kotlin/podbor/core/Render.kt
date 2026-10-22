@@ -36,9 +36,11 @@ data class Screen(val network: NetworkCard, val button: Button, val result: Resu
 
 /**
  * Экран — производная истории: render(letters) = f(explain(letters)). Отдельного «состояния сообщений» нет.
- * closed — срок трубопровода вышел (край): нажатие, не дошедшее до итога, — «не найдено», а не вечное «ищу».
+ * [closedAtMs] — когда вышел срок трубопровода (край; не вышел — null): нажатие, не дошедшее до итога, — «не найдено»,
+ * а не вечное «ищу», и секундомер замирает на сроке — письма в этот момент нет.
  */
-fun render(letters: List<Letter>, service: Service = Telegram, closed: Boolean = false): Screen {
+fun render(letters: List<Letter>, service: Service = Telegram, closedAtMs: Long? = null): Screen {
+    val closed = closedAtMs != null
     val last = letters.lastOrNull { it is Letter.Pressed || it is Letter.Opened }
     // История без края: срока у неё нет, замер не закрыт.
     if (last is Letter.Opened) return renderOpened(openStateFrom(letters, last), closed = false, service = service)
@@ -52,8 +54,8 @@ fun render(letters: List<Letter>, service: Service = Telegram, closed: Boolean =
         is Outcome.Found, is Outcome.NotFound -> true
     }
     val card = networkCardOf(pressed.os, e.diagnosis, ended)
-    // Срок вышел посреди перебора — время замирает на последнем письме: другого финиша у нажатия не было.
-    val stopwatch = when (val end = e.endedAtMs ?: press.last().atMs.takeIf { closed }) {
+    // Кончилось раньше срока — на письме итога; срок вышел посреди перебора — на сроке.
+    val stopwatch = when (val end = e.endedAtMs ?: closedAtMs) {
         null -> Stopwatch.Running(pressed.atMs)
         else -> Stopwatch.Stopped(pressed.atMs, end)
     }

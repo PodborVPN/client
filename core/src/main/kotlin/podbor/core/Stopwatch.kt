@@ -14,7 +14,7 @@ sealed interface Stopwatch {
 fun Stopwatch.elapsedMs(nowMs: Long): Long? = when (this) {
     Stopwatch.None -> null
     is Stopwatch.Running -> (nowMs - startedAtMs).coerceAtLeast(0)
-    is Stopwatch.Stopped -> stoppedAtMs - startedAtMs
+    is Stopwatch.Stopped -> (stoppedAtMs - startedAtMs).coerceAtLeast(0)
 }
 
 /** Общий из частных: идёт, пока идёт хоть один (от самого раннего старта); иначе замирает на самом позднем финише. */

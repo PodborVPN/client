@@ -9,6 +9,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -32,6 +33,7 @@ import podbor.core.LineObservation
 import podbor.core.Memory
 import podbor.core.Passport
 import podbor.core.block
+import podbor.core.Stopwatch
 import podbor.core.Telegram
 import podbor.core.memoryKey
 import podbor.core.rememberSuccess
@@ -191,6 +193,17 @@ class DriverTest : FunSpec({
         w.pressNow("подписка", mts, currentExit = null)
         (System.currentTimeMillis() - started) shouldBeLessThan 1_500L
         w.exits shouldContainExactly listOf("s001")
+    }
+
+    test("срок вышел, пробы висят: секундомер замер на сроке, а не на последнем письме") {
+        val w = World(
+            ips = listOf("10.0.0.1"), ruIps = setOf("10.0.0.1"), line = whitelist, fitsPorts = emptySet(),
+            probeDelayMs = { 60_000 }, pressTimeoutMs = 400,
+        )
+        val screen = w.pressNow("подписка", mts, currentExit = null).shouldBeInstanceOf<Either.Right<Board>>().value
+        screen.button shouldBe Button.Red
+        val sw = screen.cards.single().stopwatch.shouldBeInstanceOf<Stopwatch.Stopped>()
+        (sw.stoppedAtMs - sw.startedAtMs) shouldBeGreaterThanOrEqual 400L
     }
 
     test("красная кнопка: все Ru молчат → Red, «не найдено», setExit не зовётся") {

@@ -147,7 +147,7 @@ class Driver(
             val run = act(pressed, PressMachine(service.id), pressTimeoutMs, executor(service, servers, hub, lead), tape, { _, letters ->
                 boards.put(service.id, render(letters, service))
             }, inbox)
-            render(run.letters, service, closed = run.closed)
+            render(run.letters, service, closedAtMs = clock.nowMs().takeIf { run.closed })
         }
         return board(services, screens).also(onBoard)
     }
