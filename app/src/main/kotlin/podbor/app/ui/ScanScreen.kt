@@ -55,11 +55,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
@@ -179,31 +183,39 @@ private fun Summary(board: ScanBoard) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Chip("", board.total, " " + plural(board.total, "сервер", "сервера", "серверов"), PodborColors.Accent)
-        Chip("", board.ruEntries, " " + plural(board.ruEntries, "вход", "входа", "входов") + " в РФ", PodborColors.Accent)
-        Chip("", board.likelyWhite, " вероятно для белых списков", PodborColors.Accent)
-        board.tallies.forEach { t -> Chip("${t.label} ✓ ", t.works, "", PodborColors.Ok) }
+        Chip("", board.total, " " + plural(board.total, "сервер", "сервера", "серверов"), PodborColors.Accent, board.total)
+        Chip("", board.ruEntries, " " + plural(board.ruEntries, "вход", "входа", "входов") + " в РФ", PodborColors.Accent, board.total)
+        Chip("", board.likelyWhite, " вероятно для белых списков", PodborColors.Accent, board.total)
+        board.tallies.forEach { t -> Chip("${t.label} ✓ ", t.works, "", PodborColors.Ok, board.total) }
     }
 }
 
+/** Фишка держит ширину под число из стольких же цифр, сколько в [cap]: растущее число не переносит соседей в FlowRow. */
 @Composable
-private fun Chip(before: String, n: Int, after: String, accent: Color) {
+private fun Chip(before: String, n: Int, after: String, accent: Color, cap: Int) {
     val shown by animateIntAsState(n, tween(400), label = "фишка")
+    fun text(number: String) = buildAnnotatedString {
+        append(before)
+        withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) { append(number) }
+        append(after)
+    }
     Box(
         Modifier
             .border(1.dp, Rule, RoundedCornerShape(8.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        Text(
-            buildAnnotatedString {
-                append(before)
-                withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) { append(shown.toString()) }
-                append(after)
-            },
-            color = PodborColors.Text,
-            style = MaterialTheme.typography.labelSmall,
-        )
+        Placeholders(listOf(text("8".repeat(cap.toString().length))), MaterialTheme.typography.labelSmall)
+        Text(text(shown.toString()), color = PodborColors.Text, style = MaterialTheme.typography.labelSmall)
     }
+}
+
+/**
+ * Невидимые заглушки — место под самый широкий из [variants]: текст рядом с ними меняется, а соседи стоят. Вне
+ * семантики: тесты и TalkBack видят только настоящий текст.
+ */
+@Composable
+private fun Placeholders(variants: List<AnnotatedString>, style: TextStyle) {
+    variants.forEach { Text(it, style = style, maxLines = 1, modifier = Modifier.alpha(0f).clearAndSetSemantics {}) }
 }
 
 /**
@@ -248,7 +260,7 @@ private fun Card(card: ServerCard) {
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AnimatedContent(routeOf(card), Modifier.weight(1f), transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "маршрут") {
+                AnimatedContent(routeOf(card), Modifier.weight(1f), transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) using null }, label = "маршрут") {
                     Text(it, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 }
                 Text(
@@ -265,8 +277,12 @@ private fun Card(card: ServerCard) {
             Row(Modifier.padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 card.services.forEachIndexed { i, (label, mark) ->
                     if (i > 0) Text(" · ", color = Muted, style = MaterialTheme.typography.bodyMedium)
-                    AnimatedContent(mark, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = label) { m ->
-                        Text(markOf(label, m), color = colorOf(m), style = MaterialTheme.typography.bodyMedium)
+                    // «…», «✓» и «✗» разной ширины: место — под самую широкую, иначе соседняя отметка ездит.
+                    Box {
+                        Placeholders(Mark3.entries.map { AnnotatedString(markOf(label, it)) }, MaterialTheme.typography.bodyMedium)
+                        AnimatedContent(mark, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) using null }, label = label) { m ->
+                            Text(markOf(label, m), color = colorOf(m), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }
