@@ -109,8 +109,16 @@ private fun Pulse.grown(s: PulseSample, key: String): Traffic {
     }
 }
 
-/** Прибавить к итогу ключа [key]; другой ключ — итог с нуля (и без прироста: ключ сменился — это уже знание). */
-private fun Tally?.add(key: String, t: Traffic): Tally = if (this == null || this.key != key) Tally(key, t) else copy(total = total + t)
+/**
+ * Прибавить к итогу ключа [key]; другой ключ — итог с нуля, и прирост интервала уходит новому (смену ключа видим только
+ * на отсчёте). Ключ пуст (сети нет или ещё не известна) — ключа не знаем, а не «другая сеть»: прирост копится в прежний
+ * итог, прежнего нет — никуда.
+ */
+private fun Tally?.add(key: String, t: Traffic): Tally? = when {
+    key.isEmpty() -> this?.copy(total = total + t)
+    this == null || this.key != key -> Tally(key, t)
+    else -> copy(total = total + t)
+}
 
 private fun Lane?.next(epoch: Long, p: PulsePoint): Lane {
     val last = this?.points?.last()

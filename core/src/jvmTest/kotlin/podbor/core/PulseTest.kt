@@ -88,6 +88,12 @@ class PulseTest : FunSpec({
         p.view(tg, 2_000).vpn shouldBe Tally("sub1", Traffic(0, 10_000))
     }
 
+    test("сеть неизвестна (ключ пуст) — итог сети не стирается: прирост копится в прежний, а без прежнего — никуда") {
+        val p = fold(at(0, 0), at(1_000, 9_000), at(2_000, 10_000, network = ""), at(3_000, 12_000))
+        p.view(tg, 3_000).network shouldBe Tally("wifi", Traffic(0, 12_000))
+        fold(at(0, 0, network = ""), at(1_000, 5_000, network = "")).view(tg, 1_000).network shouldBe null
+    }
+
     test("subscriptionChangeStartsVpnTallyEvenWithoutTraffic: анализ новой подписки сбрасывает итог VPN и без трафика") {
         val p = fold(at(0, 0), at(1_000, 9_000), at(2_000, 0, epoch = 2, tun = Traffic.Zero, kind = EpochKind.Scan, sub = "sub2"))
         p.view(tg, 2_000).vpn shouldBe Tally("sub2", Traffic.Zero)
@@ -103,6 +109,8 @@ class PulseTest : FunSpec({
     test("networkKeyOf: Wi-Fi — одна сеть, сотовая — по MCC MNC, нет сети — нет ключа") {
         networkKey(OsNetwork.Wifi) shouldBe "wifi"
         networkKey(OsNetwork.Cellular("MTS", "25001")) shouldBe "cell:25001"
+        // Вышку ключ не знает: лёгкое чтение сети (без вышки) и полное дают один ключ.
+        networkKey(OsNetwork.Cellular("MTS", "25001", Tower.Known(1575, 1300, -103))) shouldBe "cell:25001"
         networkKey(OsNetwork.None) shouldBe null
     }
 

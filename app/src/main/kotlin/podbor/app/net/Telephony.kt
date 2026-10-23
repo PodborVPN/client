@@ -77,9 +77,10 @@ class Telephony(private val context: Context) {
         return CellSnapshot(lte.cellIdentity.ci.toLong(), lte.cellIdentity.earfcn, lte.cellSignalStrength.rsrp)
     }
 
-    fun osNetwork(transport: Transport): OsNetwork {
-        val tm = dataTm()
-        val radio = Radio(tm.simOperatorName, tm.simOperator, tm.networkOperatorName, tm.networkOperator)
-        return osNetworkOf(transport, radio, towerOf(cell(tm)))
-    }
+    fun osNetwork(transport: Transport): OsNetwork = dataTm().let { tm -> osNetworkOf(transport, radio(tm), towerOf(cell(tm))) }
+
+    /** Сеть ОС без вышки (без allCellInfo): дёшево для частых вопросов — ключ итога «на этой сети» вышки не знает. */
+    fun osNetworkLight(transport: Transport): OsNetwork = osNetworkOf(transport, radio(dataTm()), Tower.Unknown)
+
+    private fun radio(tm: TelephonyManager) = Radio(tm.simOperatorName, tm.simOperator, tm.networkOperatorName, tm.networkOperator)
 }

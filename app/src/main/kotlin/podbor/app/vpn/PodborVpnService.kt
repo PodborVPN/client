@@ -82,8 +82,6 @@ import podbor.driver.xrayStatsOn
 import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.subscriptionKey
 import podbor.core.EpochKind
-import podbor.core.NetworkCard
-import podbor.core.OsNetwork
 import podbor.core.Pulse
 import podbor.core.PulseView
 import podbor.core.networkKey
@@ -341,7 +339,8 @@ class PodborVpnService : VpnService(), ServicePort {
                         clock = clock,
                         mono = SystemClock::elapsedRealtime,
                         epoch = epoch,
-                        context = { PulseContext(kind, networkKey(osOf(desk.board.value.network)) ?: "", subscription) },
+                        // Сеть — ОС на момент отсчёта (доска экрана без открытого экрана смену сети не видит).
+                        context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
                         fast = { pulseNow.subscriptionCount.value > 0 },
                         effective = {
                             HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
@@ -362,10 +361,7 @@ class PodborVpnService : VpnService(), ServicePort {
         )
     }
 
-    private fun osOf(card: NetworkCard): OsNetwork = when (card) {
-        is NetworkCard.Measuring -> card.os
-        is NetworkCard.Measured -> card.os
-    }
+    private val telephony by lazy { Telephony(this) }
 
     private fun nextEpoch(): Long {
         val prefs = getSharedPreferences(PULSE_PREFS, MODE_PRIVATE)
