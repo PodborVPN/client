@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/PodborVPN/client/compare/v0.11.0...v0.12.0) (2026-10-23)
+
+
+### Новое
+
+* подписка — зашифрованная ссылка Happ объясняется словами ([cee96e3](https://github.com/PodborVPN/client/commit/cee96e313fc03cbc4e492a8bd335cf67b476ef87))
+* подписка — напоминание уведомлением, что срок кончается ([5b482dc](https://github.com/PodborVPN/client/commit/5b482dc5b34897637797704d64a0c77e3aab36e5))
+* подписка — номер устройства для панели провайдера и понятный отказ по лимиту устройств ([5c52d63](https://github.com/PodborVPN/client/commit/5c52d63ff54493c695603af8d15701ea0704ed43))
+* подписка — переезд адреса и запасная ссылка провайдера, поддержка при лимите устройств ([e27f899](https://github.com/PodborVPN/client/commit/e27f899eaa4930dc83492a0a5d7580d0d5867c77))
+
+
+### Исправлено
+
+* обновлялка — последний релиз по веб-редиректу GitHub, проверка при каждом открытии ([095faa5](https://github.com/PodborVPN/client/commit/095faa54f0b55563e2fd823a762e03e21cb4245f))
+
 ## [0.11.0](https://github.com/PodborVPN/client/compare/v0.10.0...v0.11.0) (2026-10-23)
 
 
