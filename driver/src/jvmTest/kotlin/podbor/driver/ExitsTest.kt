@@ -94,7 +94,7 @@ class ExitsTest : FunSpec({
         val api = Overrides()
         val exits = Exits(api, HARDCODED_SERVICES, ::pairTag)
         runBlocking { exits.make(Telegram.id, s1) }
-        api.calls shouldContainExactly listOf("svc.tg=s1.tg", "exit=s1", "svc.insta=s1.insta")
+        api.calls shouldContainExactly listOf("svc.tg=pair.tg.s1", "exit=s1", "svc.insta=pair.insta.s1")
         exits.state.value shouldBe ExitsState(general = s1, pinned = mapOf(Telegram.id to s1))
     }
 
@@ -107,6 +107,6 @@ class ExitsTest : FunSpec({
             api.calls.clear()
             exits.clear(Instagram.id)
         }
-        api.calls shouldContainExactly listOf("svc.insta=s1.insta")
+        api.calls shouldContainExactly listOf("svc.insta=pair.insta.s1")
     }
 })

@@ -13,6 +13,9 @@ import com.xray.common.net.Network
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import java.net.InetAddress
+import java.util.concurrent.TimeUnit
+
+private const val STATS_DEADLINE_S = 3L
 
 /**
  * RoutingService Xray по gRPC: вход в РФ — TestRoute против его же правила geoip:ru; выход — OverrideBalancerTarget.
@@ -26,12 +29,16 @@ suspend fun ResourceScope.xrayChannel(open: () -> ManagedChannel): ManagedChanne
 
 fun xrayApiOn(channel: ManagedChannel): XrayApi = GrpcXrayApi(channel)
 
-/** StatsService по тому же каналу: все счётчики разом, без сброса — значения накопленные. */
+/**
+ * StatsService по тому же каналу: все счётчики разом, без сброса — значения накопленные. Срок вызова — [STATS_DEADLINE_S]:
+ * зависший Xray не держит опрос, а пульс уходит в ⊥ сам.
+ */
 fun xrayStatsOn(channel: ManagedChannel): XrayStats {
     val stub = StatsServiceGrpcKt.StatsServiceCoroutineStub(channel)
     return XrayStats {
         Either.catch {
-            stub.queryStats(QueryStatsRequest.newBuilder().setPattern("").setReset(false).build()).statList.associate { it.name to it.value }
+            stub.withDeadlineAfter(STATS_DEADLINE_S, TimeUnit.SECONDS)
+                .queryStats(QueryStatsRequest.newBuilder().setPattern("").setReset(false).build()).statList.associate { it.name to it.value }
         }.mapLeft { EngineError.Failed("QueryStats: ${it.message}") }
     }
 }

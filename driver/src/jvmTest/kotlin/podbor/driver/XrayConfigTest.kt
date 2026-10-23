@@ -212,13 +212,13 @@ class XrayConfigTest : FunSpec({
     test("withTunPairOutboundsAndStats: с TUN — клон выхода на пару, балансер сервиса из пар, счётчики Xray") {
         withTun.tags() shouldBe listOf(
             "s001", "s002", "s003",
-            "s001.insta", "s001.tg", "s002.insta", "s002.tg", "s003.insta", "s003.tg",
+            "pair.insta.s001", "pair.tg.s001", "pair.insta.s002", "pair.tg.s002", "pair.insta.s003", "pair.tg.s003",
             "direct", "block", "dns-out",
         )
-        val clone = withTun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("s002.tg") }
-        clone shouldBe buildJsonObject { put("protocol", "vless"); put("tag", "s002.tg") }
-        withTun.balancer("svc.tg").strs("selector") shouldBe listOf("s001.tg", "s002.tg", "s003.tg")
-        withTun.balancer("svc.insta").strs("selector") shouldBe listOf("s001.insta", "s002.insta", "s003.insta")
+        val clone = withTun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("pair.tg.s002") }
+        clone shouldBe buildJsonObject { put("protocol", "vless"); put("tag", "pair.tg.s002") }
+        withTun.balancer("svc.tg").strs("selector") shouldBe listOf("pair.tg.s001", "pair.tg.s002", "pair.tg.s003")
+        withTun.balancer("svc.insta").strs("selector") shouldBe listOf("pair.insta.s001", "pair.insta.s002", "pair.insta.s003")
         withTun.balancer("exit").strs("selector") shouldBe listOf("s001", "s002", "s003")
         withTun["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
         withTun["stats"] shouldBe JsonObject(emptyMap())
@@ -240,6 +240,15 @@ class XrayConfigTest : FunSpec({
     test("probesStayOnServerOutbound: проба кандидата — в выход сервера, не в выход пары: её байты не попадают в пульс") {
         val rs = withTun["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
         rs.single { it.strs("inboundTag") == listOf("in.s002") }["outboundTag"] shouldBe JsonPrimitive("s002")
+    }
+
+    test("клоны пар не попадают в чужой балансер: Xray выбирает выходы по НАЧАЛУ тега (strings.HasPrefix)") {
+        val balancers = withTun["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }
+        val pairs = withTun.tags().filter { tag -> servers.none { it.id.tag == tag } && tag !in setOf("direct", "block", "dns-out") }
+        for (b in balancers) {
+            val own = b.strs("selector")
+            pairs.filter { tag -> own.any { tag.startsWith(it) } } shouldBe own.filter { it in pairs }
+        }
     }
 
     test("тег, который выходы ставят балансеру сервиса, есть в его селекторе — с TUN и без") {

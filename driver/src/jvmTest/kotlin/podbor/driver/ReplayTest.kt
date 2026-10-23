@@ -129,7 +129,7 @@ class ReplayTest : FunSpec({
     test("строки пульса Ленты v2 читаются и прогонам не мешают: те же прогоны, что без них") {
         val withPulse = resource("fixtures/tape/v2-pulse.jsonl")
         val pulses = withPulse.lines().filter { it.isNotBlank() }.map(::rowOf).filterIsInstance<Row.Pulse>()
-        pulses.map { it.sample.outbound["s001.tg"] } shouldBe listOf(Traffic(823, 5_399), Traffic(1_823, 95_399))
+        pulses.map { it.sample.outbound["pair.tg.s001"] } shouldBe listOf(Traffic(823, 5_399), Traffic(1_823, 95_399))
         replay(withPulse).map { it.machine to it.outcome } shouldBe
             replay(resource("fixtures/tape/v1-open-press.jsonl")).map { it.machine to it.outcome }
     }

@@ -49,9 +49,14 @@ fun balancerOf(service: ServiceId): String = "svc.${service.id}"
 
 /**
  * Тег выхода пары «сервис × сервер» — клон outbound'а сервера (только в сессии с TUN): счётчик Xray у него свой, байты
- * Телеги и Инсты через один сервер не смешиваются, пробы идут выходом сервера и в пульс пары не попадают.
+ * Телеги и Инсты через один сервер не смешиваются, пробы идут выходом сервера и в пульс пары не попадают. Тег НЕ
+ * начинается с тега сервера: селектор балансера Xray сравнивает по началу (`strings.HasPrefix`), и `exit` с селектором
+ * `s001` забрал бы `s001.tg` себе.
  */
-fun pairTag(server: ServerId, service: ServiceId): String = "${server.tag}.${service.id}"
+fun pairTag(server: ServerId, service: ServiceId): String = "$PAIR_PREFIX${service.id}.${server.tag}"
+
+/** Начало тега выхода пары: по нему пульс отличает пары от выходов серверов и служебных. */
+const val PAIR_PREFIX = "pair."
 
 /** Тег, которым балансер сервиса указывает на сервер: пара — в сессии с TUN, сервер — в анализе; как в [buildConfig]. */
 fun exitTagOf(opts: ConfigOpts): (ServerId, ServiceId) -> String =

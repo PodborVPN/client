@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import podbor.core.PULSE_WINDOW_MS
 import podbor.core.PairPulse
 import podbor.core.PulseSample
 import podbor.core.PulseView
@@ -29,7 +30,10 @@ class PulseLoopTest : FunSpec({
             PulseSample(4, 100, 50, inbound = mapOf("tun" to Traffic(10, 20)), outbound = mapOf("s001.tg" to Traffic(0, 5)))
     }
 
-    /** Счётчик выхода Телеги: каждый опрос +1000 ↓, пока [growing]. */
+    /**
+     * Счётчики Xray сессии: выход пары Телеги и `tun` — каждый опрос +1000 ↓, пока [growing]; вход `api` растёт от самого
+     * опроса, выход сервера и вход пробы — от проб; пара Инсты — ноль.
+     */
     class Counters(var growing: Boolean = true, var failing: Boolean = false) : XrayStats {
         var calls = 0
         private var down = 0L
@@ -37,17 +41,29 @@ class PulseLoopTest : FunSpec({
             calls++
             if (failing) return EngineError.Failed("QueryStats").left()
             if (growing) down += 1_000
-            return mapOf("outbound>>>s001.tg>>>traffic>>>downlink" to down, "inbound>>>tun>>>traffic>>>downlink" to down).right()
+            return mapOf(
+                "outbound>>>pair.tg.s001>>>traffic>>>downlink" to down,
+                "outbound>>>pair.insta.s001>>>traffic>>>downlink" to 0L,
+                "inbound>>>tun>>>traffic>>>downlink" to down,
+                "inbound>>>api>>>traffic>>>uplink" to calls * 100L,
+                "inbound>>>in.s001>>>traffic>>>downlink" to calls * 7L,
+                "outbound>>>s001>>>traffic>>>downlink" to calls * 7L,
+            ).right()
         }
     }
 
-    fun loopTest(stats: Counters, fast: Boolean, body: suspend kotlinx.coroutines.test.TestScope.(tape: List<String>, views: List<PulseView>) -> Unit) = runTest {
+    fun loopTest(
+        stats: Counters,
+        fast: Boolean,
+        sink: (MutableList<String>) -> TapeSink = { tape -> TapeSink { tape += it } },
+        body: suspend kotlinx.coroutines.test.TestScope.(tape: List<String>, views: List<PulseView>) -> Unit,
+    ) = runTest {
         val tape = mutableListOf<String>()
         val views = mutableListOf<PulseView>()
         val job = launch {
             pulseLoop(
                 stats = stats, clock = Clock { 1_000_000 + testScheduler.currentTime }, mono = { testScheduler.currentTime }, epoch = 1,
-                fast = { fast }, effective = { mapOf(Telegram.id to "s001.tg") }, tape = TapeSink { tape += it }, emit = { views += it },
+                fast = { fast }, effective = { mapOf(Telegram.id to "pair.tg.s001") }, tape = sink(tape), emit = { views += it },
             )
         }
         body(tape, views)
@@ -76,17 +92,42 @@ class PulseLoopTest : FunSpec({
         }
     }
 
-    test("statsFailureLeavesLastPulse: API статистики ответил ошибкой — прежний пульс остаётся, опрос идёт дальше") {
+    test("statsFailureLeavesLastPulse: сбой API статистики — опрос идёт дальше; долгий — пара уходит в ⊥, итог сессии остаётся") {
         val stats = Counters()
         loopTest(stats, fast = true) { _, views ->
             runCurrent(); advanceTimeBy(1_000); runCurrent()
-            views.size shouldBe 2
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, 0)
             stats.failing = true
             advanceTimeBy(3_000); runCurrent()
-            views.size shouldBe 2
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, 3_000)
+            advanceTimeBy(2 * PULSE_WINDOW_MS); runCurrent()
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Unseen
+            views.last().session shouldBe Traffic(0, 2_000)
             stats.failing = false
             advanceTimeBy(1_000); runCurrent()
-            views.size shouldBe 3
+            stats.calls shouldBe 2 + 3 + 20 + 1
+        }
+    }
+
+    test("в Ленту — только `tun` и ненулевые выходы пар: вход API растёт от самого опроса и строк не порождает") {
+        val stats = Counters()
+        loopTest(stats, fast = true) { tape, _ ->
+            runCurrent()
+            val first = (rowOf(tape.single()) as Row.Pulse).sample
+            first.inbound.keys shouldBe setOf("tun")
+            first.outbound.keys shouldBe setOf("pair.tg.s001")
+            stats.growing = false
+            advanceTimeBy(30_000); runCurrent()
+            // Пара и `tun` стоят с первого опроса; растут только API и пробы — строк больше нет.
+            tape.size shouldBe 1
+        }
+    }
+
+    test("Лента не пишется (диск полон) — опрос и экран живут дальше") {
+        val stats = Counters()
+        loopTest(stats, fast = true, sink = { TapeSink { error("нет места на диске") } }) { _, views ->
+            runCurrent(); advanceTimeBy(3_000); runCurrent()
+            views.size shouldBe 4
         }
     }
 })

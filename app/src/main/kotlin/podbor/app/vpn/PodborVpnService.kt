@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -309,8 +310,9 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     /**
-     * Пульс сессии в её области: опрос счётчиков до конца сессии, потом — пусто. Эпоха — номер запуска Xray сессии (растёт
-     * и через перезапуски процесса), время темпа — монотонное. Частый опрос — пока экран подписан на [pulse].
+     * Пульс сессии в её области: опрос счётчиков до конца сессии, потом — пусто. Сессия пульса — один подъём VPN (один
+     * запуск Xray): выкл/вкл и анализ подписки начинают трафик с нуля. Эпоха — номер запуска Xray (растёт и через
+     * перезапуски процесса) — метка отсчётов в Ленте; время темпа — монотонное. Частый опрос — пока экран подписан на [pulse].
      */
     private suspend fun ResourceScope.pulse(driver: Driver, opts: ConfigOpts, stats: XrayStats) {
         val epoch = nextEpoch()
@@ -333,7 +335,8 @@ class PodborVpnService : VpnService(), ServicePort {
                 }
             },
             { job, _ ->
-                job.cancel()
+                // Дождаться петли: отменённая между ответом и выдачей, она затёрла бы пустой вид прошлой сессией.
+                job.cancelAndJoin()
                 pulseNow.value = PulseView.Empty
             },
         )

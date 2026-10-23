@@ -1,10 +1,12 @@
 package podbor.driver
 
+import arrow.core.Either
 import kotlinx.coroutines.delay
 import podbor.core.Pulse
 import podbor.core.PulseSample
 import podbor.core.PulseView
 import podbor.core.ServiceId
+import podbor.core.TUN_INBOUND
 import podbor.core.Traffic
 import podbor.core.after
 import podbor.core.view
@@ -30,9 +32,19 @@ fun sampleOf(raw: Map<String, Long>, epoch: Long, atMs: Long, monoMs: Long): Pul
 }
 
 /**
- * Опрос счётчиков Xray сессии до отмены: отсчёт → свёртка [Pulse] → вид на экран ([emit]) для [effective] (сервис →
- * тег выхода его пары). В Ленту отсчёт уходит не чаще [PULSE_TAPE_MS] и только изменившийся. Сбой API — вида нет,
- * прежний остаётся на экране, опрос идёт дальше. [fast] — экран смотрит.
+ * Что из отсчёта нужно знанию: вход сети (`tun`) и выходы пар, по которым шли байты. Вход API растёт от самого опроса,
+ * выходы серверов и входы проб — от проб, нулевые пары — молчат: в Ленте они только множили бы строки.
+ */
+fun PulseSample.essential(): PulseSample = copy(
+    inbound = inbound.filterKeys { it == TUN_INBOUND },
+    outbound = outbound.filter { (tag, t) -> tag.startsWith(PAIR_PREFIX) && t != Traffic.Zero },
+)
+
+/**
+ * Опрос счётчиков Xray сессии до отмены: отсчёт ([essential]) → свёртка [Pulse] → вид на экран ([emit]) для
+ * [effective] (сервис → тег выхода его пары). В Ленту отсчёт уходит не чаще [PULSE_TAPE_MS] и только изменившийся;
+ * Лента не пишется (диск полон) — опрос живёт дальше. Сбой API — вид на прежней свёртке к текущему моменту: старше двух
+ * окон пара сама уходит в ⊥, итог сессии остаётся. [fast] — экран смотрит.
  */
 suspend fun pulseLoop(
     stats: XrayStats,
@@ -47,17 +59,19 @@ suspend fun pulseLoop(
     var pulse = Pulse.Empty
     var taped: PulseSample? = null
     while (true) {
-        stats.query().onRight { raw ->
-            val s = sampleOf(raw, epoch, clock.nowMs(), mono())
-            pulse = pulse.after(s)
-            emit(pulse.view(effective(), s.monoMs))
-            val last = taped
-            val changed = last == null || last.inbound != s.inbound || last.outbound != s.outbound
-            if (changed && (last == null || s.monoMs - last.monoMs >= PULSE_TAPE_MS)) {
-                tape.write(rowLine(Row.Pulse(s)))
-                taped = s
-            }
-        }
+        stats.query().fold(
+            { emit(pulse.view(effective(), mono())) },
+            { raw ->
+                val s = sampleOf(raw, epoch, clock.nowMs(), mono()).essential()
+                pulse = pulse.after(s)
+                emit(pulse.view(effective(), s.monoMs))
+                val last = taped
+                val changed = last == null || last.inbound != s.inbound || last.outbound != s.outbound
+                if (changed && (last == null || s.monoMs - last.monoMs >= PULSE_TAPE_MS)) {
+                    Either.catch { tape.write(rowLine(Row.Pulse(s))) }.onRight { taped = s }
+                }
+            },
+        )
         delay(if (fast()) PULSE_FAST_MS else PULSE_SLOW_MS)
     }
 }
