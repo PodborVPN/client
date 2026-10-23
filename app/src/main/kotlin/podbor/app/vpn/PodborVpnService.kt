@@ -161,6 +161,9 @@ class PodborVpnService : VpnService(), ServicePort {
     private val subscriptions by lazy { SubscriptionStore(filesDir) }
     private val passports by lazy { FilePassportStore(filesDir) }
 
+    /** Напоминание о конце срока: при открытии экрана (после обновления подписки) и подъёме VPN — экран могут не открывать. */
+    private val expiry by lazy { ExpiryNotice(this, subscriptions) { clock.nowMs() } }
+
     private val desk by lazy {
         Desk(
             host = host,
@@ -239,7 +242,11 @@ class PodborVpnService : VpnService(), ServicePort {
         scope.launch {
             sessionExits().map { (s, e) -> s to exitName(s, e) }.distinctUntilChanged().collect { (s, name) ->
                 when (s) {
-                    is SessionState.Up, SessionState.Starting -> nm.notify(NOTIFICATION_ID, notification(name))
+                    is SessionState.Up -> {
+                        nm.notify(NOTIFICATION_ID, notification(name))
+                        launch { expiry.check() }
+                    }
+                    SessionState.Starting -> nm.notify(NOTIFICATION_ID, notification(name))
                     SessionState.Down, is SessionState.Failed -> Unit
                 }
             }
@@ -282,7 +289,11 @@ class PodborVpnService : VpnService(), ServicePort {
     override suspend fun measureLine() = desk.measureLine()
 
     /** Тихое обновление подписки по ссылке. */
-    override suspend fun refreshSubscription() = desk.refreshSubscription()
+    /** Тихое обновление подписки ([Desk.refreshSubscription]), потом — напоминание о конце срока по свежим сведениям. */
+    override suspend fun refreshSubscription() {
+        desk.refreshSubscription()
+        expiry.check()
+    }
 
     override suspend fun latestRelease() = desk.latestRelease()
 
