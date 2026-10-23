@@ -184,7 +184,12 @@ class LookTest : FunSpec({
         bytesText(1_000) shouldBe "1 КБ"
         bytesText(192_000) shouldBe "192 КБ"
         bytesText(32_200_000) shouldBe "32,2 МБ"
-        bytesText(4_560_000_000) shouldBe "4,5 ГБ"
+        bytesText(4_560_000_000) shouldBe "4,6 ГБ" // округляем, как «Использование данных» Android
+        bytesText(32_249_999) shouldBe "32,2 МБ"
+        bytesText(32_250_000) shouldBe "32,3 МБ"
+        bytesText(99_960) shouldBe "100 КБ" // 99,96 → 100,0: уже целым
+        bytesText(999_600) shouldBe "1 МБ" // 999,6 КБ → 1000 КБ: следующая единица, а не «1000 КБ»
+        bytesText(999_400) shouldBe "999 КБ"
         rateText(340_000) shouldBe "340 КБ/с"
         rateText(0) shouldBe "0 Б/с"
     }
@@ -213,7 +218,7 @@ class LookTest : FunSpec({
     }
 
     test("«ТЕКУЩИЙ VPN» — итог через VPN на этой подписке; итога нет — нет и строки") {
-        vpnTraffic(PulseView(emptyMap(), network = null, vpn = Tally("k", Traffic(up = 40_000, down = 1_250_000)))) shouldBe "↓ 1,2 МБ · ↑ 40 КБ"
+        vpnTraffic(PulseView(emptyMap(), network = null, vpn = Tally("k", Traffic(up = 40_000, down = 1_250_000)))) shouldBe "↓ 1,3 МБ · ↑ 40 КБ"
         vpnTraffic(PulseView.Empty) shouldBe null
     }
 

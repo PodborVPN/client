@@ -167,17 +167,23 @@ fun cardTime(ms: Long): String = if (ms < 60_000) "${ms / 1000},${ms % 1000 / 10
 private val UNITS = listOf("Б", "КБ", "МБ", "ГБ", "ТБ")
 
 /**
- * Байты десятичными единицами, как «Использование данных» Android: до 100 — с десятой через запятую (нулевую не пишем:
- * «12 КБ», но «9,8 КБ»), дальше целым.
+ * Байты десятичными единицами, как «Использование данных» Android: с округлением; до 100 — с десятой через запятую
+ * (нулевую не пишем: «12 КБ», но «9,8 КБ»), дальше целым; округлилось до 1000 — следующая единица («1 МБ», а не
+ * «1000 КБ»).
  */
 fun bytesText(n: Long): String {
-    val k = generateSequence(1L) { it * 1_000 }.take(UNITS.size).indexOfLast { n >= it }.coerceAtLeast(0)
-    val scale = generateSequence(1L) { it * 1_000 }.elementAt(k)
-    val tenths = n * 10 / scale
+    if (n < 1_000) return "$n ${UNITS[0]}"
+    var k = 1
+    var scale = 1_000L
+    while (k < UNITS.lastIndex && (n + scale / 2) / scale >= 1_000) {
+        k++
+        scale *= 1_000
+    }
+    val tenths = (n * 10 + scale / 2) / scale
     return when {
-        k == 0 -> "$n ${UNITS[0]}"
         tenths < 1_000 && tenths % 10 != 0L -> "${tenths / 10},${tenths % 10} ${UNITS[k]}"
-        else -> "${n / scale} ${UNITS[k]}"
+        tenths < 1_000 -> "${tenths / 10} ${UNITS[k]}"
+        else -> "${(n + scale / 2) / scale} ${UNITS[k]}"
     }
 }
 
