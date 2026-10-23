@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/PodborVPN/client/compare/v0.10.0...v0.11.0) (2026-10-23)
+
+
+### Новое
+
+* подписка — шторка о ссылках, которые не стали серверами ([b63011c](https://github.com/PodborVPN/client/commit/b63011c453c3b8dc21dfd64fe9d5fbdef606f202))
+
+
+### Исправлено
+
+* подписка через прокси Яндекса — страница перевода разбирается jsoup ([a4e481b](https://github.com/PodborVPN/client/commit/a4e481bae5f9c6f62f5c5ec104cac91de8f14a70))
+
 ## [0.10.0](https://github.com/PodborVPN/client/compare/v0.9.3...v0.10.0) (2026-10-23)
 
 
