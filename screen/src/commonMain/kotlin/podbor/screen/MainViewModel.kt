@@ -73,6 +73,10 @@ class MainViewModel(
     val scan: StateFlow<ScanPhase>
         field = MutableStateFlow<ScanPhase>(ScanPhase.Idle)
 
+    /** Шторка о ссылках подписки, не ставших серверами (часть или все); null — нечего сказать или «Понятно». */
+    val skipped: StateFlow<Skipped?>
+        field = MutableStateFlow<Skipped?>(null)
+
     /** Страница под сетью; null — подписка ещё не прочитана. */
     val page: StateFlow<Page?> =
         combine(subscribed, scan) { has, p -> has?.let { pageOf(it, p) } }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -210,6 +214,7 @@ class MainViewModel(
     /** Текст подписки разобран платформой: не принялся — словами; иначе анализ. Посреди анализа — ничего. */
     fun input(parsed: Either<InputError, SubscriptionInput>) {
         if (scan.value is ScanPhase.Running) return
+        skipped.value = null
         when (parsed) {
             is Either.Left -> scan.value = ScanPhase.Failed(parsed.value)
             is Either.Right -> {
@@ -219,15 +224,23 @@ class MainViewModel(
         }
     }
 
-    /** Анализ в сервисе (VPN гаснет на его время): доски по ходу — в [scan]. */
+    /** Анализ в сервисе (VPN гаснет на его время): доски по ходу — в [scan], пропущенные ссылки — в [skipped]. */
     private suspend fun analyze(input: SubscriptionInput) {
         val s = service.filterNotNull().first()
-        val out = s.analyze(input) { b -> scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it } }
+        val out = s.analyze(input, onSkipped = { skipped.value = it }) { b ->
+            scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it }
+        }
         reload()
+        (out.leftOrNull() as? InputError.NoServers)?.let { skipped.value = it.skipped }
         scan.value = when (out) {
             is Either.Left -> ScanPhase.Failed(out.value)
             is Either.Right -> ScanPhase.Done(out.value)
         }
+    }
+
+    /** «Понятно» на шторке пропущенных ссылок. */
+    fun dismissSkipped() {
+        skipped.value = null
     }
 
     /**

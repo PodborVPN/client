@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
@@ -30,7 +31,10 @@ class SubscriptionFragment : Fragment() {
             setContent {
                 val phase by screen.vm.scan.collectAsStateWithLifecycle()
                 val has by screen.vm.subscribed.collectAsStateWithLifecycle()
+                val skipped by screen.vm.skipped.collectAsStateWithLifecycle()
                 PodborTheme {
+                    // Поверх обеих страниц: ничего не подошло — на «Добавь подписку», часть — на анализе.
+                    skipped?.let { s -> key(s) { SkippedSheet(s, onDismiss = screen.vm::dismissSkipped) } }
                     // По виду страницы, не по доске: новая доска анализа — не новый переход.
                     AnimatedContent(
                         pageOf(has == true, phase),

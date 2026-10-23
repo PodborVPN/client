@@ -11,7 +11,8 @@ sealed interface InputError {
     data object Unreadable : InputError
     /** [whitelist] — скачать не вышло, а сеть похожа на «белый» режим. */
     data class Download(val whitelist: Boolean) : InputError
-    data object NoServers : InputError
+    /** Ни одна ссылка не стала сервером; [skipped] — какие и почему. */
+    data class NoServers(val skipped: Skipped) : InputError
     /** Серверы есть, а Xray анализа не поднялся (конфиг или движок). */
     data object ScanFailed : InputError
 }

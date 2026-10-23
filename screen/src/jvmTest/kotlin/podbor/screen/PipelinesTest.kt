@@ -146,6 +146,60 @@ class PipelinesTest : FunSpec({
         }
     }
 
+    test("часть ссылок не подошла — шторка с их счётом посреди анализа; «Понятно» убирает её, анализ идёт дальше") {
+        vmTest {
+            val vm = vm()
+            val port = FakePort()
+            val done = CompletableDeferred<Unit>()
+            port.skipped = MIXED
+            port.analysis = { done.await(); Either.Right(SCAN) }
+            vm.attach(port)
+            vm.input(Either.Right(LINK))
+            runCurrent()
+            vm.skipped.value shouldBe MIXED
+            vm.scan.value.shouldBeInstanceOf<ScanPhase.Running>()
+            vm.dismissSkipped()
+            vm.skipped.value shouldBe null
+            done.complete(Unit)
+            runCurrent()
+            vm.scan.value shouldBe ScanPhase.Done(SCAN)
+            vm.skipped.value shouldBe null
+        }
+    }
+
+    test("ничего не подошло — страница подписки с ошибкой и шторка с тем же счётом") {
+        vmTest {
+            val vm = vm(shelf = FakeShelf(note = null))
+            val port = FakePort()
+            val none = Skipped(servers = 0, unsupported = mapOf("hysteria2" to 3), broken = 0)
+            port.analysis = { Either.Left(InputError.NoServers(none)) }
+            vm.attach(port)
+            vm.input(Either.Right(LINK))
+            runCurrent()
+            vm.scan.value shouldBe ScanPhase.Failed(InputError.NoServers(none))
+            vm.page.value shouldBe Page.AddSubscription
+            vm.skipped.value shouldBe none
+        }
+    }
+
+    test("новая попытка убирает шторку прошлой") {
+        vmTest {
+            val vm = vm()
+            val port = FakePort()
+            port.analysis = { Either.Left(InputError.NoServers(MIXED.copy(servers = 0))) }
+            vm.attach(port)
+            vm.input(Either.Right(LINK))
+            runCurrent()
+            vm.skipped.value shouldBe MIXED.copy(servers = 0)
+            port.analysis = { awaitCancellation() }
+            vm.input(Either.Right(LINK))
+            runCurrent()
+            vm.skipped.value shouldBe null
+            vm.input(Either.Left(InputError.Unreadable))
+            vm.skipped.value shouldBe null
+        }
+    }
+
     test("«ОК» посреди анализа — анализ прерван, подписка перечитана, главный и открытие; второе «ОК» — ничего") {
         vmTest {
             val shelf = FakeShelf(note = null)
@@ -202,7 +256,7 @@ class PipelinesTest : FunSpec({
             val port = FakePort()
             vm.attach(port)
             runCurrent()
-            vm.input(Either.Left(InputError.NoServers))
+            vm.input(Either.Left(InputError.NoServers(MIXED.copy(servers = 0))))
             runCurrent()
             vm.canGoBack.value shouldBe true
             vm.back()

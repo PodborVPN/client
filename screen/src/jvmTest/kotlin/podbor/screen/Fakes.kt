@@ -50,14 +50,22 @@ internal class FakePort : ServicePort {
     }
 
     var analyses = 0
+    /** Что анализ сообщит о пропущенных ссылках до досок; null — пропусков нет. */
+    var skipped: Skipped? = null
     var analysis: suspend (onBoard: (ScanBoard) -> Unit) -> Either<InputError, ScanBoard> = { Either.Right(SCAN) }
-    override suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> {
+    override suspend fun analyze(
+        input: SubscriptionInput,
+        onSkipped: (Skipped) -> Unit,
+        onBoard: (ScanBoard) -> Unit,
+    ): Either<InputError, ScanBoard> {
         analyses++
+        skipped?.let(onSkipped)
         return analysis(onBoard)
     }
 }
 
 internal val SCAN = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(), finished = true)
+internal val MIXED = Skipped(servers = 4, unsupported = mapOf("hysteria2" to 2, "tuic" to 1), broken = 1)
 internal val NOTE = SubscriptionNote("подписка", emptyList(), null, null)
 
 /** Полка подписки: [note] — есть подписка, null — нет. */

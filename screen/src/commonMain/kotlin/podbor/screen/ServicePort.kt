@@ -40,8 +40,15 @@ interface ServicePort {
 
     suspend fun press()
 
-    /** Анализ подписки: VPN гаснет на его время; доски по ходу — в [onBoard]. */
-    suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard>
+    /**
+     * Анализ подписки: VPN гаснет на его время; часть ссылок не стала серверами — [onSkipped] до первой доски; доски по
+     * ходу — в [onBoard].
+     */
+    suspend fun analyze(
+        input: SubscriptionInput,
+        onSkipped: (Skipped) -> Unit,
+        onBoard: (ScanBoard) -> Unit,
+    ): Either<InputError, ScanBoard>
 }
 
 /** Сохранённая подписка глазами экрана: что о ней сказать; подписки нет — null. */

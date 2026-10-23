@@ -13,6 +13,9 @@ import podbor.app.sub.inputOf
 import podbor.app.sub.unwrapTranslated
 import podbor.app.sub.viaYandex
 import podbor.app.sub.wordsOf
+import podbor.app.sub.SkippedWords
+import podbor.app.sub.skippedWords
+import podbor.screen.Skipped
 
 class SubscriptionInputTest : FunSpec({
     /** Вставка → что из неё вышло. */
@@ -60,10 +63,38 @@ class SubscriptionInputTest : FunSpec({
     test("слова ошибок") {
         wordsOf(InputError.Download(true)) shouldBe "не могу скачать подписку: похоже, белые списки. Попроси прислать её текстом или QR в VK или Max — или добавь через Wi-Fi"
         wordsOf(InputError.Download(false)) shouldBe "не могу скачать подписку: сеть не отвечает"
-        wordsOf(InputError.NoServers) shouldBe "не нашёл поддерживаемых серверов"
+        wordsOf(InputError.NoServers(Skipped(0, mapOf("tuic" to 1), 0))) shouldBe "не нашёл поддерживаемых серверов"
+        wordsOf(InputError.NoServers(Skipped(0, emptyMap(), 0))) shouldBe "не узнал формат подписки"
         wordsOf(InputError.ScanFailed) shouldBe "не смог проверить подписку — попробуй ещё раз"
         wordsOf(InputError.Empty) shouldBe "в буфере нет подписки"
         wordsOf(InputError.Unreadable) shouldBe "в буфере нет подписки"
+    }
+
+    test("шторка пропусков: ничего не подошло — чужие схемы по убыванию счёта, битые последними") {
+        skippedWords(Skipped(0, mapOf("tuic" to 1, "hysteria2" to 5, "anytls" to 1), broken = 2)) shouldBe SkippedWords(
+            title = "Podbor не поддерживает эту подписку",
+            lines = listOf("hysteria2 — 5", "anytls — 1", "tuic — 1", "битые ссылки — 2"),
+            note = "Podbor понимает vless, vmess, trojan и shadowsocks — попроси у провайдера подписку на них",
+        )
+    }
+
+    test("шторка пропусков: ссылок нет — формат не узнан") {
+        skippedWords(Skipped(0, emptyMap(), 0)) shouldBe SkippedWords(
+            title = "Не узнал формат подписки",
+            lines = emptyList(),
+            note = "Podbor понимает ссылки vless, vmess, trojan и shadowsocks, а это похоже на настройки Clash или sing-box — " +
+                "попроси у провайдера подписку для v2rayNG",
+        )
+    }
+
+    test("шторка пропусков: часть подошла — сколько проверю из всех, остальное пропускаю") {
+        skippedWords(Skipped(4, mapOf("hysteria2" to 3), broken = 1)) shouldBe SkippedWords(
+            title = "Проверю 4 сервера из 8",
+            lines = listOf("hysteria2 — 3", "битая ссылка — 1"),
+            note = "остальные Podbor не поддерживает — пропущу",
+        )
+        skippedWords(Skipped(1, mapOf("tuic" to 1), broken = 0)).title shouldBe "Проверю 1 сервер из 2"
+        skippedWords(Skipped(5, mapOf("tuic" to 1), broken = 0)).title shouldBe "Проверю 5 серверов из 6"
     }
 
     test("белые списки: не скачалась напрямую — вторая попытка через прокси Яндекс Переводчика") {

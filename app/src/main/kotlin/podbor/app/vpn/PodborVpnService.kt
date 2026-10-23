@@ -43,6 +43,7 @@ import podbor.app.net.UnderlyingNetwork
 import podbor.app.redact
 import podbor.app.sub.FilePassportStore
 import podbor.screen.InputError
+import podbor.screen.Skipped
 import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
 import podbor.app.ui.MainActivity
@@ -282,8 +283,11 @@ class PodborVpnService : VpnService(), ServicePort {
     override suspend fun press() = desk.press()
 
     /** Анализ подписки: см. [Desk.analyze] — VPN гаснет на время анализа, Xray анализа без TUN. */
-    override suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
-        desk.analyze(input, onBoard)
+    override suspend fun analyze(
+        input: SubscriptionInput,
+        onSkipped: (Skipped) -> Unit,
+        onBoard: (ScanBoard) -> Unit,
+    ): Either<InputError, ScanBoard> = desk.analyze(input, onSkipped, onBoard)
 
     /** Сессия и выход общего балансера в ней ([podbor.driver.ExitsState.general]): у новой сессии — свои выходы. */
     @OptIn(ExperimentalCoroutinesApi::class)

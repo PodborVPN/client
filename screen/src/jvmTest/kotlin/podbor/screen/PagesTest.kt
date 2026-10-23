@@ -23,7 +23,7 @@ class PagesTest : FunSpec({
     }
 
     test("подписка не принялась → снова «Добавь подписку» (ошибка словами — на ней), и при сохранённой подписке") {
-        pageOf(false, ScanPhase.Failed(InputError.NoServers)) shouldBe Page.AddSubscription
+        pageOf(false, ScanPhase.Failed(InputError.NoServers(MIXED.copy(servers = 0)))) shouldBe Page.AddSubscription
         pageOf(true, ScanPhase.Failed(InputError.Download(false))) shouldBe Page.AddSubscription
     }
 

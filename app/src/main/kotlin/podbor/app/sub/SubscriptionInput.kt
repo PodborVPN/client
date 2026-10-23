@@ -5,7 +5,9 @@ import arrow.core.left
 import arrow.core.right
 import java.net.URI
 import java.net.URLEncoder
+import podbor.core.plural
 import podbor.screen.InputError
+import podbor.screen.Skipped
 import podbor.screen.SubscriptionInput
 
 private val LINK = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
@@ -99,7 +101,37 @@ fun wordsOf(e: InputError): String = when (e) {
     is InputError.Download ->
         if (e.whitelist) "не могу скачать подписку: похоже, белые списки. Попроси прислать её текстом или QR в VK или Max — или добавь через Wi-Fi"
         else "не могу скачать подписку: сеть не отвечает"
-    InputError.NoServers -> "не нашёл поддерживаемых серверов"
+    is InputError.NoServers -> if (e.skipped.recognized) "не нашёл поддерживаемых серверов" else "не узнал формат подписки"
     InputError.ScanFailed -> "не смог проверить подписку — попробуй ещё раз"
     InputError.Empty, InputError.Unreadable -> "в буфере нет подписки"
+}
+
+/** Слова шторки о ссылках, не ставших серверами: заголовок, счёт по схемам, что делать. */
+data class SkippedWords(val title: String, val lines: List<String>, val note: String)
+
+private const val OURS_WORDS = "vless, vmess, trojan и shadowsocks"
+
+/** Схемы — по убыванию счёта (равные — по имени), битые — последней строкой. */
+fun skippedWords(s: Skipped): SkippedWords {
+    val lines = s.unsupported.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+        .map { (scheme, n) -> "$scheme — $n" } +
+        listOfNotNull(s.broken.takeIf { it > 0 }?.let { "${plural(it, "битая ссылка", "битые ссылки", "битых ссылок")} — $it" })
+    val total = s.servers + s.broken + s.unsupported.values.sum()
+    return when {
+        s.servers > 0 -> SkippedWords(
+            "Проверю ${s.servers} ${plural(s.servers, "сервер", "сервера", "серверов")} из $total",
+            lines,
+            "остальные Podbor не поддерживает — пропущу",
+        )
+        s.recognized -> SkippedWords(
+            "Podbor не поддерживает эту подписку",
+            lines,
+            "Podbor понимает $OURS_WORDS — попроси у провайдера подписку на них",
+        )
+        else -> SkippedWords(
+            "Не узнал формат подписки",
+            lines,
+            "Podbor понимает ссылки $OURS_WORDS, а это похоже на настройки Clash или sing-box — попроси у провайдера подписку для v2rayNG",
+        )
+    }
 }

@@ -28,6 +28,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import podbor.app.sub.Fetched
 import podbor.screen.InputError
+import podbor.screen.Skipped
 import podbor.app.sub.Subscription
 import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
@@ -200,8 +201,11 @@ private class ScanStand(
 
     suspend fun up() = host.state.first { it is SessionState.Up }
 
-    suspend fun analyze(input: SubscriptionInput = SubscriptionInput.Text("vless://x"), onBoard: (ScanBoard) -> Unit = {}) =
-        desk.analyze(input, onBoard)
+    suspend fun analyze(
+        input: SubscriptionInput = SubscriptionInput.Text("vless://x"),
+        onSkipped: (Skipped) -> Unit = {},
+        onBoard: (ScanBoard) -> Unit = {},
+    ) = desk.analyze(input, onSkipped, onBoard)
 }
 
 private fun TestScope.stand(
@@ -258,10 +262,33 @@ class ScanDeskTest : FunSpec({
     test("нет серверов → NoServers, подписка не сохранена, Xray анализа не поднимался") {
         runTest {
             val s = stand(servers = 0)
-            s.analyze() shouldBe Either.Left(InputError.NoServers)
+            val text = SubscriptionInput.Text(listOf("vless://x", "tuic://p", "hy2://p").joinToString("\n"))
+            s.analyze(text) shouldBe Either.Left(InputError.NoServers(Skipped(0, mapOf("tuic" to 1, "hysteria2" to 1), broken = 1)))
             s.subscriptions.load() shouldBe null
             s.desk.hasSubscription() shouldBe false
             s.events shouldNotContain "scan up"
+        }
+    }
+
+    test("часть ссылок не стала серверами → счёт пропусков раньше первой доски, анализ идёт как обычно") {
+        runTest {
+            val s = stand(servers = 3)
+            val text = SubscriptionInput.Text(listOf("vless://a", "vless://b", "vless://c", "hysteria2://p").joinToString("\n"))
+            val seen = mutableListOf<Any>()
+            s.analyze(text, onSkipped = { seen += it }, onBoard = { if (seen.none { it is ScanBoard }) seen += it })
+                .shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            seen.first() shouldBe Skipped(3, mapOf("hysteria2" to 1), broken = 0)
+            seen.filterIsInstance<Skipped>().size shouldBe 1
+            seen.filterIsInstance<ScanBoard>().size shouldBe 1
+        }
+    }
+
+    test("все ссылки стали серверами → о пропусках молчим") {
+        runTest {
+            val s = stand(servers = 1)
+            var told = 0
+            s.analyze(onSkipped = { told++ }).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            told shouldBe 0
         }
     }
 
@@ -280,7 +307,7 @@ class ScanDeskTest : FunSpec({
         runTest {
             val s = stand(hang = "10.0.0.3", hangPort = 20002)
             val twoDone = CompletableDeferred<Unit>()
-            val job = async { s.desk.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
+            val job = async { s.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
             twoDone.await()
             job.cancel()
             job.join()
@@ -386,7 +413,7 @@ class ScanDeskTest : FunSpec({
             s.subscriptions.save(Subscription(null, "прежняя"))
             s.start()
             s.up()
-            s.analyze() shouldBe Either.Left(InputError.NoServers)
+            s.analyze() shouldBe Either.Left(InputError.NoServers(Skipped(0, emptyMap(), broken = 1)))
             s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
             s.events shouldNotContain "vpn down"
             s.subscriptions.load() shouldBe Subscription(null, "прежняя")

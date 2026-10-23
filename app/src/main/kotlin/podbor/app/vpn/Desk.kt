@@ -27,6 +27,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import podbor.app.sub.Fetched
 import podbor.screen.InputError
+import podbor.screen.Skipped
+import podbor.screen.skippedOf
 import podbor.app.sub.Subscription
 import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
@@ -265,20 +267,31 @@ class Desk(
     /**
      * Анализ подписки (на пуле IO; [onBoard] — оттуда же, не чаще раза в кадр — [paced]). Сначала — вход, при живом VPN:
      * текст подписки (ссылка — по нижележащей сети; не скачалась — белые списки по замеру линии сейчас, мимо туннеля) и
-     * серверы в нём (конвертер libXray — разбор текста, без Xray: работающей сессии не касается). Вход не годится —
+     * серверы в нём (конвертер libXray — разбор текста, без Xray: работающей сессии не касается); ссылки, не ставшие
+     * серверами, — счётом в [onSkipped] до анализа (ни одной — в NoServers). Вход не годится —
      * ошибка, VPN и прежняя подписка как были. Годится — сессия VPN гасится, пока замок [xray] не наш ([evictSession]);
      * анализы — по одному, старт VPN посреди ждёт конца. Под замком: свой Xray без TUN в своей области — поднялся,
      * подписка сохраняется (не поднялся — ScanFailed, прежняя цела) — подсказки белых списков по IP входа, SNI отдельно
      * — анализ драйвера. Отмена освобождает область (Xray анализа остановлен), частичный паспорт драйвер сохраняет сам.
      * VPN после анализа поднимает экран.
      */
-    suspend fun analyze(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
-        withContext(io) { scans.withLock { analyzeLocked(input, onBoard) } }
+    suspend fun analyze(
+        input: SubscriptionInput,
+        onSkipped: (Skipped) -> Unit,
+        onBoard: (ScanBoard) -> Unit,
+    ): Either<InputError, ScanBoard> =
+        withContext(io) { scans.withLock { analyzeLocked(input, onSkipped, onBoard) } }
 
-    private suspend fun analyzeLocked(input: SubscriptionInput, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> = either {
+    private suspend fun analyzeLocked(
+        input: SubscriptionInput,
+        onSkipped: (Skipped) -> Unit,
+        onBoard: (ScanBoard) -> Unit,
+    ): Either<InputError, ScanBoard> = either {
         val got = fetchText(input, scan.download, ::whitelistNow, tunnel()).bind()
         val text = got.body
-        ensure(scan.servers(text) > 0) { InputError.NoServers }
+        val skipped = skippedOf(text, scan.servers(text))
+        ensure(skipped.servers > 0) { InputError.NoServers(skipped) }
+        if (skipped.any) onSkipped(skipped)
         evictSession()
         // Замок взят tryLock в evictSession, приостановок до try нет.
         try {
