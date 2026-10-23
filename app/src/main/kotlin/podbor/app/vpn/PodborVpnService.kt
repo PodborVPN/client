@@ -168,6 +168,7 @@ class PodborVpnService : VpnService(), ServicePort {
             scan = ScanPorts(
                 download = underlying::download,
                 downloadVia = underlying::downloadVia,
+                location = underlying::location,
                 servers = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ 0 }, { draftsOf(it).size }) },
                 warm = { text -> live(tunFd = null, text) },
                 lists = { WhiteHolder.await(WHITE_WAIT_MS) },

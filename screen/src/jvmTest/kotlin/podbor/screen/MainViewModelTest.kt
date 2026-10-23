@@ -163,14 +163,14 @@ class MainViewModelTest : FunSpec({
 
     test("обновлялка: известный новее релиз — чип сразу, ещё до проверки") {
         vmTest {
-            val vm = vm(FakeMemory(at = 10 * HOUR, release = NEWER))
+            val vm = vm(FakeMemory(release = NEWER))
             watching(vm)
             runCurrent()
             vm.update.value shouldBe Offer("0.9.2", NEWER.url)
         }
     }
 
-    test("обновлялка: экран виден и пора — один запрос, ответ запомнен с временем, чип по ответу") {
+    test("обновлялка: экран виден — один запрос, ответ запомнен, чип по ответу") {
         vmTest {
             val memory = FakeMemory()
             val vm = vm(memory)
@@ -179,23 +179,29 @@ class MainViewModelTest : FunSpec({
             watching(vm)
             runCurrent()
             port.asked shouldBe 1
-            memory.remembered shouldBe listOf(10 * HOUR to NEWER)
+            memory.remembered shouldBe listOf(NEWER)
             vm.update.value shouldBe Offer("0.9.2", NEWER.url)
         }
     }
 
-    test("обновлялка: спрашивали меньше часа назад — GitHub не спрашивается") {
+    test("обновлялка: каждое открытие экрана — новый запрос, без тормоза по времени") {
         vmTest {
-            val vm = vm(FakeMemory(at = 10 * HOUR - 1))
+            val vm = vm(FakeMemory(release = NEWER))
             val port = FakePort().apply { answer = { NEWER } }
             vm.attach(port)
+            val first = watching(vm)
+            runCurrent()
+            first.cancel()
+            // Запас WhileSubscribed: экран не вернулся за 5 с — поток остановлен; открыли снова — новый запрос.
+            advanceTimeBy(5_001)
+            runCurrent()
             watching(vm)
             runCurrent()
-            port.asked shouldBe 0
+            port.asked shouldBe 2
         }
     }
 
-    test("обновлялка: GitHub не ответил — время не ставится, спросим снова при смене сессии") {
+    test("обновлялка: GitHub не ответил — память не тронута, спросим снова при смене сессии") {
         vmTest {
             val memory = FakeMemory()
             val vm = vm(memory)

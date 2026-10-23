@@ -89,18 +89,40 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
      */
     suspend fun download(url: String): Fetched? {
         val net = network() ?: return null
-        return fetch { net.openConnection(URI.create(url).toURL()) as HttpURLConnection }
+        return fetch({ net.openConnection(URI.create(url).toURL()) as HttpURLConnection }, ::bodyOf)
     }
 
     /**
      * То же через туннель: SOCKS сервера [socksPort] на устройстве — запрос выходит там, где этот сервер, а
      * не в белые списки оператора. Свой трафик Podbor мимо VPN, поэтому прокси указывается явно.
      */
-    suspend fun downloadVia(url: String, socksPort: Int): Fetched? = fetch {
-        URI.create(url).toURL().openConnection(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))) as HttpURLConnection
+    suspend fun downloadVia(url: String, socksPort: Int): Fetched? = fetch({ viaSocks(url, socksPort) }, ::bodyOf)
+
+    /**
+     * Куда редиректит ссылка: Location ответа 3xx, за редиректом не идём — тело не читается. [socksPort] — туннелем,
+     * null — нижележащей сетью; не 3xx или не вышло — null.
+     */
+    suspend fun location(url: String, socksPort: Int?): String? {
+        val open: () -> HttpURLConnection = when (socksPort) {
+            null -> {
+                val net = network() ?: return null
+                { net.openConnection(URI.create(url).toURL()) as HttpURLConnection }
+            }
+            else -> { { viaSocks(url, socksPort) } }
+        }
+        return fetch({ open().apply { instanceFollowRedirects = false } }) { c ->
+            c.getHeaderField("Location")?.takeIf { c.responseCode in 300..399 }
+        }
     }
 
-    private suspend fun fetch(open: () -> HttpURLConnection): Fetched? = Either.catch {
+    private fun viaSocks(url: String, socksPort: Int): HttpURLConnection =
+        URI.create(url).toURL().openConnection(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))) as HttpURLConnection
+
+    private fun bodyOf(c: HttpURLConnection): Fetched? =
+        if (c.responseCode !in 200..299) null
+        else c.inputStream.use { readCapped(it, SUBSCRIPTION_CAP_BYTES) }?.let { Fetched(it, headersOf(c)) }
+
+    private suspend fun <T : Any> fetch(open: () -> HttpURLConnection, read: (HttpURLConnection) -> T?): T? = Either.catch {
         coroutineScope {
             val c = open()
             // Блокирующее чтение сокета на прерывание потока не реагирует: соединение рвёт сторож — по сроку или
@@ -110,8 +132,7 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
                 runInterruptible(Dispatchers.IO) {
                     c.connectTimeout = CONNECT_TIMEOUT_MS
                     c.readTimeout = READ_TIMEOUT_MS
-                    if (c.responseCode !in 200..299) null
-                    else c.inputStream.use { readCapped(it, SUBSCRIPTION_CAP_BYTES) }?.let { Fetched(it, headersOf(c)) }
+                    read(c)
                 }
             } finally {
                 watchdog.cancel()

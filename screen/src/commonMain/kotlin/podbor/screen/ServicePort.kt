@@ -56,9 +56,8 @@ fun interface SubscriptionShelf {
     suspend fun note(): SubscriptionNote?
 }
 
-/** Память обновлялки: когда спрашивали GitHub и что он ответил. Android — SharedPreferences, iOS — UserDefaults. */
+/** Память обновлялки: что ответил GitHub — чип сразу, до нового запроса. Android — SharedPreferences, iOS — UserDefaults. */
 interface UpdateMemory {
-    fun checkedAtMs(): Long?
     fun known(): Release?
-    fun remember(atMs: Long, release: Release)
+    fun remember(release: Release)
 }

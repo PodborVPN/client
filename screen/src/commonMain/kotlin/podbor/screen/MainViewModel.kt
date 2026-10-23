@@ -133,8 +133,8 @@ class MainViewModel(
 
     /**
      * Чип «обновить до …»: сразу — по последнему известному релизу; GitHub спрашивается, только пока экран подписан
-     * (виден), при подключении к сервису и каждой смене сессии (VPN поднялся — туннель для белых списков), не чаще
-     * [checkDue]. Сборка не с GitHub — null.
+     * (виден): при каждом открытии, подключении к сервису и смене сессии (VPN поднялся — туннель для белых списков).
+     * Запрос — веб-редирект GitHub без лимита, тормоз по времени не нужен. Сборка не с GitHub — null.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val update: StateFlow<Offer?> =
@@ -143,12 +143,9 @@ class MainViewModel(
         } else {
             service.keepLast { s -> s.session.map { s } }
                 .transformLatest { s ->
-                    val now = nowMs()
-                    if (checkDue(memory.checkedAtMs(), now)) {
-                        s.latestRelease()?.let { got ->
-                            memory.remember(now, got)
-                            emit(offerOf(version, got))
-                        }
+                    s.latestRelease()?.let { got ->
+                        memory.remember(got)
+                        emit(offerOf(version, got))
                     }
                 }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), offerOf(version, memory.known()))

@@ -32,7 +32,9 @@ import podbor.screen.Skipped
 import podbor.app.sub.Subscription
 import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
-import podbor.screen.LATEST_RELEASE_API
+import podbor.screen.LATEST_RELEASE_PAGE
+import podbor.screen.apkUrlOf
+import podbor.screen.releasePageOf
 import podbor.screen.Release
 import podbor.app.vpn.Desk
 import podbor.app.vpn.Live
@@ -111,6 +113,8 @@ private class ScanStand(
     busyTries: Int = 0,
     /** Xray анализа не поднимается (конфиг, движок) — ScanFailed. */
     val warmFails: Boolean = false,
+    /** Location редиректа по ссылке: порт SOCKS (null — нижележащая сеть); не вышло — null. */
+    val location: suspend (String, Int?) -> String? = { _, _ -> null },
 ) {
     val events = mutableListOf<String>()
     val dir = Files.createTempDirectory("scan").toFile()
@@ -183,6 +187,7 @@ private class ScanStand(
         scan = ScanPorts(
             download = { url -> downloads++; download(url) },
             downloadVia = downloadVia,
+            location = location,
             servers = { servers },
             warm = { _ -> if (warmFails) Either.Left(podbor.driver.EngineError.Failed("движок")) else xrayOf("scan") },
             lists = { lists },
@@ -220,9 +225,10 @@ private fun TestScope.stand(
     restarts: Int = 0,
     busyTries: Int = 0,
     warmFails: Boolean = false,
+    location: suspend (String, Int?) -> String? = { _, _ -> null },
 ) = ScanStand(
     backgroundScope, StandardTestDispatcher(testScheduler), { testScheduler.currentTime },
-    hang, hangPort, probeMs, line, download, downloadVia, servers, lists, restarts, busyTries, warmFails,
+    hang, hangPort, probeMs, line, download, downloadVia, servers, lists, restarts, busyTries, warmFails, location,
 )
 
 class ScanDeskTest : FunSpec({
@@ -515,26 +521,40 @@ class ScanDeskTest : FunSpec({
         }
     }
 
-    test("последний релиз: напрямую с GitHub; не вышло и выхода нет — null") {
+    /** GitHub: последний релиз — v0.11.0; APK в нём есть, если [apk]. */
+    fun github(apk: Boolean = true): (String) -> String? = { url ->
+        when (url) {
+            LATEST_RELEASE_PAGE -> releasePageOf("v0.11.0")
+            apkUrlOf("v0.11.0") -> if (apk) "https://example.org/blob" else null
+            else -> null
+        }
+    }
+
+    test("последний релиз: тег — из редиректа напрямую, ссылка — на APK; не вышло и выхода нет — null") {
         runTest {
-            val body = """{"tag_name":"v0.10.0","html_url":"https://example.org/rel","assets":[]}"""
-            val asked = mutableListOf<String>()
-            val ok = stand(download = { url -> asked += url; Fetched(body) })
-            ok.desk.latestRelease() shouldBe Release("v0.10.0", "https://example.org/rel")
-            asked shouldBe listOf(LATEST_RELEASE_API)
-            stand(download = { null }).desk.latestRelease() shouldBe null
+            val asked = mutableListOf<Pair<String, Int?>>()
+            val ok = stand(location = { url, port -> asked += url to port; github()(url) })
+            ok.desk.latestRelease() shouldBe Release("v0.11.0", apkUrlOf("v0.11.0"))
+            asked shouldBe listOf(LATEST_RELEASE_PAGE to null, apkUrlOf("v0.11.0") to null)
+            stand(location = { _, _ -> null }).desk.latestRelease() shouldBe null
+        }
+    }
+
+    test("последний релиз: APK ещё не загружен в релиз — ссылка на страницу релиза") {
+        runTest {
+            stand(location = { url, _ -> github(apk = false)(url) }).desk.latestRelease() shouldBe
+                Release("v0.11.0", releasePageOf("v0.11.0"))
         }
     }
 
     test("последний релиз: напрямую не вышло, VPN поднят и выход найден — туннелем") {
         runTest {
-            val body = """{"tag_name":"v0.10.0","html_url":"https://example.org/rel","assets":[]}"""
-            val s = stand(line = whiteLine, download = { null }, downloadVia = { _, _ -> Fetched(body) })
+            val s = stand(line = whiteLine, location = { url, port -> port?.let { github()(url) } })
             s.start()
             val up = s.up() as SessionState.Up<Live>
             s.desk.open()
             up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"))
-            s.desk.latestRelease() shouldBe Release("v0.10.0", "https://example.org/rel")
+            s.desk.latestRelease() shouldBe Release("v0.11.0", apkUrlOf("v0.11.0"))
         }
     }
 })

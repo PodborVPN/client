@@ -1,23 +1,17 @@
 package podbor.screen
 
-import arrow.core.Either
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 
 /*
- * Обновлялка сборки с GitHub: последний релиз — из API GitHub, предложение — если там новее. Скачивает и ставит APK сам
+ * Обновлялка сборки с GitHub: последний релиз — по веб-редиректу `releases/latest` → `releases/tag/<тег>` (это не API:
+ * лимита 60 запросов в час на IP нет, ответ — пустой 302), предложение — если там новее. Скачивает и ставит APK сам
  * Android (браузер): своего установщика нет. Здесь — только чистые функции; сеть — у Desk.
  */
 
-/** Последний релиз на GitHub — JSON с тегом и ссылками. */
-const val LATEST_RELEASE_API = "https://api.github.com/repos/PodborVPN/client/releases/latest"
+private const val REPO = "https://github.com/PodborVPN/client"
 
-/** Спрашивать GitHub не чаще: спрашиваем при каждом открытии экрана, а запрос в белых списках идёт туннелем. */
-private const val CHECK_EVERY_MS = 3_600_000L
+/** Страница последнего релиза: GitHub отвечает редиректом на страницу его тега. */
+const val LATEST_RELEASE_PAGE = "$REPO/releases/latest"
 
 data class Version(val major: Int, val minor: Int, val patch: Int) : Comparable<Version> {
     override fun compareTo(other: Version): Int = compareValuesBy(this, other, Version::major, Version::minor, Version::patch)
@@ -29,7 +23,7 @@ private val NUMBER = Regex("""^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$""")
 fun versionOf(s: String): Version? =
     NUMBER.find(s.trim())?.destructured?.let { (a, b, c) -> Version(a.toInt(), b.toInt(), c.toInt()) }
 
-/** Релиз: тег и куда вести человека — прямо на APK, а нет его в assets — на страницу релиза. */
+/** Релиз: тег и куда вести человека — прямо на APK, а нет его ещё в релизе — на страницу релиза. */
 @Serializable
 data class Release(val tag: String, val url: String)
 
@@ -37,17 +31,16 @@ data class Release(val tag: String, val url: String)
 @Serializable
 data class Offer(val version: String, val url: String)
 
-private val json = Json { ignoreUnknownKeys = true }
+private val TAG_PAGE = Regex("""^${Regex.escape(REPO)}/releases/tag/([^/?#]+)$""")
 
-/** Ответ API GitHub → релиз; без тега, битый или ссылка не https — null (тихо: обновлялка не главное). */
-fun releaseOf(body: String): Release? {
-    val o = Either.catch { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
-    val tag = o.str("tag_name") ?: return null
-    val apk = (o["assets"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-        .firstOrNull { it.str("name")?.endsWith(".apk") == true }?.str("browser_download_url")
-    val url = (apk ?: o.str("html_url"))?.takeIf { it.startsWith("https://") } ?: return null
-    return Release(tag, url)
-}
+/** Тег из Location редиректа [LATEST_RELEASE_PAGE]; не страница тега нашего репо (релизов нет) или не X.Y.Z — null. */
+fun tagOf(location: String): String? =
+    TAG_PAGE.find(location.trim())?.groupValues?.get(1)?.takeIf { versionOf(it) != null }
+
+/** APK релиза [tag] — по правилу имён сборки: `podbor-<X.Y.Z>.apk`. */
+fun apkUrlOf(tag: String): String = "$REPO/releases/download/$tag/podbor-${tag.removePrefix("v")}.apk"
+
+fun releasePageOf(tag: String): String = "$REPO/releases/tag/$tag"
 
 /** Предложение, только если на GitHub версия новее текущей [current]; номер не разобрать — молчим. */
 fun offerOf(current: String, latest: Release?): Offer? {
@@ -55,9 +48,3 @@ fun offerOf(current: String, latest: Release?): Offer? {
     val got = latest?.let { versionOf(it.tag) } ?: return null
     return if (got > have) Offer("${got.major}.${got.minor}.${got.patch}", latest.url) else null
 }
-
-/** Пора спросить GitHub: ни разу не спрашивали, прошло [CHECK_EVERY_MS] или часы ушли назад. */
-fun checkDue(lastMs: Long?, nowMs: Long): Boolean =
-    lastMs == null || nowMs < lastMs || nowMs - lastMs >= CHECK_EVERY_MS
-
-private fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content

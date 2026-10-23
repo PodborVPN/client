@@ -73,13 +73,11 @@ internal class FakeShelf(var note: SubscriptionNote? = NOTE) : SubscriptionShelf
     override suspend fun note(): SubscriptionNote? = note
 }
 
-internal class FakeMemory(var at: Long? = null, var release: Release? = null) : UpdateMemory {
-    val remembered = mutableListOf<Pair<Long, Release>>()
-    override fun checkedAtMs(): Long? = at
+internal class FakeMemory(var release: Release? = null) : UpdateMemory {
+    val remembered = mutableListOf<Release>()
     override fun known(): Release? = release
-    override fun remember(atMs: Long, release: Release) {
-        remembered += atMs to release
-        at = atMs
+    override fun remember(release: Release) {
+        remembered += release
         this.release = release
     }
 }

@@ -35,9 +35,11 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.fetchText
 import podbor.app.sub.fetched
 import podbor.app.sub.refreshDue
-import podbor.screen.LATEST_RELEASE_API
+import podbor.screen.LATEST_RELEASE_PAGE
+import podbor.screen.apkUrlOf
+import podbor.screen.releasePageOf
 import podbor.screen.Release
-import podbor.screen.releaseOf
+import podbor.screen.tagOf
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus
@@ -90,6 +92,8 @@ class ScanPorts(
     val download: suspend (String) -> Fetched?,
     /** То же через SOCKS сервера на устройстве (порт) — туннелем. */
     val downloadVia: suspend (String, Int) -> Fetched? = { _, _ -> null },
+    /** Куда редиректит ссылка (Location ответа 3xx): порт SOCKS — туннелем, null — нижележащей сетью; не вышло — null. */
+    val location: suspend (String, Int?) -> String? = { _, _ -> null },
     /** Сколько поддерживаемых серверов в тексте (конвертер, без Xray). */
     val servers: suspend (String) -> Int,
     /** Xray анализа без TUN — в области вызова: её освобождение (конец, отмена) его останавливает. */
@@ -334,11 +338,12 @@ class Desk(
      * Скачивание туннелем: SOCKS сервера общего выхода поднятой сессии; сессии или выхода нет — null. Порт
      * берётся сейчас: сессия, погасшая до скачивания, — просто неудачная попытка.
      */
-    private fun tunnel(): (suspend (String) -> Fetched?)? {
+    private fun tunnel(): (suspend (String) -> Fetched?)? = tunnelPort()?.let { port -> { url -> scan.downloadVia(url, port) } }
+
+    private fun tunnelPort(): Int? {
         val live = (host.state.value as? SessionState.Up)?.live ?: return null
         val exit = live.driver.exits.state.value.general ?: return null
-        val port = live.driver.socksPort(exit, live.warm) ?: return null
-        return { url -> scan.downloadVia(url, port) }
+        return live.driver.socksPort(exit, live.warm)
     }
 
     private fun whiteBy(net: OsNetwork, p: Prior): Boolean = when (p) {
@@ -373,12 +378,16 @@ class Desk(
     }
 
     /**
-     * Последний релиз на GitHub: напрямую, не вышло — туннелем найденного выхода (в белых списках GitHub закрыт).
-     * Не скачался или ответ не разобрать — null, молча: обновлялка не главное.
+     * Последний релиз на GitHub: тег — из редиректа [LATEST_RELEASE_PAGE], ссылка — на APK, если он уже в релизе (его
+     * ссылка тоже редиректит), иначе на страницу релиза. Каждый запрос — напрямую, не вышло — туннелем найденного выхода
+     * (в белых списках GitHub закрыт). Тег не узнали — null, молча: обновлялка не главное.
      */
     suspend fun latestRelease(): Release? = withContext(io) {
-        val got = scan.download(LATEST_RELEASE_API) ?: tunnel()?.invoke(LATEST_RELEASE_API)
-        got?.body?.let(::releaseOf)
+        val port = tunnelPort()
+        suspend fun locate(url: String): String? = scan.location(url, null) ?: port?.let { scan.location(url, it) }
+        val tag = locate(LATEST_RELEASE_PAGE)?.let(::tagOf) ?: return@withContext null
+        val apk = apkUrlOf(tag)
+        Release(tag, if (locate(apk) != null) apk else releasePageOf(tag))
     }
 
     private fun searching() {
