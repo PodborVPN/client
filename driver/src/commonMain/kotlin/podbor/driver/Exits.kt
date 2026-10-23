@@ -20,8 +20,13 @@ data class ExitsState(val general: ServerId?, val pinned: Map<ServiceId, ServerI
  * Выходы балансеров: закреплённые за сервисами и общий; незакреплённые повторяют выход GENERAL_FOLLOWS (спека
  * «Правила Xray»: пока у сервиса нет рабочего сервера, его трафик идёт туда же, куда общий). Состояние меняется
  * только после того, как Xray принял цель. Трубопроводы выставляют выходы параллельно — изменения по одному.
+ * [tagOf] — тег выхода сервера для балансера сервиса: в сессии с TUN — выход пары ([pairTag]), общий — всегда тег сервера.
  */
-class Exits(private val api: XrayApi, private val services: Set<Service>) {
+class Exits(
+    private val api: XrayApi,
+    private val services: Set<Service>,
+    private val tagOf: (ServerId, ServiceId) -> String = { server, _ -> server.tag },
+) {
     private val lock = Mutex()
     private val current = MutableStateFlow(ExitsState(general = null, pinned = emptyMap()))
     val state: StateFlow<ExitsState> = current.asStateFlow()
@@ -29,12 +34,12 @@ class Exits(private val api: XrayApi, private val services: Set<Service>) {
     /** Закрепить [server] за [service]; находка GENERAL_FOLLOWS ведёт и общий балансер, и все незакреплённые. */
     suspend fun make(service: ServiceId, server: ServerId): Either<EngineError, Unit> = lock.withLock {
         either {
-            api.setExit(balancerOf(service), server.tag).bind()
+            api.setExit(balancerOf(service), tagOf(server, service)).bind()
             current.update { it.copy(pinned = it.pinned + (service to server)) }
             if (service == GENERAL_FOLLOWS) {
                 api.setExit(EXIT_BALANCER, server.tag).bind()
                 current.update { it.copy(general = server) }
-                unpinned().forEach { api.setExit(balancerOf(it), server.tag).bind() }
+                unpinned().forEach { api.setExit(balancerOf(it), tagOf(server, it)).bind() }
             }
         }
     }
@@ -61,7 +66,7 @@ class Exits(private val api: XrayApi, private val services: Set<Service>) {
             val general = state.value.general
             moved.forEach { id ->
                 val balancer = balancerOf(id)
-                (general?.let { api.setExit(balancer, it.tag) } ?: api.clearExit(balancer)).bind()
+                (general?.let { api.setExit(balancer, tagOf(it, id)) } ?: api.clearExit(balancer)).bind()
             }
         }
     }

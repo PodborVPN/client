@@ -2,6 +2,7 @@ package podbor.driver
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -46,6 +47,16 @@ const val DIRECT = "direct"
 /** Тег балансера сервиса: выход каждого сервиса переключается отдельно. */
 fun balancerOf(service: ServiceId): String = "svc.${service.id}"
 
+/**
+ * Тег выхода пары «сервис × сервер» — клон outbound'а сервера (только в сессии с TUN): счётчик Xray у него свой, байты
+ * Телеги и Инсты через один сервер не смешиваются, пробы идут выходом сервера и в пульс пары не попадают.
+ */
+fun pairTag(server: ServerId, service: ServiceId): String = "${server.tag}.${service.id}"
+
+/** Тег, которым балансер сервиса указывает на сервер: пара — в сессии с TUN, сервер — в анализе; как в [buildConfig]. */
+fun exitTagOf(opts: ConfigOpts): (ServerId, ServiceId) -> String =
+    if (opts.tunFd != null) ::pairTag else { server, _ -> server.tag }
+
 /** Тег dns-outbound'а: DNS-запросы телефона из TUN отвечает блок `dns` Xray (только при tunFd). */
 const val DNS_OUT = "dns-out"
 
@@ -69,7 +80,22 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
         }
         putJsonObject("api") {
             put("tag", "api")
-            putJsonArray("services") { add("RoutingService") }
+            putJsonArray("services") {
+                add("RoutingService")
+                opts.tunFd?.let { add("StatsService") }
+            }
+        }
+        // Счётчики байт входов и выходов — пульс сессии; анализ (без TUN) их не держит.
+        opts.tunFd?.let {
+            putJsonObject("stats") {}
+            putJsonObject("policy") {
+                putJsonObject("system") {
+                    put("statsInboundUplink", true)
+                    put("statsInboundDownlink", true)
+                    put("statsOutboundUplink", true)
+                    put("statsOutboundDownlink", true)
+                }
+            }
         }
         putJsonObject("dns") {
             putJsonArray("servers") {
@@ -131,6 +157,9 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
         }
         putJsonArray("outbounds") {
             servers.forEach { s -> add(outbounds.getValue(s.id)) }
+            pairsOf(servers, opts).forEach { (s, svc) ->
+                add(JsonObject(outbounds.getValue(s.id) + ("tag" to JsonPrimitive(pairTag(s.id, svc.id)))))
+            }
             addJsonObject { put("tag", DIRECT); put("protocol", "freedom") }
             addJsonObject { put("tag", "block"); put("protocol", "blackhole") }
             opts.tunFd?.let { addJsonObject { put("tag", DNS_OUT); put("protocol", "dns") } }
@@ -173,13 +202,19 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
                     opts.services.sortedBy { it.id.id }.forEach { svc ->
                         addJsonObject {
                             put("tag", balancerOf(svc.id))
-                            putJsonArray("selector") { servers.forEach { add(it.id.tag) } }
+                            putJsonArray("selector") {
+                                servers.forEach { add(exitTagOf(opts)(it.id, svc.id)) }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+/** Пары «сервер × сервис» — только в сессии с TUN; порядок — сервер, затем сервис по ServiceId. */
+private fun pairsOf(servers: List<Server>, opts: ConfigOpts): List<Pair<Server, Service>> =
+    if (opts.tunFd == null) emptyList() else servers.flatMap { s -> opts.services.sortedBy { it.id.id }.map { s to it } }
 
 private fun JsonObjectBuilder.inboundTag(tag: String) = putJsonArray("inboundTag") { add(tag) }
 

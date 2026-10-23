@@ -103,7 +103,7 @@ class Driver(
     private val scanTimeoutMs: Long = SCAN_TIMEOUT_MS,
 ) {
     /** Куда указывают балансеры; трубопроводы читают отсюда свой текущий выход и сюда выставляют находку. */
-    val exits = Exits(api, opts.services)
+    val exits = Exits(api, opts.services, exitTagOf(opts))
 
     /** SOCKS на устройстве, через который трафик идёт сервером [server] прогретого [warm]; сервера там нет — null. */
     fun socksPort(server: ServerId, warm: Warm): Int? =

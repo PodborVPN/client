@@ -202,4 +202,52 @@ class XrayConfigTest : FunSpec({
         (empty["routing"]!!.jsonObject["balancers"] == null || empty["routing"]!!.jsonObject["balancers"]!!.jsonArray.isEmpty()) shouldBe true
         empty["routing"]!!.jsonObject["rules"]!!.jsonArray.last().jsonObject["outboundTag"] shouldBe JsonPrimitive("block")
     }
+
+    val pairsOpts = opts.copy(tunFd = 42, services = setOf(Telegram, Instagram))
+    val withTun = buildConfig(servers, outbounds, pairsOpts)
+    fun JsonObject.tags() = this["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }
+    fun JsonObject.balancer(tag: String) =
+        this["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(tag) }
+
+    test("withTunPairOutboundsAndStats: с TUN — клон выхода на пару, балансер сервиса из пар, счётчики Xray") {
+        withTun.tags() shouldBe listOf(
+            "s001", "s002", "s003",
+            "s001.insta", "s001.tg", "s002.insta", "s002.tg", "s003.insta", "s003.tg",
+            "direct", "block", "dns-out",
+        )
+        val clone = withTun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("s002.tg") }
+        clone shouldBe buildJsonObject { put("protocol", "vless"); put("tag", "s002.tg") }
+        withTun.balancer("svc.tg").strs("selector") shouldBe listOf("s001.tg", "s002.tg", "s003.tg")
+        withTun.balancer("svc.insta").strs("selector") shouldBe listOf("s001.insta", "s002.insta", "s003.insta")
+        withTun.balancer("exit").strs("selector") shouldBe listOf("s001", "s002", "s003")
+        withTun["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
+        withTun["stats"] shouldBe JsonObject(emptyMap())
+        withTun["policy"]!!.jsonObject["system"] shouldBe buildJsonObject {
+            put("statsInboundUplink", true); put("statsInboundDownlink", true)
+            put("statsOutboundUplink", true); put("statsOutboundDownlink", true)
+        }
+    }
+
+    test("withoutTunNoPairsNoStats: анализ без TUN — конфиг без клонов и счётчиков") {
+        val scan = buildConfig(servers, outbounds, opts.copy(services = setOf(Telegram, Instagram)))
+        scan.tags() shouldBe listOf("s001", "s002", "s003", "direct", "block")
+        scan.balancer("svc.tg").strs("selector") shouldBe listOf("s001", "s002", "s003")
+        scan["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService")
+        scan["stats"] shouldBe null
+        scan["policy"] shouldBe null
+    }
+
+    test("probesStayOnServerOutbound: проба кандидата — в выход сервера, не в выход пары: её байты не попадают в пульс") {
+        val rs = withTun["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
+        rs.single { it.strs("inboundTag") == listOf("in.s002") }["outboundTag"] shouldBe JsonPrimitive("s002")
+    }
+
+    test("тег, который выходы ставят балансеру сервиса, есть в его селекторе — с TUN и без") {
+        for (o in listOf(pairsOpts, opts.copy(services = setOf(Telegram, Instagram)))) {
+            val c = buildConfig(servers, outbounds, o)
+            for (svc in listOf(Telegram, Instagram)) {
+                c.balancer("svc.${svc.id.id}").strs("selector") shouldContain exitTagOf(o)(ServerId("s002"), svc.id)
+            }
+        }
+    }
 })

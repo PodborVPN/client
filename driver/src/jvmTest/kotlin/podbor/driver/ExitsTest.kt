@@ -89,4 +89,24 @@ class ExitsTest : FunSpec({
         exits.effective(Instagram.id) shouldBe s1
         exits.pinned(Instagram.id) shouldBe false
     }
+
+    test("exitsPinPairTag: балансер сервиса — тег пары, общий выход — тег сервера") {
+        val api = Overrides()
+        val exits = Exits(api, HARDCODED_SERVICES, ::pairTag)
+        runBlocking { exits.make(Telegram.id, s1) }
+        api.calls shouldContainExactly listOf("svc.tg=s1.tg", "exit=s1", "svc.insta=s1.insta")
+        exits.state.value shouldBe ExitsState(general = s1, pinned = mapOf(Telegram.id to s1))
+    }
+
+    test("clear сервиса с парами возвращает его балансер к паре общего выхода") {
+        val api = Overrides()
+        val exits = Exits(api, HARDCODED_SERVICES, ::pairTag)
+        runBlocking {
+            exits.make(Telegram.id, s1)
+            exits.make(Instagram.id, s2)
+            api.calls.clear()
+            exits.clear(Instagram.id)
+        }
+        api.calls shouldContainExactly listOf("svc.insta=s1.insta")
+    }
 })
