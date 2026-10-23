@@ -42,6 +42,8 @@ class SubscriptionInputTest : FunSpec({
             Case("кириллический хост — Unreadable", "https://пример.рф/sub", Either.Left(InputError.Unreadable)),
             Case("знак | — Unreadable", "https://a.b/sub|x", Either.Left(InputError.Unreadable)),
             Case("кавычки — Unreadable", "https://a.b/sub?t=\"1\"", Either.Left(InputError.Unreadable)),
+            Case("зашифрованная ссылка Happ — HappOnly", "happ://crypt5/QWxhZGRpbjpvcGVu", Either.Left(InputError.HappOnly)),
+            Case("Happ любой версии шифра, регистр — HappOnly", " HAPP://crypt3/abc \n", Either.Left(InputError.HappOnly)),
             Case("пусто — Empty", "", Either.Left(InputError.Empty)),
             Case("одни пробелы — Empty", " \n\t ", Either.Left(InputError.Empty)),
         ) { inputOf(it.raw) shouldBe it.expected }
@@ -93,6 +95,11 @@ class SubscriptionInputTest : FunSpec({
         ) shouldBe Either.Right(Fetched("vless://яндекс"))
         direct shouldBe listOf("https://a.b")
         proxied shouldBe listOf(viaYandex("https://a.b"))
+    }
+
+    test("слова ссылки только для Happ: что попросить у провайдера") {
+        wordsOf(InputError.HappOnly) shouldBe
+            "это зашифрованная ссылка только для приложения Happ — попроси у провайдера обычную ссылку подписки (https://…)"
     }
 
     test("слова лимита устройств: слова провайдера, если есть") {

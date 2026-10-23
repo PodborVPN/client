@@ -9,6 +9,8 @@ sealed interface SubscriptionInput {
 sealed interface InputError {
     data object Empty : InputError
     data object Unreadable : InputError
+    /** Зашифрованная ссылка Happ (`happ://crypt…`): открыть её может только Happ. */
+    data object HappOnly : InputError
     /** [whitelist] — скачать не вышло, а сеть похожа на «белый» режим. */
     data class Download(val whitelist: Boolean) : InputError
     /** Ни одна ссылка не стала сервером; [skipped] — какие и почему. */

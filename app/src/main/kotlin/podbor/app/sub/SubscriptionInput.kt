@@ -16,12 +16,13 @@ private val LINK = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
 /**
  * http(s):// одной строкой без пробелов — ссылка; иное — текст; пусто — Empty. Ссылка, которую не разобрать как URI с
  * хостом (запрещённые знаки, кириллический хост), — Unreadable: скачивание её не примет, и «сеть не отвечает» было бы
- * неправдой.
+ * неправдой. Зашифрованная ссылка Happ — HappOnly: её откроет только Happ, расшифровывать чужую защиту не берёмся.
  */
 fun inputOf(raw: String): Either<InputError, SubscriptionInput> {
     val s = raw.trim()
     return when {
         s.isEmpty() -> InputError.Empty.left()
+        s.startsWith("happ://crypt", ignoreCase = true) -> InputError.HappOnly.left()
         LINK.matches(s) -> if (hostOf(s) != null) SubscriptionInput.Link(s).right() else InputError.Unreadable.left()
         else -> SubscriptionInput.Text(s).right()
     }
@@ -94,6 +95,8 @@ fun wordsOf(e: InputError): String = when (e) {
         e.announce?.let { "лимит устройств подписки: $it" } ?: "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
     InputError.ScanFailed -> "не смог проверить подписку — попробуй ещё раз"
     InputError.Empty, InputError.Unreadable -> "в буфере нет подписки"
+    InputError.HappOnly ->
+        "это зашифрованная ссылка только для приложения Happ — попроси у провайдера обычную ссылку подписки (https://…)"
 }
 
 /** Слова шторки о ссылках, не ставших серверами: заголовок, счёт по схемам, что делать. */
