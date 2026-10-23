@@ -16,7 +16,7 @@ class PulseTest : FunSpec({
         probes: Traffic = Traffic.Zero, kind: EpochKind = EpochKind.Session, network: String = "wifi", sub: String = "sub1",
     ) = PulseSample(
         epoch, atMs = 1_000_000 + mono, monoMs = mono,
-        inbound = mapOf(TUN_INBOUND to tun, PROBES_INBOUND to probes), outbound = mapOf(tag to Traffic(up, down)),
+        inbound = mapOf(TUN_INBOUND to tun, "in.*" to probes), outbound = mapOf(tag to Traffic(up, down)),
         kind = kind, network = network, subscription = sub,
     )
 
@@ -86,6 +86,17 @@ class PulseTest : FunSpec({
         val p = fold(at(0, 0), at(1_000, 9_000), at(2_000, 10_000, network = "cell:25001"))
         p.view(tg, 2_000).network shouldBe Tally("cell:25001", Traffic(0, 1_000))
         p.view(tg, 2_000).vpn shouldBe Tally("sub1", Traffic(0, 10_000))
+    }
+
+    test("входы проб — каждый своей меткой: вход пропал из отсчёта — второго счёта проб эпохи нет") {
+        fun probes(mono: Long, vararg ins: Pair<String, Long>) =
+            PulseSample(1, mono, mono, inbound = ins.associate { (k, d) -> k to Traffic(0, d) }, outbound = emptyMap(), network = "wifi")
+        val p = fold(
+            probes(0, "in.s001" to 100, "in.s002" to 200),
+            probes(1_000, "in.s001" to 150),
+            probes(2_000, "in.s001" to 150, "in.s002" to 250),
+        )
+        p.book.network shouldBe Tally("wifi", Traffic(0, 400))
     }
 
     test("сеть неизвестна (ключ пуст) — итог сети не стирается: прирост копится в прежний, а без прежнего — никуда") {

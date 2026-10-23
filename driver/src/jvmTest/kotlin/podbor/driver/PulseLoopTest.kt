@@ -13,7 +13,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import podbor.core.EpochKind
 import podbor.core.Instagram
-import podbor.core.PROBES_INBOUND
 import podbor.core.PULSE_WINDOW_MS
 import podbor.core.PairPulse
 import podbor.core.Pulse
@@ -38,15 +37,21 @@ class PulseLoopTest : FunSpec({
             PulseSample(4, 100, 50, inbound = mapOf("tun" to Traffic(10, 20)), outbound = mapOf("s001.tg" to Traffic(0, 5)))
     }
 
-    test("essential: `tun`, сумма входов проб под `in.*` и выходы пар; вход API и выходы серверов — мимо") {
+    test("essential: `tun`, входы проб и выходы пар; вход API и выходы серверов — мимо; в Ленту — без нулевых") {
         val s = PulseSample(
             1, 0, 0,
-            inbound = mapOf("tun" to Traffic(1, 2), "in.s001" to Traffic(3, 40), "in.s002" to Traffic(5, 60), "api" to Traffic(9, 9)),
+            inbound = mapOf(
+                "tun" to Traffic(1, 2), "in.s001" to Traffic(3, 40), "in.s002" to Traffic.Zero, "api" to Traffic(9, 9),
+            ),
             outbound = mapOf("pair.tg.s001" to Traffic(1, 2), "pair.insta.s001" to Traffic.Zero, "s001" to Traffic(3, 40)),
         )
         s.essential() shouldBe s.copy(
-            inbound = mapOf("tun" to Traffic(1, 2), PROBES_INBOUND to Traffic(8, 100)),
+            inbound = mapOf("tun" to Traffic(1, 2), "in.s001" to Traffic(3, 40), "in.s002" to Traffic.Zero),
             outbound = mapOf("pair.tg.s001" to Traffic(1, 2), "pair.insta.s001" to Traffic.Zero),
+        )
+        s.essential().forTape() shouldBe s.copy(
+            inbound = mapOf("tun" to Traffic(1, 2), "in.s001" to Traffic(3, 40)),
+            outbound = mapOf("pair.tg.s001" to Traffic(1, 2)),
         )
     }
 
@@ -151,7 +156,7 @@ class PulseLoopTest : FunSpec({
         loopTest(stats, fast = true) { tape, _ ->
             runCurrent()
             val first = (rowOf(tape.single()) as Row.Pulse).sample
-            first.inbound shouldBe mapOf("tun" to Traffic(0, 1_000), PROBES_INBOUND to Traffic(0, 150))
+            first.inbound shouldBe mapOf("tun" to Traffic(0, 1_000), "in.s001" to Traffic(0, 100), "in.s002" to Traffic(0, 50))
             first.outbound.keys shouldBe setOf("pair.tg.s001")
             (first.kind to first.network to first.subscription) shouldBe (EpochKind.Session to "wifi" to "sub1")
             stats.growing = false

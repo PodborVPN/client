@@ -75,8 +75,12 @@ data class Pulse(val lanes: Map<String, Lane>, val marks: Map<String, Mark>, val
 /** Вход сети телефона в Xray: его счётчик — трафик приложений через VPN. */
 const val TUN_INBOUND = "tun"
 
-/** Сумма входов проб `in.sNNN` (край складывает их сам): собственный трафик Podbor — пробы нажатия и анализ. */
-const val PROBES_INBOUND = "in.*"
+/**
+ * Начало тега входов проб (`in.sNNN`): собственный трафик Podbor — пробы нажатия и анализ. Каждый вход — своей меткой:
+ * вход, пропавший из одного отсчёта, не роняет сумму и не даёт второго счёта. Строки Ленты с суммой под `in.*` — тот же
+ * вход, читаются так же.
+ */
+const val PROBE_INBOUND_PREFIX = "in."
 
 /** Ключ итога «на этой сети»: Wi-Fi — один (имя сети не читаем), сотовая — по MCC MNC; нет сети — нет ключа. */
 fun networkKey(os: OsNetwork): String? = when (os) {
@@ -91,8 +95,9 @@ fun Pulse.after(s: PulseSample): Pulse {
     // Выход, которого в отсчёте нет, ничего не сообщил: история остаётся до своего окна.
     val kept = this.lanes.filterKeys { it !in s.outbound }.filterValues { lane -> s.monoMs - lane.points.last().monoMs <= PULSE_WINDOW_MS }
     val apps = grown(s, TUN_INBOUND)
-    val probes = grown(s, PROBES_INBOUND)
-    val marks = marks + listOf(TUN_INBOUND, PROBES_INBOUND).mapNotNull { k -> s.inbound[k]?.let { k to Mark(s.epoch, it) } }
+    val probeKeys = s.inbound.keys.filter { it.startsWith(PROBE_INBOUND_PREFIX) }
+    val probes = probeKeys.fold(Traffic.Zero) { sum, k -> sum + grown(s, k) }
+    val marks = marks + (listOf(TUN_INBOUND) + probeKeys).mapNotNull { k -> s.inbound[k]?.let { k to Mark(s.epoch, it) } }
     return Pulse(kept + lanes, marks, TrafficBook(network = book.network.add(s.network, apps + probes), vpn = book.vpn.add(s.subscription, apps)))
 }
 

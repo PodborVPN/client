@@ -5,7 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.updateAndGet
 import podbor.core.EpochKind
-import podbor.core.PROBES_INBOUND
+import podbor.core.PROBE_INBOUND_PREFIX
 import podbor.core.Pulse
 import podbor.core.PulseSample
 import podbor.core.PulseView
@@ -22,9 +22,6 @@ const val PULSE_SLOW_MS: Long = 10_000
 
 /** В Ленту — не чаще: отсчёты накопленные, пропуск теряет разрешение, не байты. */
 const val PULSE_TAPE_MS: Long = 10_000
-
-/** Входы проб кандидатов: `in.sNNN` (как в [buildConfig]). */
-private const val PROBE_PREFIX = "in."
 
 /** Имя счётчика StatsService: `inbound|outbound>>>тег>>>traffic>>>uplink|downlink`. */
 private val STAT = Regex("""^(inbound|outbound)>>>(.+)>>>traffic>>>(uplink|downlink)$""")
@@ -43,21 +40,20 @@ fun sampleOf(raw: Map<String, Long>, epoch: Long, atMs: Long, monoMs: Long): Pul
 }
 
 /**
- * Что из отсчёта нужно пульсу: вход сети (`tun`), сумма входов проб ([PROBES_INBOUND]: сумма накопленных — тоже
- * накопленная) и выходы пар. Вход API растёт от самого опроса, выходы серверов дублируют пробы: это не трафик. Пара с
- * нулём остаётся — «не пользуется» тоже знание.
+ * Что из отсчёта нужно пульсу: вход сети (`tun`), входы проб (каждый — своя метка в ядре) и выходы пар. Вход API растёт
+ * от самого опроса, выходы серверов дублируют пробы: это не трафик. Пара с нулём остаётся — «не пользуется» тоже знание.
  */
-fun PulseSample.essential(): PulseSample {
-    val probes = inbound.filterKeys { it.startsWith(PROBE_PREFIX) }.values
-    return copy(
-        inbound = inbound.filterKeys { it == TUN_INBOUND } +
-            (if (probes.isEmpty()) emptyMap() else mapOf(PROBES_INBOUND to probes.fold(Traffic.Zero, Traffic::plus))),
-        outbound = outbound.filterKeys { it.startsWith(PAIR_PREFIX) },
-    )
-}
+fun PulseSample.essential(): PulseSample = copy(
+    inbound = inbound.filterKeys { it == TUN_INBOUND || it.startsWith(PROBE_INBOUND_PREFIX) },
+    outbound = outbound.filterKeys { it.startsWith(PAIR_PREFIX) },
+)
 
-/** В Ленту — без нулевых пар: их сотни, и молчат они, пока ими не пользуются; ноль восстанавливается из отсутствия. */
-fun PulseSample.forTape(): PulseSample = copy(outbound = outbound.filterValues { it != Traffic.Zero })
+/**
+ * В Ленту — без нулевых входов проб и пар: их сотни, и молчат они, пока ими не пользуются; ноль восстанавливается из
+ * отсутствия.
+ */
+fun PulseSample.forTape(): PulseSample =
+    copy(inbound = inbound.filterValues { it != Traffic.Zero }, outbound = outbound.filterValues { it != Traffic.Zero })
 
 /**
  * Опрос счётчиков одного запуска Xray (сессии или анализа) до отмены: отсчёт ([essential], с ключами [context]) → общая
