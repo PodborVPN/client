@@ -93,18 +93,20 @@ fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onU
         // Высота строки одна с чипом и без: появившись, чип не сдвигает страницу.
         Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
             Tier("СЕТЬ")
-            traffic?.let {
+            // Трафик берёт всё место между словом и версией (а не половину с распоркой): обрезается, только если не влез.
+            if (traffic != null) {
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    it,
+                    traffic,
                     color = Muted,
                     style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                 )
+            } else {
+                Spacer(Modifier.weight(1f))
             }
-            Spacer(Modifier.weight(1f))
             if (update == null) {
                 Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
             } else {
