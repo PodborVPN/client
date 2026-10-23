@@ -7,6 +7,8 @@ import com.xray.app.router.command.OverrideBalancerTargetRequest
 import com.xray.app.router.command.RoutingContext
 import com.xray.app.router.command.RoutingServiceGrpcKt
 import com.xray.app.router.command.TestRouteRequest
+import com.xray.app.stats.command.QueryStatsRequest
+import com.xray.app.stats.command.StatsServiceGrpcKt
 import com.xray.common.net.Network
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
@@ -16,9 +18,22 @@ import java.net.InetAddress
  * RoutingService Xray по gRPC: вход в РФ — TestRoute против его же правила geoip:ru; выход — OverrideBalancerTarget.
  * Канал — ресурс области: закрывается при выходе из неё, что бы с областью ни случилось.
  */
-suspend fun ResourceScope.xrayApi(open: () -> ManagedChannel): XrayApi {
-    val channel = install({ open() }, { c, _ -> c.shutdownNow() })
-    return GrpcXrayApi(channel)
+suspend fun ResourceScope.xrayApi(open: () -> ManagedChannel): XrayApi = xrayApiOn(xrayChannel(open))
+
+/** Канал API Xray — ресурс области: один на RoutingService и StatsService сессии. */
+suspend fun ResourceScope.xrayChannel(open: () -> ManagedChannel): ManagedChannel =
+    install({ open() }, { c, _ -> c.shutdownNow() })
+
+fun xrayApiOn(channel: ManagedChannel): XrayApi = GrpcXrayApi(channel)
+
+/** StatsService по тому же каналу: все счётчики разом, без сброса — значения накопленные. */
+fun xrayStatsOn(channel: ManagedChannel): XrayStats {
+    val stub = StatsServiceGrpcKt.StatsServiceCoroutineStub(channel)
+    return XrayStats {
+        Either.catch {
+            stub.queryStats(QueryStatsRequest.newBuilder().setPattern("").setReset(false).build()).statList.associate { it.name to it.value }
+        }.mapLeft { EngineError.Failed("QueryStats: ${it.message}") }
+    }
 }
 
 /** API на loopback-порту ([ApiListen.Tcp]) — JVM на десктопе. */

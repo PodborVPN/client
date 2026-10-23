@@ -44,6 +44,11 @@ interface XrayApi {
 }
 
 /** Сколько DC Telegram ответили resPQ на блоб через SOCKS-inbound кандидата. */
+/** Счётчики Xray (`StatsService.QueryStats`, без сброса): имя счётчика → накопленные байты. */
+fun interface XrayStats {
+    suspend fun query(): Either<EngineError, Map<String, Long>>
+}
+
 fun interface TelegramProbe {
     suspend fun probe(socksPort: Int): Int
 }

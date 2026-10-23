@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import podbor.core.Deed
 import podbor.core.Letter
+import podbor.core.PulseSample
 import podbor.core.ServiceId
 import podbor.core.Telegram
 
@@ -49,6 +50,8 @@ sealed interface Row {
     @Serializable @SerialName("closed") data class Closed(val run: Long) : Row
     /** Что край сделал мимо машины (recall, dropExit, ошибки setExit): прогон её не повторяет. */
     @Serializable @SerialName("note") data class Note(val text: String) : Row
+    /** Отсчёт счётчиков Xray сессии (пульс): ничей прогон, машинами не проигрывается — сырьё знания. */
+    @Serializable @SerialName("pulse") data class Pulse(val sample: PulseSample) : Row
 }
 
 fun rowLine(row: Row): String = tapeJson.encodeToString(Row.serializer(), row)

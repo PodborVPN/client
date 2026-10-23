@@ -49,7 +49,7 @@ fun replay(tape: String): List<RunReplay> {
     val runs = rows.mapNotNull { n ->
         when (val row = n.value) {
             is Row.Run -> Numbered(n.line, row)
-            is Row.Step, is Row.Closed, is Row.Note -> null
+            is Row.Step, is Row.Closed, is Row.Note, is Row.Pulse -> null
         }
     }
     val ids = runs.map { it.value.id }.toSet()
@@ -61,11 +61,11 @@ fun replay(tape: String): List<RunReplay> {
     return (listOfNotNull(v0) + judged + broken + orphans).sortedBy { it.line }
 }
 
-/** Чей прогон строка; шапка и нота — ничьи. */
+/** Чей прогон строка; шапка, нота и пульс — ничьи. */
 private fun runOf(row: Row): Long? = when (row) {
     is Row.Step -> row.run
     is Row.Closed -> row.run
-    is Row.Run, is Row.Note -> null
+    is Row.Run, is Row.Note, is Row.Pulse -> null
 }
 
 private fun nameOf(head: Head): String = when (head) {
@@ -87,7 +87,7 @@ private fun judge(run: Numbered<Row.Run>, rows: List<Numbered<Row>>): Replayed =
     val steps = rows.mapNotNull { n ->
         when (val row = n.value) {
             is Row.Step -> Numbered(n.line, row)
-            is Row.Note, is Row.Closed, is Row.Run -> null
+            is Row.Note, is Row.Closed, is Row.Run, is Row.Pulse -> null
         }
     }
     val closed = rows.any { it.value is Row.Closed }
