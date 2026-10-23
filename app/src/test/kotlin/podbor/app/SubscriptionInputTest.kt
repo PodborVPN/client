@@ -72,12 +72,14 @@ class SubscriptionInputTest : FunSpec({
 
     test("лимит устройств провайдера (x-hwid-limit при 200) — DeviceLimit со словами провайдера, а не пустая подписка") {
         val announce = "base64:" + java.util.Base64.getEncoder().encodeToString("Отвяжи устройство в боте".toByteArray())
-        val limit = mapOf("x-hwid-limit" to "true", "x-hwid-max-devices-reached" to "true", "announce" to announce)
+        val limit = mapOf(
+            "x-hwid-limit" to "true", "x-hwid-max-devices-reached" to "true", "announce" to announce, "support-url" to "https://t.me/help",
+        )
         fetchText(SubscriptionInput.Link("https://a.b"), { Fetched("", limit) }, { false }) shouldBe
-            Either.Left(InputError.DeviceLimit("Отвяжи устройство в боте"))
+            Either.Left(InputError.DeviceLimit("Отвяжи устройство в боте", "https://t.me/help"))
         // Панель с заглушками в теле вместо пустого — тоже отказ, а не серверы-пустышки.
         fetchText(SubscriptionInput.Link("https://a.b"), { Fetched("vless://x", mapOf("x-hwid-limit" to "true")) }, { false }) shouldBe
-            Either.Left(InputError.DeviceLimit(null))
+            Either.Left(InputError.DeviceLimit(null, null))
     }
 
     test("прокси Яндекса качает отдельным путём — без заголовков устройства провайдера") {
@@ -94,8 +96,8 @@ class SubscriptionInputTest : FunSpec({
     }
 
     test("слова лимита устройств: слова провайдера, если есть") {
-        wordsOf(InputError.DeviceLimit("Отвяжи устройство в боте")) shouldBe "лимит устройств подписки: Отвяжи устройство в боте"
-        wordsOf(InputError.DeviceLimit(null)) shouldBe "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
+        wordsOf(InputError.DeviceLimit("Отвяжи устройство в боте", null)) shouldBe "лимит устройств подписки: Отвяжи устройство в боте"
+        wordsOf(InputError.DeviceLimit(null, null)) shouldBe "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
     }
 
     test("шторка пропусков: ничего не подошло — чужие схемы по убыванию счёта, битые последними") {

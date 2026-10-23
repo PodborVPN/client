@@ -43,7 +43,8 @@ class SubscriptionFragment : Fragment() {
                         label = "страница",
                     ) { page ->
                         when (page) {
-                            Page.AddSubscription -> SubscriptionScreen(errorOf(phase), onInput = screen::input, onQr = screen::scanQr)
+                            Page.AddSubscription ->
+                                SubscriptionScreen(errorOf(phase), onInput = screen::input, onQr = screen::scanQr, onSupport = screen::openSupport)
                             is Page.Scanning -> ScanScreen(page.board, onOk = screen::finishScan)
                             // Миг до транзакции на главный — пусто.
                             Page.Main -> Unit

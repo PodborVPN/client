@@ -34,7 +34,9 @@ class SubscriptionUiTest {
     private val calls = mutableListOf<String>()
 
     private fun show(error: InputError? = null) = compose.setContent {
-        PodborTheme { SubscriptionScreen(error, onInput = { inputs += it }, onQr = { calls += "qr" }) }
+        PodborTheme {
+            SubscriptionScreen(error, onInput = { inputs += it }, onQr = { calls += "qr" }, onSupport = { calls += "support $it" })
+        }
     }
 
     @Test
@@ -67,6 +69,21 @@ class SubscriptionUiTest {
     fun errorShownInWords() {
         show(InputError.Download(whitelist = true))
         compose.onNodeWithText(wordsOf(InputError.Download(whitelist = true))).assertExists()
+        compose.onNodeWithText("Поддержка провайдера").assertDoesNotExist()
+    }
+
+    @Test
+    fun deviceLimitLeadsToProviderSupport() {
+        show(InputError.DeviceLimit("Отвяжи устройство в боте", "https://t.me/help"))
+        compose.onNodeWithText("лимит устройств подписки: Отвяжи устройство в боте").assertExists()
+        compose.onNodeWithText("Поддержка провайдера").performClick()
+        assertEquals(listOf("support https://t.me/help"), calls)
+    }
+
+    @Test
+    fun deviceLimitWithoutSupportUrlHasNoButton() {
+        show(InputError.DeviceLimit(null, null))
+        compose.onNodeWithText("Поддержка провайдера").assertDoesNotExist()
     }
 
     @Test

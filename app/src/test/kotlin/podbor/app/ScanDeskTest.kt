@@ -506,6 +506,20 @@ class ScanDeskTest : FunSpec({
         }
     }
 
+    test("обновление: основная ссылка не скачалась — запасная провайдера; ссылка подписки прежняя") {
+        runTest {
+            val asked = mutableListOf<String>()
+            val s = stand(download = { url -> asked += url; if (url == "https://b.example/sub") Fetched("vless://b") else null })
+            s.subscriptions.save(Subscription("https://a.example/sub", "vless://a", fallbackUrl = "https://b.example/sub"))
+            s.desk.refreshSubscription()
+            asked shouldBe listOf("https://a.example/sub", "https://b.example/sub")
+            val now = s.subscriptions.load()
+            now?.text shouldBe "vless://b"
+            now?.link shouldBe "https://a.example/sub"
+            now?.fallbackUrl shouldBe "https://b.example/sub"
+        }
+    }
+
     test("белые списки, VPN поднят и выход найден: подписка качается туннелем — SOCKS сервера общего выхода") {
         runTest {
             val ports = mutableListOf<Int>()

@@ -37,4 +37,33 @@ class RefreshTest : FunSpec({
         Subscription("https://a.b", "старый", 0, 3).fetched(Fetched("новый", mapOf("profile-update-interval" to "1")), 5) shouldBe
             Subscription("https://a.b", "новый", 5, 1)
     }
+
+    test("переезд: new-url — новая ссылка целиком; new-domain — только домен, путь и токен прежние") {
+        val s = Subscription("https://old.example/sub/T0k?f=1", "старый")
+        s.fetched(Fetched("новый", mapOf("new-url" to "https://new.example/s/X")), 5).link shouldBe "https://new.example/s/X"
+        s.fetched(Fetched("новый", mapOf("new-domain" to "new.example")), 5).link shouldBe "https://new.example/sub/T0k?f=1"
+        // Шапкой в теле — так же; заголовок важнее шапки.
+        s.fetched(Fetched("#new-domain: body.example\nvless://a"), 5).link shouldBe "https://body.example/sub/T0k?f=1"
+        s.fetched(Fetched("#new-url: https://body.example/x\nvless://a", mapOf("new-url" to "https://head.example/y")), 5).link shouldBe
+            "https://head.example/y"
+    }
+
+    test("переезд: не http(s), не адрес, домен с путём или мусором — ссылка прежняя") {
+        val s = Subscription("https://old.example/sub/T0k", "старый")
+        listOf(
+            mapOf("new-url" to "javascript:alert(1)"),
+            mapOf("new-url" to "не ссылка"),
+            mapOf("new-domain" to "evil.example/path"),
+            mapOf("new-domain" to "a b"),
+            mapOf("new-domain" to ""),
+        ).forEach { h -> s.fetched(Fetched("новый", h), 5).link shouldBe "https://old.example/sub/T0k" }
+    }
+
+    test("запасная ссылка: из ответа запоминается, нет её в новом ответе — прежняя; не http(s) — не берём") {
+        val s = Subscription("https://a.example/s", "старый")
+        val withFallback = s.fetched(Fetched("новый", mapOf("fallback-url" to "https://b.example/s")), 5)
+        withFallback.fallbackUrl shouldBe "https://b.example/s"
+        withFallback.fetched(Fetched("ещё новее"), 6).fallbackUrl shouldBe "https://b.example/s"
+        s.fetched(Fetched("новый", mapOf("fallback-url" to "ftp://b.example/s")), 5).fallbackUrl shouldBe null
+    }
 })

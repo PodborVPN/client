@@ -20,7 +20,7 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Подписка человека: ссылка (если вставил ссылку) и скачанный/вставленный текст. Секрет — в логи и Ленту не пишется.
  * [fetchedAtMs] — когда текст последний раз скачан по ссылке; [updateHours] — интервал обновления от провайдера;
- * [provider] — что провайдер сказал о подписке.
+ * [provider] — что провайдер сказал о подписке; [fallbackUrl] — его запасная ссылка, когда основная не скачивается.
  */
 @Serializable
 data class Subscription(
@@ -29,6 +29,7 @@ data class Subscription(
     val fetchedAtMs: Long? = null,
     val updateHours: Int? = null,
     val provider: ProviderInfo? = null,
+    val fallbackUrl: String? = null,
 )
 
 private val json = Json { ignoreUnknownKeys = true }

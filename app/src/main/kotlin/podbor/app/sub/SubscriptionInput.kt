@@ -65,7 +65,7 @@ suspend fun fetchText(
             around ?: return InputError.Download(white).left()
         }
         when {
-            got.headers["x-hwid-limit"] == "true" -> InputError.DeviceLimit(providerOf(got)?.announce).left()
+            got.headers["x-hwid-limit"] == "true" -> providerOf(got).let { InputError.DeviceLimit(it?.announce, it?.supportUrl) }.left()
             got.body.isBlank() -> InputError.Unreadable.left()
             else -> got.right()
         }

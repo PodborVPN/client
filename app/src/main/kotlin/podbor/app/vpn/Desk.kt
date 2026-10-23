@@ -359,7 +359,8 @@ class Desk(
     /**
      * Тихое обновление подписки по сохранённой ссылке — после открытия, отдельно от него: нажатие не ждёт.
      * Не пора ([refreshDue]), ссылки нет, идёт анализ — ничего. Белые списки — по линии последнего открытия ([prior]),
-     * своего замера нет. Не скачалось или в новом тексте нет серверов — молча остаёмся на прежнем. Новый текст сессия
+     * своего замера нет. Не скачалась ни основная, ни запасная провайдера, или в новом тексте нет серверов — молча
+     * остаёмся на прежнем; провайдер сказал о переезде — ссылка новая ([fetched]). Новый текст сессия
      * берёт при следующем подъёме VPN: идущую не рвём.
      */
     suspend fun refreshSubscription(): Unit = withContext(io) {
@@ -370,8 +371,9 @@ class Desk(
             if (!refreshDue(old, scan.clock.nowMs())) return@withContext
             val net = os()
             val line = prior
-            val got = fetchText(SubscriptionInput.Link(link), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy).getOrNull()
-                ?: return@withContext
+            suspend fun fetch(url: String) = fetchText(SubscriptionInput.Link(url), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy)
+            // Основная не скачалась никаким путём — запасная ссылка провайдера; ссылка подписки остаётся прежней.
+            val got = fetch(link).getOrNull() ?: old.fallbackUrl?.let { fetch(it).getOrNull() } ?: return@withContext
             if (scan.servers(got.body) == 0) return@withContext
             scan.subscriptions.save(old.fetched(got, scan.clock.nowMs()))
         } finally {

@@ -32,10 +32,11 @@ import podbor.app.sub.wordsOf
 
 /**
  * «Добавь подписку»: две кнопки — текст из буфера (ссылка или конфиги) и QR. Что вставлено, решает [onInput] (inputOf);
- * не принялась — строка [error] словами. Минималистично, как главный.
+ * не принялась — строка [error] словами; провайдер отказал по лимиту устройств и дал поддержку — кнопка к ней
+ * ([onSupport]). Минималистично, как главный.
  */
 @Composable
-fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -> Unit) {
+fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -> Unit, onSupport: (String) -> Unit) {
     val context = LocalContext.current
     Column(
         Modifier
@@ -61,12 +62,17 @@ fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -
         }
         // Появляется плавно: рывок сдвигал бы страницу.
         AnimatedVisibility(visible = error != null) {
-            Text(
-                error?.let(::wordsOf).orEmpty(),
-                color = PodborColors.Fail,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
+            Column {
+                Text(
+                    error?.let(::wordsOf).orEmpty(),
+                    color = PodborColors.Fail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                (error as? InputError.DeviceLimit)?.supportUrl?.let { url ->
+                    Choice("Поддержка провайдера", Modifier.fillMaxWidth().padding(top = 12.dp)) { onSupport(url) }
+                }
+            }
         }
     }
 }
