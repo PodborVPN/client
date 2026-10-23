@@ -228,6 +228,8 @@ dependencies {
     implementation(libs.androidx.fragment.ktx)
     // Сканер QR подписки без Google Play Services.
     implementation(libs.zxing.embedded)
+    // Страница прокси Яндекс Переводчика: текст подписки из <pre>.
+    implementation(libs.jsoup)
 
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)

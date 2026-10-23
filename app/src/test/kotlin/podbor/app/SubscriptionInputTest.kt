@@ -120,6 +120,14 @@ vless://c@d:2#<span>имя</span>
         unwrapTranslated("<!DOCTYPE html><html><title>Ошибка перевода</title></html>") shouldBe null
     }
 
+    test("страница прокси: сущность вне Unicode или длиннее Int — знак замены, как в браузере; разбор не падает") {
+        fun page(pre: String) = "<html><body><pre>$pre</pre></body></html>"
+        unwrapTranslated(page("a&#99999999999;b")) shouldBe "a�b"
+        unwrapTranslated(page("a&#xFFFFFFFFFF;b")) shouldBe "a�b"
+        unwrapTranslated(page("a&#1114112;b&#x110000;c")) shouldBe "a�b�c"
+        unwrapTranslated(page("a&#1114111;b")) shouldBe "a${Character.toChars(0x10FFFF).concatToString()}b"
+    }
+
     test("белые: сначала туннель найденного выхода, потом прокси Яндекса; открытая сеть — туннель не трогаем") {
         val asked = mutableListOf<String>()
         val down: suspend (String) -> Fetched? = { asked += it; if ("translate.yandex" in it) Fetched("vless://яндекс") else null }

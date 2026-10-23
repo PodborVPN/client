@@ -5,6 +5,7 @@ import arrow.core.left
 import arrow.core.right
 import java.net.URI
 import java.net.URLEncoder
+import org.jsoup.Jsoup
 import podbor.core.plural
 import podbor.screen.InputError
 import podbor.screen.Skipped
@@ -72,30 +73,11 @@ fun viaYandex(url: String): String =
 /**
  * Тело ответа прокси Яндекса. Источник без charset в Content-Type прокси отдаёт байт в байт; с charset (raw.github,
  * панели на FastAPI) — HTML-страницей перевода, где исходный текст лежит в `<pre>` (сверено байт в байт: vless,
- * base64 1,3 МБ, кириллица). Подписка с `<` не начинается — по этому и различаем. HTML без `<pre>` («Ошибка перевода»)
- * — null.
+ * base64 1,3 МБ, кириллица). Подписка с `<` не начинается — по этому и различаем. Текст `<pre>` — разбором jsoup:
+ * теги внутри сняты, сущности раскрыты по стандарту HTML. HTML без `<pre>` («Ошибка перевода») — null.
  */
-fun unwrapTranslated(body: String): String? {
-    if (!body.trimStart().startsWith("<")) return body
-    val pre = PRE.find(body)?.groupValues?.get(1) ?: return null
-    return unescape(pre.replace(TAG, ""))
-}
-
-private val PRE = Regex("""<pre[^>]*>(.*?)</pre>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-private val TAG = Regex("""<[^>]+>""")
-private val ENTITY = Regex("""&(#[0-9]+|#[xX][0-9A-Fa-f]+|amp|lt|gt|quot|apos);""")
-
-private fun unescape(s: String): String = s.replace(ENTITY) { m ->
-    when (val e = m.groupValues[1]) {
-        "amp" -> "&"
-        "lt" -> "<"
-        "gt" -> ">"
-        "quot" -> "\""
-        "apos" -> "'"
-        else -> (if (e[1] == 'x' || e[1] == 'X') e.substring(2).toInt(16) else e.substring(1).toInt())
-            .let { Character.toChars(it).concatToString() }
-    }
-}
+fun unwrapTranslated(body: String): String? =
+    if (!body.trimStart().startsWith("<")) body else Jsoup.parse(body).selectFirst("pre")?.wholeText()
 
 fun wordsOf(e: InputError): String = when (e) {
     is InputError.Download ->
