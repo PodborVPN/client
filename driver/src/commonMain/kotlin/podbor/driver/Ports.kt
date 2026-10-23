@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import podbor.core.Endpoint
 import podbor.core.LineObservation
 import podbor.core.Memory
+import podbor.core.TrafficBook
 import podbor.core.Passport
 import podbor.core.ProbeSpec
 import podbor.core.Reach
@@ -44,6 +45,12 @@ interface XrayApi {
 }
 
 /** Сколько DC Telegram ответили resPQ на блоб через SOCKS-inbound кандидата. */
+/** Итоги трафика между запусками процесса: «на этой сети» и «через VPN на этой подписке». */
+interface TrafficBookStore {
+    fun load(): TrafficBook
+    fun save(b: TrafficBook)
+}
+
 /** Счётчики Xray (`StatsService.QueryStats`, без сброса): имя счётчика → накопленные байты. */
 fun interface XrayStats {
     suspend fun query(): Either<EngineError, Map<String, Long>>

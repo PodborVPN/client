@@ -2,9 +2,15 @@ package podbor.app
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import podbor.app.sub.FilePassportStore
+import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
+import podbor.app.sub.subscriptionKey
+import podbor.core.Tally
+import podbor.core.Traffic
+import podbor.core.TrafficBook
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.Passport
@@ -40,6 +46,23 @@ class StoresTest : FunSpec({
         store.save(passport); store.load() shouldBe passport
         dir.resolve("passport.json").writeText("")
         store.load() shouldBe null
+    }
+    test("итоги трафика: переживают перезапуск; без файла и битый файл — пустые") {
+        val dir = tmp()
+        FileTrafficBookStore(dir).load() shouldBe TrafficBook()
+        val book = TrafficBook(network = Tally("cell:25001", Traffic(192_000, 32_200_000)), vpn = Tally("k", Traffic(1, 2)))
+        FileTrafficBookStore(dir).save(book)
+        FileTrafficBookStore(dir).load() shouldBe book
+        dir.resolve("traffic.json").writeText("{ не json")
+        FileTrafficBookStore(dir).load() shouldBe TrafficBook()
+    }
+    test("ключ подписки: по ссылке (обновление текста не сбрасывает итог), без ссылки — по тексту; сама ссылка в ключ не попадает") {
+        val k = subscriptionKey(Subscription("https://a.b/s", "vless://x"))
+        subscriptionKey(Subscription("https://a.b/s", "vless://y")) shouldBe k
+        subscriptionKey(Subscription("https://a.b/t", "vless://x")) shouldNotBe k
+        subscriptionKey(Subscription(null, "vless://x")) shouldNotBe subscriptionKey(Subscription(null, "vless://y"))
+        k.length shouldBe 16
+        k.contains("a.b") shouldBe false
     }
     test("запись атомарна: временных файлов не остаётся") {
         val dir = tmp()

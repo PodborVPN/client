@@ -14,6 +14,7 @@ import podbor.core.OsNetwork
 import podbor.core.PairPulse
 import podbor.core.PulseView
 import podbor.core.Scenario
+import podbor.core.Tally
 import podbor.core.Traffic
 import podbor.core.ServerId
 import podbor.core.ServiceCard
@@ -202,15 +203,22 @@ class LookTest : FunSpec({
         trafficLine(Traffic(up = 192_000, down = 32_200_000)) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
     }
 
-    test("трафик в ярусе «СЕТЬ» — только при поднятом VPN и известном итоге") {
-        val known = PulseView(emptyMap(), Traffic(up = 192_000, down = 32_200_000))
-        sessionTraffic(Link.Up, known) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
-        sessionTraffic(Link.Up, PulseView.Empty) shouldBe null
-        Link.entries.filter { it != Link.Up }.forEach { sessionTraffic(it, known) shouldBe null }
+    test("«СЕТЬ» — итог на этой сети: только если ключ итога — ключ сети на экране, и без VPN тоже") {
+        val onCell = PulseView(emptyMap(), network = Tally("cell:25001", Traffic(up = 192_000, down = 32_200_000)), vpn = null)
+        networkTraffic(onCell, NetworkCard.Measured(mts, Scenario.MobileOpen, "")) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
+        networkTraffic(onCell, NetworkCard.Measuring(mts)) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
+        networkTraffic(onCell, NetworkCard.Measuring(OsNetwork.Wifi)) shouldBe null
+        networkTraffic(onCell, NetworkCard.Measuring(OsNetwork.None)) shouldBe null
+        networkTraffic(PulseView.Empty, NetworkCard.Measuring(mts)) shouldBe null
+    }
+
+    test("«ТЕКУЩИЙ VPN» — итог через VPN на этой подписке; итога нет — нет и строки") {
+        vpnTraffic(PulseView(emptyMap(), network = null, vpn = Tally("k", Traffic(up = 40_000, down = 1_250_000)))) shouldBe "↓ 1,2 МБ · ↑ 40 КБ"
+        vpnTraffic(PulseView.Empty) shouldBe null
     }
 
     test("пульс — у строки с сервером; поиск, тупик и VPN не поднят — без пульса") {
-        val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000), Instagram.id to PairPulse.Seen(0, 0, null)), null)
+        val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000), Instagram.id to PairPulse.Seen(0, 0, null)), null, null)
         val up = rowsOf(board(Button.Green, CardStatus.Works(nl), CardStatus.Checking(nlx)), Link.Up, emptyMap(), pulse = seen)
         up.single { it.label == "TG" }.pulse shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
         up.single { it.label == "IG" }.pulse shouldBe "сейчас не пользуется"

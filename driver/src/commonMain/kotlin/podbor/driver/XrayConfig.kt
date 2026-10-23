@@ -87,19 +87,17 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
             put("tag", "api")
             putJsonArray("services") {
                 add("RoutingService")
-                opts.tunFd?.let { add("StatsService") }
+                add("StatsService")
             }
         }
-        // Счётчики байт входов и выходов — пульс сессии; анализ (без TUN) их не держит.
-        opts.tunFd?.let {
-            putJsonObject("stats") {}
-            putJsonObject("policy") {
-                putJsonObject("system") {
-                    put("statsInboundUplink", true)
-                    put("statsInboundDownlink", true)
-                    put("statsOutboundUplink", true)
-                    put("statsOutboundDownlink", true)
-                }
+        // Счётчики байт входов и выходов — пульс: трафик сессии и проб, в том числе анализа подписки.
+        putJsonObject("stats") {}
+        putJsonObject("policy") {
+            putJsonObject("system") {
+                put("statsInboundUplink", true)
+                put("statsInboundDownlink", true)
+                put("statsOutboundUplink", true)
+                put("statsOutboundDownlink", true)
             }
         }
         putJsonObject("dns") {

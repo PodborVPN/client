@@ -9,8 +9,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import podbor.core.Passport
+import podbor.core.TrafficBook
 import podbor.driver.PassportStore
+import podbor.driver.TrafficBookStore
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Подписка человека: ссылка (если вставил ссылку) и скачанный/вставленный текст. Секрет — в логи и Ленту не пишется.
@@ -58,3 +61,18 @@ class FilePassportStore(dir: File, private val warn: (String) -> Unit = { Log.w(
     override fun load(): Passport? = readJson(file) { json.decodeFromString(Passport.serializer(), it) }
     override fun save(p: Passport) = writeAtomic(file, "паспорт", json.encodeToString(Passport.serializer(), p), warn)
 }
+
+/** Итоги трафика (на сети, через VPN на подписке) между запусками процесса; нет файла или битый — пустые. */
+class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) : TrafficBookStore {
+    private val file = File(dir, "traffic.json")
+    override fun load(): TrafficBook = readJson(file) { json.decodeFromString(TrafficBook.serializer(), it) } ?: TrafficBook()
+    override fun save(b: TrafficBook) = writeAtomic(file, "итоги трафика", json.encodeToString(TrafficBook.serializer(), b), warn)
+}
+
+/**
+ * Ключ итога «через VPN на этой подписке»: по ссылке (обновление текста по ссылке итог не сбрасывает), без ссылки — по
+ * тексту. 8 байт SHA-256 hex: в Ленту идёт ключ, не ссылка.
+ */
+fun subscriptionKey(s: Subscription): String =
+    MessageDigest.getInstance("SHA-256").digest((s.link ?: s.text).encodeToByteArray())
+        .take(8).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }

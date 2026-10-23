@@ -45,8 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
 import podbor.app.R
 import podbor.screen.Offer
-import podbor.screen.linkOf
-import podbor.screen.sessionTraffic
+import podbor.screen.networkTraffic
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.core.networkTitle
@@ -65,10 +64,9 @@ class NetworkFragment : Fragment() {
             setContent {
                 val board by screen.vm.board.collectAsStateWithLifecycle()
                 val update by screen.vm.update.collectAsStateWithLifecycle()
-                val known by screen.vm.facts.collectAsStateWithLifecycle()
                 val pulse by screen.vm.pulse.collectAsStateWithLifecycle()
                 PodborTheme {
-                    NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink, sessionTraffic(linkOf(known), pulse))
+                    NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink, networkTraffic(pulse, board.network))
                 }
             }
         }
@@ -91,22 +89,7 @@ fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onU
             .padding(top = 12.dp),
     ) {
         // Высота строки одна с чипом и без: появившись, чип не сдвигает страницу.
-        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tier("СЕТЬ")
-            // Трафик берёт всё место между словом и версией (а не половину с распоркой): обрезается, только если не влез.
-            if (traffic != null) {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    traffic,
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
+        TierWithTraffic("СЕТЬ", traffic, Modifier.height(40.dp)) {
             if (update == null) {
                 Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
             } else {

@@ -14,6 +14,7 @@ import org.robolectric.annotation.Config
 import podbor.app.ui.NetworkScreen
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.ServiceLine
+import podbor.app.ui.TierWithTraffic
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.screen.Mark
@@ -53,6 +54,17 @@ class PulseUiTest {
     fun noTrafficWithoutSession() {
         compose.setContent { PodborTheme { NetworkScreen(NetworkCard.Measuring(OsNetwork.Wifi), version = "1.2.3") } }
         compose.onNodeWithText("↓", substring = true).assertDoesNotExist()
+    }
+
+    /** «ТЕКУЩИЙ VPN» с итогом через VPN справа — тем же заголовком, что «СЕТЬ», и тоже не обрезается на 393 dp. */
+    @Test
+    @Config(sdk = [35], qualifiers = "w393dp-h873dp")
+    fun vpnTrafficNextToCurrentVpn() {
+        compose.setContent { PodborTheme { TierWithTraffic("ТЕКУЩИЙ VPN", "↓ 1,2 ГБ · ↑ 40,3 МБ") } }
+        compose.onNodeWithText("ТЕКУЩИЙ VPN").assertExists()
+        val layout = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText("↓ 1,2 ГБ · ↑ 40,3 МБ").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layout) }
+        assertFalse(layout.single().hasVisualOverflow)
     }
 
     @Test

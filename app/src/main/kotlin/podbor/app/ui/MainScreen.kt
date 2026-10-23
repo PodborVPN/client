@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -71,6 +72,7 @@ import podbor.screen.Tone
 import podbor.screen.Mark
 import podbor.screen.ServiceRow
 import podbor.screen.rowsOf
+import podbor.screen.vpnTraffic
 import podbor.screen.cardTime
 import podbor.screen.ExitOrigin
 
@@ -124,7 +126,7 @@ fun MainScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             PressButton(faceOf(board, link), onPress, onOff, onOn)
-            Tier("ТЕКУЩИЙ VPN")
+            TierWithTraffic("ТЕКУЩИЙ VPN", vpnTraffic(pulse))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry)
                 subscription?.announce?.let { Announce(it) }
@@ -245,6 +247,31 @@ internal fun Tier(label: String) {
         style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.14.em),
         modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
     )
+}
+
+/**
+ * Заголовок яруса с итогом трафика сразу за словом: серым, мелко, цифры одной ширины — не прыгают. Итог берёт всё место
+ * до [trailing] (а не половину с распоркой) и обрезается, только если не влез; итога нет — место пустое.
+ */
+@Composable
+internal fun TierWithTraffic(label: String, traffic: String?, modifier: Modifier = Modifier, trailing: @Composable RowScope.() -> Unit = {}) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Tier(label)
+        if (traffic != null) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                traffic,
+                color = Muted,
+                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        trailing()
+    }
 }
 
 @Composable

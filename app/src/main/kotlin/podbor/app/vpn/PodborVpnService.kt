@@ -79,7 +79,16 @@ import podbor.driver.pulseLoop
 import podbor.driver.xrayApiOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
+import podbor.app.sub.FileTrafficBookStore
+import podbor.app.sub.subscriptionKey
+import podbor.core.EpochKind
+import podbor.core.NetworkCard
+import podbor.core.OsNetwork
+import podbor.core.Pulse
 import podbor.core.PulseView
+import podbor.core.networkKey
+import podbor.core.view
+import podbor.driver.PulseContext
 import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
@@ -173,9 +182,14 @@ class PodborVpnService : VpnService(), ServicePort {
     /** Чьи выходы в замере открытия восстановлены — для слов «последний рабочий: … — проверяю». */
     override val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
 
-    private val pulseNow = MutableStateFlow(PulseView.Empty)
+    private val books by lazy { FileTrafficBookStore(filesDir) }
 
-    /** Пульс сессии из счётчиков Xray ([pulseLoop]); без сессии — пусто. */
+    /** Свёртка пульса процесса: эпохи сессий и анализов подряд, поверх итогов прошлых процессов. */
+    private val pulseState by lazy { MutableStateFlow(Pulse.resumed(books.load())) }
+
+    private val pulseNow by lazy { MutableStateFlow(pulseState.value.view(emptyMap(), SystemClock.elapsedRealtime())) }
+
+    /** Пульс из счётчиков Xray ([pulseLoop]): темп пар живой сессии и итоги на сети и подписке; итоги — и без сессии. */
     override val pulse: StateFlow<PulseView> get() = pulseNow
 
     /** Подписка сохранена: без неё экран зовёт «Добавь подписку». */
@@ -303,20 +317,22 @@ class PodborVpnService : VpnService(), ServicePort {
             countryOf = { ip -> geo?.of(ip) },
         )
         return with(driver) { warmUp(subscription) }.map { warm ->
-            // Счётчики Xray есть только в сессии с TUN (анализ их не держит).
-            if (tunFd != null) pulse(driver, opts, xrayStatsOn(channel))
+            meter(driver, opts, xrayStatsOn(channel), if (tunFd != null) EpochKind.Session else EpochKind.Scan)
             Live(driver, warm)
         }
     }
 
     /**
-     * Пульс сессии в её области: опрос счётчиков до конца сессии, потом — пусто. Сессия пульса — один подъём VPN (один
-     * запуск Xray): выкл/вкл и анализ подписки начинают трафик с нуля. Эпоха — номер запуска Xray (растёт и через
-     * перезапуски процесса) — метка отсчётов в Ленте; время темпа — монотонное. Частый опрос — пока экран подписан на [pulse].
+     * Пульс запуска Xray (сессии или анализа) в его области: опрос счётчиков в общую свёртку процесса ([pulseState]) до
+     * конца области; потом — итоги без пар (темп только у живой сессии). Эпоха — номер запуска Xray (растёт и через
+     * перезапуски процесса); время темпа — монотонное. Ключи итогов: сеть — по сети доски экрана (с ней же сверяется
+     * «СЕТЬ»), подписка — сохранённая: анализ чужой подписки итог «через VPN» не сбрасывает, новая сессия на новой — да.
+     * Частый опрос — пока экран подписан на [pulse].
      */
-    private suspend fun ResourceScope.pulse(driver: Driver, opts: ConfigOpts, stats: XrayStats) {
+    private suspend fun ResourceScope.meter(driver: Driver, opts: ConfigOpts, stats: XrayStats, kind: EpochKind) {
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
+        val subscription = subscriptions.load()?.let(::subscriptionKey) ?: ""
         install(
             {
                 scope.launch {
@@ -325,21 +341,30 @@ class PodborVpnService : VpnService(), ServicePort {
                         clock = clock,
                         mono = SystemClock::elapsedRealtime,
                         epoch = epoch,
+                        context = { PulseContext(kind, networkKey(osOf(desk.board.value.network)) ?: "", subscription) },
                         fast = { pulseNow.subscriptionCount.value > 0 },
                         effective = {
                             HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
                         },
+                        pulse = pulseState,
                         tape = tape,
+                        onTaped = books::save,
                         emit = { pulseNow.value = it },
                     )
                 }
             },
             { job, _ ->
-                // Дождаться петли: отменённая между ответом и выдачей, она затёрла бы пустой вид прошлой сессией.
+                // Дождаться петли: отменённая между ответом и выдачей, она затёрла бы вид после неё.
                 job.cancelAndJoin()
-                pulseNow.value = PulseView.Empty
+                books.save(pulseState.value.book)
+                pulseNow.value = pulseState.value.view(emptyMap(), SystemClock.elapsedRealtime())
             },
         )
+    }
+
+    private fun osOf(card: NetworkCard): OsNetwork = when (card) {
+        is NetworkCard.Measuring -> card.os
+        is NetworkCard.Measured -> card.os
     }
 
     private fun nextEpoch(): Long {

@@ -228,13 +228,13 @@ class XrayConfigTest : FunSpec({
         }
     }
 
-    test("withoutTunNoPairsNoStats: анализ без TUN — конфиг без клонов и счётчиков") {
+    test("анализ без TUN — без клонов пар, но со счётчиками: трафик проб анализа — тоже трафик") {
         val scan = buildConfig(servers, outbounds, opts.copy(services = setOf(Telegram, Instagram)))
         scan.tags() shouldBe listOf("s001", "s002", "s003", "direct", "block")
         scan.balancer("svc.tg").strs("selector") shouldBe listOf("s001", "s002", "s003")
-        scan["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService")
-        scan["stats"] shouldBe null
-        scan["policy"] shouldBe null
+        scan["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
+        scan["stats"] shouldBe JsonObject(emptyMap())
+        scan["policy"] shouldBe withTun["policy"]
     }
 
     test("probesStayOnServerOutbound: проба кандидата — в выход сервера, не в выход пары: её байты не попадают в пульс") {
