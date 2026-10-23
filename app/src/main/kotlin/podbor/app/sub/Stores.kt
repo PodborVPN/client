@@ -13,7 +13,9 @@ import podbor.core.TrafficBook
 import podbor.driver.PassportStore
 import podbor.driver.TrafficBookStore
 import java.io.File
-import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Подписка человека: ссылка (если вставил ссылку) и скачанный/вставленный текст. Секрет — в логи и Ленту не пишется.
@@ -71,8 +73,25 @@ class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = { Log
 
 /**
  * Ключ итога «через VPN на этой подписке»: по ссылке (обновление текста по ссылке итог не сбрасывает), без ссылки — по
- * тексту. 8 байт SHA-256 hex: в Ленту идёт ключ, не ссылка.
+ * тексту. 8 байт HMAC-SHA256 с солью установки ([installSalt]), hex: в Ленту идёт ключ, не ссылка, и по ключу не
+ * проверить догадку «это такая-то публичная ссылка» и не связать Ленты разных установок.
  */
-fun subscriptionKey(s: Subscription): String =
-    MessageDigest.getInstance("SHA-256").digest((s.link ?: s.text).encodeToByteArray())
-        .take(8).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+fun subscriptionKey(s: Subscription, salt: ByteArray): String =
+    Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(salt, "HmacSHA256")) }.doFinal((s.link ?: s.text).encodeToByteArray())
+        .take(8).toByteArray().hex()
+
+private const val SALT_BYTES = 16
+
+/**
+ * Соль установки: 16 случайных байт (в файле — hex), создаются при первом вопросе и живут, пока живут данные приложения.
+ * Не читается — новая (итог VPN начнётся заново, а не сломается); не записалась — новая и в следующий раз.
+ */
+fun installSalt(dir: File): ByteArray {
+    val file = File(dir, "install-salt")
+    val stored = Either.catch { file.readText().trim() }.getOrNull()
+        ?.takeIf { it.length == SALT_BYTES * 2 && it.all { c -> c in "0123456789abcdef" } }
+        ?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray()
+    return stored ?: ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }.also { podbor.app.net.writeAtomic(file, it.hex()) }
+}
+
+private fun ByteArray.hex(): String = joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }

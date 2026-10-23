@@ -7,6 +7,7 @@ import podbor.app.sub.FilePassportStore
 import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
+import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.core.Tally
 import podbor.core.Traffic
@@ -57,12 +58,21 @@ class StoresTest : FunSpec({
         FileTrafficBookStore(dir).load() shouldBe TrafficBook()
     }
     test("ключ подписки: по ссылке (обновление текста не сбрасывает итог), без ссылки — по тексту; сама ссылка в ключ не попадает") {
-        val k = subscriptionKey(Subscription("https://a.b/s", "vless://x"))
-        subscriptionKey(Subscription("https://a.b/s", "vless://y")) shouldBe k
-        subscriptionKey(Subscription("https://a.b/t", "vless://x")) shouldNotBe k
-        subscriptionKey(Subscription(null, "vless://x")) shouldNotBe subscriptionKey(Subscription(null, "vless://y"))
+        val salt = installSalt(tmp())
+        val k = subscriptionKey(Subscription("https://a.b/s", "vless://x"), salt)
+        subscriptionKey(Subscription("https://a.b/s", "vless://y"), salt) shouldBe k
+        subscriptionKey(Subscription("https://a.b/t", "vless://x"), salt) shouldNotBe k
+        subscriptionKey(Subscription(null, "vless://x"), salt) shouldNotBe subscriptionKey(Subscription(null, "vless://y"), salt)
         k.length shouldBe 16
         k.contains("a.b") shouldBe false
+    }
+    test("соль установки: одна на установку, у другой — своя; ключ одной подписки на разных установках не сличить") {
+        val dir = tmp()
+        installSalt(dir).toList() shouldBe installSalt(dir).toList()
+        val other = installSalt(tmp())
+        other.toList() shouldNotBe installSalt(dir).toList()
+        val s = Subscription("https://a.b/s", "vless://x")
+        subscriptionKey(s, installSalt(dir)) shouldNotBe subscriptionKey(s, other)
     }
     test("запись атомарна: временных файлов не остаётся") {
         val dir = tmp()

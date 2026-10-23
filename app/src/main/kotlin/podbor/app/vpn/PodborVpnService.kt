@@ -83,6 +83,7 @@ import podbor.driver.xrayApiOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
 import podbor.app.sub.FileTrafficBookStore
+import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.core.EpochKind
 import podbor.core.Pulse
@@ -184,6 +185,9 @@ class PodborVpnService : VpnService(), ServicePort {
     override val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
 
     private val books by lazy { FileTrafficBookStore(filesDir) }
+
+    /** Соль ключа подписки — своя у установки; читается в области запуска Xray (не на главном потоке). */
+    private val salt by lazy { installSalt(noBackupFilesDir) }
 
     /** Свёртка пульса процесса: эпохи сессий и анализов подряд, поверх итогов прошлых процессов ([booksLoaded]). */
     private val pulseState = MutableStateFlow(Pulse.Empty)
@@ -346,7 +350,7 @@ class PodborVpnService : VpnService(), ServicePort {
         booksLoaded.await()
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
-        val subscription = subscriptions.load()?.let(::subscriptionKey) ?: ""
+        val subscription = subscriptions.load()?.let { subscriptionKey(it, salt) } ?: ""
         install(
             {
                 scope.launch {
