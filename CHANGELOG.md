@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.10.0](https://github.com/PodborVPN/client/compare/v0.9.3...v0.10.0) (2026-10-23)
+
+
+### Новое
+
+* выход на пару сервис × сервер и счётчики Xray в сессии ([6b55b0c](https://github.com/PodborVPN/client/commit/6b55b0c4976f8ec0ef41f5038d3664e31a91006c))
+* опрос счётчиков Xray — пульс в Ленте и на порт экрана ([f0029e0](https://github.com/PodborVPN/client/commit/f0029e0d92aa2db8a544279564dec436bb919523))
+* пульс сессии на порт экрана ([97909ff](https://github.com/PodborVPN/client/commit/97909ff8724d6a97ea025d63e965b7456e62100e))
+* трафик — общий на этой сети в «Сеть» и через VPN на этой подписке в «Текущий VPN», анализ тоже меряет ([a7cde6d](https://github.com/PodborVPN/client/commit/a7cde6dd824f056ae1635f35ae411547af8a1482))
+* экран — пульс пары в карточке и трафик сессии в ярусе «Сеть» ([0e0bb38](https://github.com/PodborVPN/client/commit/0e0bb3896e9a3ed95716010ceab9c33f3e589751))
+* ядро — итоги трафика на этой сети и через VPN на этой подписке ([0d468f0](https://github.com/PodborVPN/client/commit/0d468f01e8e3dfb499bb5da3eb8b3f3808216e14))
+* ядро — пульс пары из накопленных счётчиков ([ac093d3](https://github.com/PodborVPN/client/commit/ac093d302c78c321be63bea267b11a44cfd51e99))
+
+
+### Исправлено
+
+* байты на экране округляются, как в Android, и на 1000 переходят в следующую единицу ([0f50dc3](https://github.com/PodborVPN/client/commit/0f50dc376f04a1cfc733491c2d32096b449cd25f))
+* итог «Сеть» не стирается без сети, ключ сети — от ОС на момент отсчёта, а не с доски экрана ([63a3b7e](https://github.com/PodborVPN/client/commit/63a3b7e24e317ef5fab8ce97ee6ad63558fb4d1d))
+* ключ подписки в итогах и Ленте — HMAC с солью установки, а не голый хеш ссылки ([1c908a6](https://github.com/PodborVPN/client/commit/1c908a6c95a4b5a1b68f3cf1587d3fb2d837153b))
+* пульс — итоги на диск не чаще раза в минуту и отдельно от Ленты ([f1bc00d](https://github.com/PodborVPN/client/commit/f1bc00d6d66e74e20ed1269d43a55fb4acb759d5))
+* пульс — каждый вход пробы своей меткой: пропавший из отсчёта вход не даёт второго счёта ([1ab5448](https://github.com/PodborVPN/client/commit/1ab54487d7f215273bc7ca887fcdd543815e149d))
+* пульс — открыли экран: отсчёт сразу; итоги прошлых процессов читаются в фоне ([51b33a2](https://github.com/PodborVPN/client/commit/51b33a27beac762dd136b9a247c11c5795052ecf))
+* пульс — пара без трафика видна как «сейчас не пользуется», нули не пишутся только в Ленту ([6df4ed3](https://github.com/PodborVPN/client/commit/6df4ed32a363eea3e565630815e2e1b74ac5a2c0))
+* пульс — теги пар вне селектора общего выхода, ⊥ при сбое статистики, в Ленте только tun и пары ([890d33a](https://github.com/PodborVPN/client/commit/890d33a62d6c2afbbd11ee5a9a8b8840d60eb425))
+* ярус «Сеть» — трафик сессии берёт всё место до версии и не обрезается ([d30552b](https://github.com/PodborVPN/client/commit/d30552b8d9f6fbf4338a3d4b9389b59494713b47))
+
 ## [0.9.3](https://github.com/PodborVPN/client/compare/v0.9.2...v0.9.3) (2026-10-22)
 
 
