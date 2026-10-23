@@ -15,7 +15,11 @@ import kotlinx.coroutines.test.runTest
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.HARDCODED_SERVICES
+import podbor.core.PairPulse
+import podbor.core.PulseView
 import podbor.core.ServiceId
+import podbor.core.Telegram
+import podbor.core.Traffic
 import podbor.core.board
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +43,31 @@ class MainViewModelTest : FunSpec({
             runCurrent()
             linkOf(vm.facts.value) shouldBe Link.Off
             vm.board.value shouldBe pressed
+        }
+    }
+
+    test("пульс порта — на экране, пока экран смотрит; перестал смотреть — порт без подписчика (опрос редкий); без порта — пусто") {
+        vmTest {
+            val vm = vm()
+            val port = FakePort()
+            vm.attach(port)
+            val watching = launch { vm.pulse.collect {} }
+            val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000)), Traffic(192_000, 32_200_000))
+            port.pulse.value = seen
+            runCurrent()
+            vm.pulse.value shouldBe seen
+            port.pulse.subscriptionCount.value shouldBe 1
+
+            watching.cancel()
+            advanceTimeBy(PULSE_STOP_MS + 1)
+            runCurrent()
+            port.pulse.subscriptionCount.value shouldBe 0
+
+            val again = launch { vm.pulse.collect {} }
+            vm.detach()
+            runCurrent()
+            vm.pulse.value shouldBe PulseView.Empty
+            again.cancel()
         }
     }
 

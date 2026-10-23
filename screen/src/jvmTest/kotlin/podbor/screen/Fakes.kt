@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import podbor.core.HARDCODED_SERVICES
+import podbor.core.PulseView
 import podbor.core.ScanBoard
 import podbor.core.ServiceId
 import podbor.core.board
@@ -17,6 +18,7 @@ internal class FakePort : ServicePort {
     override val session = MutableStateFlow<SessionView>(SessionView.Down)
     override val board = MutableStateFlow(board(HARDCODED_SERVICES, emptyMap()))
     override val exitOrigin = MutableStateFlow<Map<ServiceId, ExitOrigin>>(emptyMap())
+    override val pulse = MutableStateFlow(PulseView.Empty)
     var asked = 0
     var answer: suspend () -> Release? = { null }
 

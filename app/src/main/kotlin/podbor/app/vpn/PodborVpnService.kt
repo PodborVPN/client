@@ -12,6 +12,7 @@ import android.net.VpnService
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import arrow.core.Either
 import arrow.fx.coroutines.ResourceScope
@@ -23,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -69,8 +71,14 @@ import podbor.driver.SocketTcpReach
 import podbor.driver.TelegramProbeImpl
 import podbor.driver.TlsHandshaker
 import podbor.driver.detectLine
+import podbor.driver.XrayStats
 import podbor.driver.draftsOf
-import podbor.driver.xrayApi
+import podbor.driver.exitTagOf
+import podbor.driver.pulseLoop
+import podbor.driver.xrayApiOn
+import podbor.driver.xrayChannel
+import podbor.driver.xrayStatsOn
+import podbor.core.PulseView
 import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
@@ -85,6 +93,10 @@ private const val GEO_WAIT_MS = 3_000L
 
 /** Сколько анализ ждёт списки белых IP/SNI: дольше — подсказки Unlikely, анализ важнее. */
 private const val WHITE_WAIT_MS = 3_000L
+
+/** Номер запуска Xray сессии — эпоха счётчиков пульса: хранится, чтобы расти и через перезапуски процесса. */
+private const val PULSE_PREFS = "pulse"
+private const val XRAY_EPOCH = "xray_epoch"
 
 private fun log(msg: String) {
     Log.i(TAG, msg)
@@ -159,6 +171,11 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Чьи выходы в замере открытия восстановлены — для слов «последний рабочий: … — проверяю». */
     override val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
+
+    private val pulseNow = MutableStateFlow(PulseView.Empty)
+
+    /** Пульс сессии из счётчиков Xray ([pulseLoop]); без сессии — пусто. */
+    override val pulse: StateFlow<PulseView> get() = pulseNow
 
     /** Подписка сохранена: без неё экран зовёт «Добавь подписку». */
     suspend fun hasSubscription(): Boolean = desk.hasSubscription()
@@ -267,11 +284,11 @@ class PodborVpnService : VpnService(), ServicePort {
         )
         // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
         val geo = GeoHolder.await(GEO_WAIT_MS)
+        val channel = xrayChannel { UdsChannelBuilder.forPath(apiSocket.path, LocalSocketAddress.Namespace.FILESYSTEM).build() }
         val driver = Driver(
             converter = LibXrayConverter(LibXrayInvoke),
             engine = LibXrayEngine(LibXrayInvoke).reporting { log("Xray остановлен") },
-            api = xrayApi { UdsChannelBuilder.forPath(apiSocket.path, LocalSocketAddress.Namespace.FILESYSTEM).build() }
-                .reporting { log("API Xray: $it") },
+            api = xrayApiOn(channel).reporting { log("API Xray: $it") },
             prober = ProberImpl(TelegramProbeImpl(auth = LOCAL_SOCKS), InstagramProbeImpl(), SocketTcpReach()),
             exitProbe = ExitProbeImpl(),
             gate = EndpointGate(),
@@ -284,7 +301,49 @@ class PodborVpnService : VpnService(), ServicePort {
             opts = opts,
             countryOf = { ip -> geo?.of(ip) },
         )
-        return with(driver) { warmUp(subscription) }.map { Live(driver, it) }
+        return with(driver) { warmUp(subscription) }.map { warm ->
+            // Счётчики Xray есть только в сессии с TUN (анализ их не держит).
+            if (tunFd != null) pulse(driver, opts, xrayStatsOn(channel))
+            Live(driver, warm)
+        }
+    }
+
+    /**
+     * Пульс сессии в её области: опрос счётчиков до конца сессии, потом — пусто. Эпоха — номер запуска Xray сессии (растёт
+     * и через перезапуски процесса), время темпа — монотонное. Частый опрос — пока экран подписан на [pulse].
+     */
+    private suspend fun ResourceScope.pulse(driver: Driver, opts: ConfigOpts, stats: XrayStats) {
+        val epoch = nextEpoch()
+        val tagOf = exitTagOf(opts)
+        install(
+            {
+                scope.launch {
+                    pulseLoop(
+                        stats = stats,
+                        clock = clock,
+                        mono = SystemClock::elapsedRealtime,
+                        epoch = epoch,
+                        fast = { pulseNow.subscriptionCount.value > 0 },
+                        effective = {
+                            HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
+                        },
+                        tape = tape,
+                        emit = { pulseNow.value = it },
+                    )
+                }
+            },
+            { job, _ ->
+                job.cancel()
+                pulseNow.value = PulseView.Empty
+            },
+        )
+    }
+
+    private fun nextEpoch(): Long {
+        val prefs = getSharedPreferences(PULSE_PREFS, MODE_PRIVATE)
+        val next = prefs.getLong(XRAY_EPOCH, 0) + 1
+        prefs.edit().putLong(XRAY_EPOCH, next).apply()
+        return next
     }
 
     /** UID пакета или null, если не установлен (виден благодаря `<queries>` манифеста). */

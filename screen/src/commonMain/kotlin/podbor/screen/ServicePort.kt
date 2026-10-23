@@ -3,6 +3,7 @@ package podbor.screen
 import arrow.core.Either
 import kotlinx.coroutines.flow.StateFlow
 import podbor.core.Board
+import podbor.core.PulseView
 import podbor.core.ScanBoard
 import podbor.core.ServiceId
 
@@ -18,6 +19,9 @@ interface ServicePort {
 
     /** Чьи выходы в замере открытия восстановлены из памяти сети. */
     val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>>
+
+    /** Пульс сессии: величины пар и трафик; без сессии — пусто. Подписчик есть — экран смотрит, опрос частый. */
+    val pulse: StateFlow<PulseView>
 
     /** Последний релиз на GitHub; не узнали — null. */
     suspend fun latestRelease(): Release?

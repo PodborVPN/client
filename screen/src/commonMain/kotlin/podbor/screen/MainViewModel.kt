@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import podbor.core.Board
 import podbor.core.HARDCODED_SERVICES
+import podbor.core.PulseView
 import podbor.core.ServiceId
 import podbor.core.board
 
@@ -114,6 +117,15 @@ class MainViewModel(
 
     val origin: StateFlow<Map<ServiceId, ExitOrigin>> =
         service.keepLast { it.exitOrigin }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /**
+     * Пульс — только пока экран смотрит (и [PULSE_STOP_MS] после: поворот экрана не роняет опрос в редкий): подписка
+     * экрана и есть «смотрит» для опроса сервиса. Без сервиса — пусто, а не последний: величины без сессии врут.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pulse: StateFlow<PulseView> =
+        service.flatMapLatest { it?.pulse ?: flowOf(PulseView.Empty) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(PULSE_STOP_MS), PulseView.Empty)
 
     /**
      * Чип «обновить до …»: сразу — по последнему известному релизу; GitHub спрашивается, только пока экран подписан
@@ -312,6 +324,9 @@ class MainViewModel(
 }
 
 private data class Analysis(val input: SubscriptionInput, val n: Int)
+
+/** Сколько пульс держит подписку на сервис после ухода экрана: поворот — не уход. */
+const val PULSE_STOP_MS: Long = 5_000
 
 private const val ASK = "ask"
 private const val REFUSED = "vpn_refused"
