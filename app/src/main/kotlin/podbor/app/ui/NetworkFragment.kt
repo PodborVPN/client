@@ -45,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
 import podbor.app.R
 import podbor.screen.Offer
+import podbor.screen.linkOf
+import podbor.screen.sessionTraffic
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
 import podbor.core.networkTitle
@@ -63,18 +65,23 @@ class NetworkFragment : Fragment() {
             setContent {
                 val board by screen.vm.board.collectAsStateWithLifecycle()
                 val update by screen.vm.update.collectAsStateWithLifecycle()
-                PodborTheme { NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink) }
+                val known by screen.vm.facts.collectAsStateWithLifecycle()
+                val pulse by screen.vm.pulse.collectAsStateWithLifecycle()
+                PodborTheme {
+                    NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink, sessionTraffic(linkOf(known), pulse))
+                }
             }
         }
 }
 
 /**
  * Ярус «СЕТЬ»: сценарий цветом, оператор и вышка, улика; справа в строке яруса — версия, а есть новее на GitHub ([update])
- * — янтарный чип с новой версией: эта строка видна на любой странице, сколько бы карточек ни было ниже. Отступ сверху —
- * под строку состояния.
+ * — янтарный чип с новой версией: эта строка видна на любой странице, сколько бы карточек ни было ниже. Сразу за словом
+ * «СЕТЬ» — трафик сессии ([traffic], только при поднятом VPN): серым, мелко, цифры одной ширины — не прыгают. Отступ
+ * сверху — под строку состояния.
  */
 @Composable
-fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onUpdate: (String) -> Unit = {}) {
+fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onUpdate: (String) -> Unit = {}, traffic: String? = null) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -86,6 +93,17 @@ fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onU
         // Высота строки одна с чипом и без: появившись, чип не сдвигает страницу.
         Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
             Tier("СЕТЬ")
+            traffic?.let {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    it,
+                    color = Muted,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             Spacer(Modifier.weight(1f))
             if (update == null) {
                 Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)

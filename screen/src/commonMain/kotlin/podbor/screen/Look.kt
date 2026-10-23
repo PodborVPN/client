@@ -7,11 +7,14 @@ import podbor.core.ExitRef
 import podbor.core.ExitState
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.NetworkCard
+import podbor.core.PairPulse
+import podbor.core.PulseView
 import podbor.core.Scenario
 import podbor.core.Service
 import podbor.core.ServiceCard
 import podbor.core.ServiceId
 import podbor.core.Stopwatch
+import podbor.core.Traffic
 import podbor.core.exitHead
 import podbor.core.exitNote
 import podbor.core.transportWords
@@ -36,7 +39,8 @@ data class Note(val text: String, val tone: Tone)
 /**
  * Строка блока «текущий VPN», ценность слева направо (вариант A): [отметка + метка сервиса] | [имя сервера] | [протокол];
  * под ней — заметки; [searching] — полоска поиска; [retry] — «повторить» (подъём не удался: повтор одним тапом, а не
- * перезапуском приложения); [stopwatch] — секундомер подбора этого сервиса. Строка связи с VPN — без сервиса: [label] пуст.
+ * перезапуском приложения); [stopwatch] — секундомер подбора этого сервиса; [pulse] — величины пары сервиса и его
+ * сервера ([pulseLine]), пока у строки есть сервер. Строка связи с VPN — без сервиса: [label] пуст.
  */
 data class ServiceRow(
     val label: String,
@@ -47,6 +51,7 @@ data class ServiceRow(
     val searching: Boolean,
     val retry: Boolean = false,
     val stopwatch: Stopwatch = Stopwatch.None,
+    val pulse: String? = null,
 )
 
 fun toneOf(card: NetworkCard): Tone = when (card) {
@@ -77,13 +82,14 @@ private fun plain(name: String, vararg notes: Note) = ServiceRow("", null, name,
 /**
  * Строки блока: без поднятого VPN — одна строка его состояния (устаревший результат не показывается), иначе — строка на
  * сервис по [ServiceId]. [origin] — чей выход восстановлен из памяти сети: пока его проверяют, так и говорим.
- * [services] — описания сервисов для слов («проверяю Инсту…»).
+ * [services] — описания сервисов для слов («проверяю Инсту…»); [pulse] — величины пар сессии.
  */
 fun rowsOf(
     board: Board,
     link: Link,
     origin: Map<ServiceId, ExitOrigin>,
     services: Set<Service> = HARDCODED_SERVICES,
+    pulse: PulseView = PulseView.Empty,
 ): List<ServiceRow> = when (link) {
     Link.Starting -> listOf(plain("поднимаю VPN…"))
     Link.Consent -> listOf(plain("жду разрешения на VPN…", Note("подтверди запрос системы", Tone.Warn)))
@@ -105,7 +111,8 @@ fun rowsOf(
         cards.map { card ->
             val st = card.status
             val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.firstOrNull() == shared
-            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats).copy(stopwatch = card.stopwatch)
+            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats)
+                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pulse.pairs[card.service] ?: PairPulse.Unseen))
         }
     }
 }
@@ -144,8 +151,59 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
     }
 }
 
+/** Пульс — у строки с сервером (работает, найден, проверяю); поиск, тупик и прочее — без него: пары нет. */
+private fun pulseOf(status: CardStatus, p: PairPulse): String? = when (status) {
+    is CardStatus.Works, is CardStatus.Found, is CardStatus.Checking -> pulseLine(p)
+    CardStatus.Unknown, is CardStatus.Unlisted, CardStatus.Searching, is CardStatus.Dead, is CardStatus.NotFound -> null
+}
+
 /** Время на кнопке — крупно, без долей: «0:08». */
 fun buttonTime(ms: Long): String = (ms / 1000).let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" }
 
 /** Время на карточке — с десятыми, пока меньше минуты: «8,3 с»; дальше — как на кнопке. */
 fun cardTime(ms: Long): String = if (ms < 60_000) "${ms / 1000},${ms % 1000 / 100} с" else buttonTime(ms)
+
+private val UNITS = listOf("Б", "КБ", "МБ", "ГБ", "ТБ")
+
+/**
+ * Байты десятичными единицами, как «Использование данных» Android: до 100 — с десятой через запятую (нулевую не пишем:
+ * «12 КБ», но «9,8 КБ»), дальше целым.
+ */
+fun bytesText(n: Long): String {
+    val k = generateSequence(1L) { it * 1_000 }.take(UNITS.size).indexOfLast { n >= it }.coerceAtLeast(0)
+    val scale = generateSequence(1L) { it * 1_000 }.elementAt(k)
+    val tenths = n * 10 / scale
+    return when {
+        k == 0 -> "$n ${UNITS[0]}"
+        tenths < 1_000 && tenths % 10 != 0L -> "${tenths / 10},${tenths % 10} ${UNITS[k]}"
+        else -> "${n / scale} ${UNITS[k]}"
+    }
+}
+
+fun rateText(bps: Long): String = "${bytesText(bps)}/с"
+
+/** «ответ 2 с назад», с минуты — «ответ 2 мин назад». */
+private fun answeredText(ms: Long): String = if (ms < 60_000) "ответ ${ms / 1_000} с назад" else "ответ ${ms / 60_000} мин назад"
+
+/**
+ * Строка пульса пары — только величины, без вердиктов: темп вниз и вверх и сколько назад был ответ. Ни байта в окне —
+ * «сейчас не пользуется» (не наблюдали спроса, а не «не работает»); не наблюдали пару вовсе — строки нет.
+ */
+fun pulseLine(p: PairPulse): String? = when (p) {
+    PairPulse.Unseen -> null
+    is PairPulse.Seen ->
+        if (p.downBps == 0L && p.upBps == 0L) {
+            "сейчас не пользуется"
+        } else {
+            listOfNotNull("↓ ${rateText(p.downBps)}", "↑ ${rateText(p.upBps)}", p.answeredAgoMs?.let(::answeredText)).joinToString(" · ")
+        }
+}
+
+/** Трафик сессии: ↓ первым. */
+fun trafficLine(t: Traffic): String = "↓ ${bytesText(t.down)} · ↑ ${bytesText(t.up)}"
+
+/** Трафик для яруса «СЕТЬ»: только при поднятом VPN и известном итоге — без сессии величина врёт. */
+fun sessionTraffic(link: Link, pulse: PulseView): String? = when (link) {
+    Link.Up -> pulse.session?.let(::trafficLine)
+    Link.Starting, Link.Consent, Link.Refused, Link.Failed, Link.Off -> null
+}

@@ -63,6 +63,7 @@ import podbor.app.R
 import podbor.screen.SubscriptionNote
 import podbor.core.Board
 import podbor.core.Button
+import podbor.core.PulseView
 import podbor.core.ServiceId
 import podbor.screen.Link
 import podbor.screen.faceOf
@@ -106,6 +107,8 @@ fun MainScreen(
     onSupport: (String) -> Unit = {},
     /** «Поддержать» проект; null — кнопки нет (сборка для магазина: там донаты только через его оплату). */
     onDonate: (() -> Unit)? = null,
+    /** Пульс сессии: величины пар в строках сервисов. */
+    pulse: PulseView = PulseView.Empty,
 ) {
     Box(
         Modifier
@@ -123,7 +126,7 @@ fun MainScreen(
             PressButton(faceOf(board, link), onPress, onOff, onOn)
             Tier("ТЕКУЩИЙ VPN")
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                VpnCard(rowsOf(board, link, origin), onRetry)
+                VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry)
                 subscription?.announce?.let { Announce(it) }
             }
             ShareLink(shareNote, onShare, onDonate)
@@ -328,6 +331,17 @@ internal fun ServiceLine(row: ServiceRow) {
                         )
                     }
                 }
+            }
+            // Величины пары — серым, мелко, цифры одной ширины: числа меняются раз в секунду и не прыгают.
+            row.pulse?.let {
+                Text(
+                    it,
+                    color = Muted,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
             row.notes.forEach { n ->
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {

@@ -11,7 +11,10 @@ import podbor.core.ExitRef
 import podbor.core.Instagram
 import podbor.core.NetworkCard
 import podbor.core.OsNetwork
+import podbor.core.PairPulse
+import podbor.core.PulseView
 import podbor.core.Scenario
+import podbor.core.Traffic
 import podbor.core.ServerId
 import podbor.core.ServiceCard
 import podbor.core.ServiceId
@@ -171,5 +174,50 @@ class LookTest : FunSpec({
         cardTime(8_349) shouldBe "8,3 с"
         cardTime(59_999) shouldBe "59,9 с"
         cardTime(65_400) shouldBe "1:05"
+    }
+
+    test("байты — десятичными единицами: до 100 — с десятой через запятую (нулевую не пишем), дальше целым") {
+        bytesText(999) shouldBe "999 Б"
+        bytesText(9_800) shouldBe "9,8 КБ"
+        bytesText(12_000) shouldBe "12 КБ"
+        bytesText(1_000) shouldBe "1 КБ"
+        bytesText(192_000) shouldBe "192 КБ"
+        bytesText(32_200_000) shouldBe "32,2 МБ"
+        bytesText(4_560_000_000) shouldBe "4,5 ГБ"
+        rateText(340_000) shouldBe "340 КБ/с"
+        rateText(0) shouldBe "0 Б/с"
+    }
+
+    test("строка пульса — только величины: темп, «ответ N с назад»; простой — «сейчас не пользуется»; ⊥ — строки нет") {
+        pulseLine(PairPulse.Seen(340_000, 12_000, 2_000)) shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
+        pulseLine(PairPulse.Seen(0, 2_000, 14_000)) shouldBe "↓ 0 Б/с · ↑ 2 КБ/с · ответ 14 с назад"
+        pulseLine(PairPulse.Seen(5_000, 0, null)) shouldBe "↓ 5 КБ/с · ↑ 0 Б/с"
+        pulseLine(PairPulse.Seen(0, 0, null)) shouldBe "сейчас не пользуется"
+        pulseLine(PairPulse.Seen(0, 0, 90_000)) shouldBe "сейчас не пользуется"
+        pulseLine(PairPulse.Seen(1_000, 0, 125_000)) shouldBe "↓ 1 КБ/с · ↑ 0 Б/с · ответ 2 мин назад"
+        pulseLine(PairPulse.Unseen) shouldBe null
+    }
+
+    test("трафик сессии: ↓ первым, как «in | out»") {
+        trafficLine(Traffic(up = 192_000, down = 32_200_000)) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
+    }
+
+    test("трафик в ярусе «СЕТЬ» — только при поднятом VPN и известном итоге") {
+        val known = PulseView(emptyMap(), Traffic(up = 192_000, down = 32_200_000))
+        sessionTraffic(Link.Up, known) shouldBe "↓ 32,2 МБ · ↑ 192 КБ"
+        sessionTraffic(Link.Up, PulseView.Empty) shouldBe null
+        Link.entries.filter { it != Link.Up }.forEach { sessionTraffic(it, known) shouldBe null }
+    }
+
+    test("пульс — у строки с сервером; поиск, тупик и VPN не поднят — без пульса") {
+        val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000), Instagram.id to PairPulse.Seen(0, 0, null)), null)
+        val up = rowsOf(board(Button.Green, CardStatus.Works(nl), CardStatus.Checking(nlx)), Link.Up, emptyMap(), pulse = seen)
+        up.single { it.label == "TG" }.pulse shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
+        up.single { it.label == "IG" }.pulse shouldBe "сейчас не пользуется"
+        rowsOf(board(Button.Searching, CardStatus.Searching, CardStatus.NotFound(listOf("Нет сети."))), Link.Up, emptyMap(), pulse = seen)
+            .map { it.pulse } shouldBe listOf(null, null)
+        rowsOf(board(Button.Green, CardStatus.Found(nl, 0, "проверено 1 из 9")), Link.Up, emptyMap(), pulse = seen)
+            .single { it.label == "TG" }.pulse shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
+        rowsOf(board(Button.Green, CardStatus.Works(nl)), Link.Off, emptyMap(), pulse = seen).map { it.pulse } shouldBe listOf(null)
     }
 })

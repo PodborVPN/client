@@ -24,12 +24,14 @@ class MainFragment : Fragment() {
                 val note by screen.shareNote.collectAsStateWithLifecycle()
                 val origin by screen.vm.origin.collectAsStateWithLifecycle()
                 val subscription by screen.vm.subscriptionNote.collectAsStateWithLifecycle()
+                val pulse by screen.vm.pulse.collectAsStateWithLifecycle()
                 PodborTheme {
                     MainScreen(
                         board, linkOf(known), origin, note, subscription,
                         onPress = screen::press, onOff = screen::turnOff, onOn = screen::turnOn, onRetry = screen::retry,
                         onShare = screen::share, onChangeSubscription = screen::changeSubscription, onSupport = screen::openSupport,
                         onDonate = if (BuildConfig.SELF_DISTRIBUTED) screen::donate else null,
+                        pulse = pulse,
                     )
                 }
             }
