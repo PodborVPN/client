@@ -18,6 +18,7 @@ import arrow.core.Either
 import arrow.fx.coroutines.ResourceScope
 import io.grpc.android.UdsChannelBuilder
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,11 +27,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import podbor.app.net.AndroidStore
@@ -182,10 +185,16 @@ class PodborVpnService : VpnService(), ServicePort {
 
     private val books by lazy { FileTrafficBookStore(filesDir) }
 
-    /** Свёртка пульса процесса: эпохи сессий и анализов подряд, поверх итогов прошлых процессов. */
-    private val pulseState by lazy { MutableStateFlow(Pulse.resumed(books.load())) }
+    /** Свёртка пульса процесса: эпохи сессий и анализов подряд, поверх итогов прошлых процессов ([booksLoaded]). */
+    private val pulseState = MutableStateFlow(Pulse.Empty)
 
-    private val pulseNow by lazy { MutableStateFlow(pulseState.value.view(emptyMap(), SystemClock.elapsedRealtime())) }
+    private val pulseNow = MutableStateFlow(PulseView.Empty)
+
+    /** Итоги прошлых процессов прочитаны (в фоне, не на главном потоке): запуск Xray ждёт их — не сложить поверх пустых. */
+    private val booksLoaded = CompletableDeferred<Unit>()
+
+    /** Экран смотрит на пульс — опрос частый; открыли экран — следующий отсчёт сразу. */
+    private val watching by lazy { pulseNow.subscriptionCount.map { it > 0 }.stateIn(scope, SharingStarted.Eagerly, false) }
 
     /** Пульс из счётчиков Xray ([pulseLoop]): темп пар живой сессии и итоги на сети и подписке; итоги — и без сессии. */
     override val pulse: StateFlow<PulseView> get() = pulseNow
@@ -204,6 +213,12 @@ class PodborVpnService : VpnService(), ServicePort {
         super.onCreate()
         GeoHolder.start { File(geoDir(this), "geoip.dat") }
         WhiteHolder.start(this)
+        scope.launch {
+            val resumed = Pulse.resumed(books.load())
+            pulseState.value = resumed
+            pulseNow.value = resumed.view(emptyMap(), SystemClock.elapsedRealtime())
+            booksLoaded.complete(Unit)
+        }
         registerOwnerFinder(getSystemService(ConnectivityManager::class.java))
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW))
@@ -328,6 +343,7 @@ class PodborVpnService : VpnService(), ServicePort {
      * Частый опрос — пока экран подписан на [pulse].
      */
     private suspend fun ResourceScope.meter(driver: Driver, opts: ConfigOpts, stats: XrayStats, kind: EpochKind) {
+        booksLoaded.await()
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
         val subscription = subscriptions.load()?.let(::subscriptionKey) ?: ""
@@ -341,7 +357,7 @@ class PodborVpnService : VpnService(), ServicePort {
                         epoch = epoch,
                         // Сеть — ОС на момент отсчёта (доска экрана без открытого экрана смену сети не видит).
                         context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
-                        fast = { pulseNow.subscriptionCount.value > 0 },
+                        watching = watching,
                         effective = {
                             HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
                         },

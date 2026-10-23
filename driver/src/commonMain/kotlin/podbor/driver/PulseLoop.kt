@@ -3,7 +3,10 @@ package podbor.driver
 import arrow.core.Either
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.withTimeoutOrNull
 import podbor.core.EpochKind
 import podbor.core.PROBE_INBOUND_PREFIX
 import podbor.core.Pulse
@@ -63,7 +66,8 @@ fun PulseSample.forTape(): PulseSample =
  * свёртка процесса [pulse] (эпохи идут в неё подряд) → вид на экран ([emit]) для [effective] (сервис → тег выхода его
  * пары). В Ленту отсчёт уходит не чаще [PULSE_TAPE_MS] и только изменившийся; Лента не пишется (диск полон) — опрос
  * живёт дальше. Итоги — на сохранение ([save]) не чаще [PULSE_SAVE_MS] и только изменившиеся. Сбой API — вид на прежней
- * свёртке к текущему моменту: старше двух окон пара сама уходит в ⊥, итоги остаются. [fast] — экран смотрит.
+ * свёртке к текущему моменту: старше двух окон пара сама уходит в ⊥, итоги остаются. [watching] — экран смотрит: опрос
+ * частый; не смотрит — редкий, но экран открыли — следующий отсчёт сразу, без досыпания редкого шага.
  */
 suspend fun pulseLoop(
     stats: XrayStats,
@@ -71,7 +75,7 @@ suspend fun pulseLoop(
     mono: () -> Long,
     epoch: Long,
     context: () -> PulseContext,
-    fast: () -> Boolean,
+    watching: StateFlow<Boolean>,
     effective: () -> Map<ServiceId, String>,
     pulse: MutableStateFlow<Pulse>,
     tape: TapeSink,
@@ -103,6 +107,6 @@ suspend fun pulseLoop(
                 }
             },
         )
-        delay(if (fast()) PULSE_FAST_MS else PULSE_SLOW_MS)
+        if (watching.value) delay(PULSE_FAST_MS) else withTimeoutOrNull(PULSE_SLOW_MS) { watching.first { it } }
     }
 }

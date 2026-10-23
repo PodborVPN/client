@@ -84,6 +84,7 @@ class PulseLoopTest : FunSpec({
     suspend fun TestScope.loop(
         stats: XrayStats,
         fast: Boolean = true,
+        watching: MutableStateFlow<Boolean> = MutableStateFlow(fast),
         epoch: Long = 1,
         context: PulseContext = session,
         effective: Map<podbor.core.ServiceId, String> = mapOf(Telegram.id to "pair.tg.s001"),
@@ -94,7 +95,7 @@ class PulseLoopTest : FunSpec({
     ) = launch {
         pulseLoop(
             stats = stats, clock = Clock { 1_000_000 + testScheduler.currentTime }, mono = { testScheduler.currentTime }, epoch = epoch,
-            context = { context }, fast = { fast }, effective = { effective }, pulse = pulse, tape = tape,
+            context = { context }, watching = watching, effective = { effective }, pulse = pulse, tape = tape,
             save = { taped += it }, emit = { views += it },
         )
     }
@@ -119,6 +120,20 @@ class PulseLoopTest : FunSpec({
         val idle = Counters()
         loopTest(idle, fast = false) { _, _ -> runCurrent(); advanceTimeBy(25_000); runCurrent() }
         idle.calls shouldBe 3
+    }
+
+    test("экран открыли — опрос сразу, а не по истечении редкого шага") {
+        runTest {
+            val stats = Counters()
+            val watching = MutableStateFlow(false)
+            val job = loop(stats, watching = watching, tape = TapeSink {}, views = mutableListOf())
+            runCurrent(); advanceTimeBy(3_000); runCurrent()
+            stats.calls shouldBe 1
+            watching.value = true
+            runCurrent()
+            stats.calls shouldBe 2
+            job.cancel()
+        }
     }
 
     test("tapeAtMostEvery10sAndOnlyOnChange: в Ленту — не чаще 10 с и только при изменении") {
