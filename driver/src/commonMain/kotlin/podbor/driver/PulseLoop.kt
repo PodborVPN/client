@@ -32,13 +32,16 @@ fun sampleOf(raw: Map<String, Long>, epoch: Long, atMs: Long, monoMs: Long): Pul
 }
 
 /**
- * Что из отсчёта нужно знанию: вход сети (`tun`) и выходы пар, по которым шли байты. Вход API растёт от самого опроса,
- * выходы серверов и входы проб — от проб, нулевые пары — молчат: в Ленте они только множили бы строки.
+ * Что из отсчёта нужно пульсу: вход сети (`tun`) и выходы пар. Вход API растёт от самого опроса, выходы серверов и входы
+ * проб — от проб: это не трафик человека. Пара с нулём остаётся — «не пользуется» тоже знание.
  */
 fun PulseSample.essential(): PulseSample = copy(
     inbound = inbound.filterKeys { it == TUN_INBOUND },
-    outbound = outbound.filter { (tag, t) -> tag.startsWith(PAIR_PREFIX) && t != Traffic.Zero },
+    outbound = outbound.filterKeys { it.startsWith(PAIR_PREFIX) },
 )
+
+/** В Ленту — без нулевых пар: их сотни, и молчат они, пока ими не пользуются; ноль восстанавливается из отсутствия. */
+fun PulseSample.forTape(): PulseSample = copy(outbound = outbound.filterValues { it != Traffic.Zero })
 
 /**
  * Опрос счётчиков Xray сессии до отмены: отсчёт ([essential]) → свёртка [Pulse] → вид на экран ([emit]) для
@@ -62,9 +65,10 @@ suspend fun pulseLoop(
         stats.query().fold(
             { emit(pulse.view(effective(), mono())) },
             { raw ->
-                val s = sampleOf(raw, epoch, clock.nowMs(), mono()).essential()
-                pulse = pulse.after(s)
-                emit(pulse.view(effective(), s.monoMs))
+                val sample = sampleOf(raw, epoch, clock.nowMs(), mono()).essential()
+                pulse = pulse.after(sample)
+                emit(pulse.view(effective(), sample.monoMs))
+                val s = sample.forTape()
                 val last = taped
                 val changed = last == null || last.inbound != s.inbound || last.outbound != s.outbound
                 if (changed && (last == null || s.monoMs - last.monoMs >= PULSE_TAPE_MS)) {

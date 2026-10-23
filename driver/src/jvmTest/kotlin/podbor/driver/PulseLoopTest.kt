@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import podbor.core.Instagram
 import podbor.core.PULSE_WINDOW_MS
 import podbor.core.PairPulse
 import podbor.core.PulseSample
@@ -120,6 +121,21 @@ class PulseLoopTest : FunSpec({
             advanceTimeBy(30_000); runCurrent()
             // Пара и `tun` стоят с первого опроса; растут только API и пробы — строк больше нет.
             tape.size shouldBe 1
+        }
+    }
+
+    test("пара без трафика — видна с нулём («сейчас не пользуется»), а не ⊥: нули не пишутся только в Ленту") {
+        runTest {
+            val views = mutableListOf<PulseView>()
+            val job = launch {
+                pulseLoop(
+                    stats = Counters(), clock = Clock { 0 }, mono = { testScheduler.currentTime }, epoch = 1, fast = { true },
+                    effective = { mapOf(Instagram.id to "pair.insta.s001") }, tape = TapeSink {}, emit = { views += it },
+                )
+            }
+            runCurrent(); advanceTimeBy(1_000); runCurrent()
+            views.last().pairs[Instagram.id] shouldBe PairPulse.Seen(0, 0, null)
+            job.cancel()
         }
     }
 
