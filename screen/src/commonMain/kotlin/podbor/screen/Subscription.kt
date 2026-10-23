@@ -13,6 +13,8 @@ sealed interface InputError {
     data class Download(val whitelist: Boolean) : InputError
     /** Ни одна ссылка не стала сервером; [skipped] — какие и почему. */
     data class NoServers(val skipped: Skipped) : InputError
+    /** Провайдер отказал: на подписке уже максимум устройств; [announce] — его слова, если сказал. */
+    data class DeviceLimit(val announce: String?) : InputError
     /** Серверы есть, а Xray анализа не поднялся (конфиг или движок). */
     data object ScanFailed : InputError
 }

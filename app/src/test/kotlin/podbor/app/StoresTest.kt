@@ -7,6 +7,8 @@ import podbor.app.sub.FilePassportStore
 import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
+import podbor.app.sub.deviceHeaders
+import podbor.app.sub.hwidOf
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.core.Tally
@@ -65,6 +67,24 @@ class StoresTest : FunSpec({
         subscriptionKey(Subscription(null, "vless://x"), salt) shouldNotBe subscriptionKey(Subscription(null, "vless://y"), salt)
         k.length shouldBe 16
         k.contains("a.b") shouldBe false
+    }
+    test("HWID: стабилен на установке, у другой — свой; формат панелей (10–64 знака [A-Za-z0-9=-]); соль из него не видна") {
+        val salt = installSalt(tmp())
+        val id = hwidOf(salt)
+        hwidOf(salt) shouldBe id
+        hwidOf(installSalt(tmp())) shouldNotBe id
+        Regex("^[a-zA-Z0-9=-]{10,64}$").matches(id) shouldBe true
+        id.contains(salt.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }) shouldBe false
+        // Ключ подписки и HWID — разные производные одной соли.
+        subscriptionKey(Subscription(null, "hwid"), salt) shouldNotBe id.take(16)
+    }
+    test("заголовки устройства для подписки: HWID и сведения о системе") {
+        deviceHeaders("0123456789abcdef", osVersion = "16", model = "Redmi Note 14 Pro") shouldBe mapOf(
+            "x-hwid" to "0123456789abcdef",
+            "x-device-os" to "Android",
+            "x-ver-os" to "16",
+            "x-device-model" to "Redmi Note 14 Pro",
+        )
     }
     test("соль установки: одна на установку, у другой — своя; ключ одной подписки на разных установках не сличить") {
         val dir = tmp()

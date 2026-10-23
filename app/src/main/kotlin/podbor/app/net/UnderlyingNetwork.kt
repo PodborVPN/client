@@ -83,20 +83,25 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
     val resolver: Resolver = Resolver { host -> Either.catch { resolve(host) }.getOrNull()?.hostAddress }
 
     /**
-     * Тело по ссылке (подписка, последний релиз на GitHub) через нижележащую сеть (мимо VPN — его на время анализа нет,
-     * но и при поднятом туннель не нужен). Не 2xx, сеть пропала, срок, больше [SUBSCRIPTION_CAP_BYTES] — null. Ссылка секретна: в лог — только вид сбоя.
-     * Заголовки ответа — с именами в нижнем регистре (провайдер так передаёт интервал обновления).
+     * Тело по ссылке (подписка) через нижележащую сеть (мимо VPN — его на время анализа нет, но и при поднятом туннель не
+     * нужен); [headers] — в запрос (устройство для панели провайдера). Не 2xx, сеть пропала, срок, больше
+     * [SUBSCRIPTION_CAP_BYTES] — null. Ссылка секретна: в лог — только вид сбоя. Заголовки ответа — с именами в нижнем
+     * регистре (провайдер так передаёт интервал обновления).
      */
-    suspend fun download(url: String): Fetched? {
+    suspend fun download(url: String, headers: Map<String, String> = emptyMap()): Fetched? {
         val net = network() ?: return null
-        return fetch({ net.openConnection(URI.create(url).toURL()) as HttpURLConnection }, ::bodyOf)
+        return fetch({ (net.openConnection(URI.create(url).toURL()) as HttpURLConnection).with(headers) }, ::bodyOf)
     }
 
     /**
      * То же через туннель: SOCKS сервера [socksPort] на устройстве — запрос выходит там, где этот сервер, а
      * не в белые списки оператора. Свой трафик Podbor мимо VPN, поэтому прокси указывается явно.
      */
-    suspend fun downloadVia(url: String, socksPort: Int): Fetched? = fetch({ viaSocks(url, socksPort) }, ::bodyOf)
+    suspend fun downloadVia(url: String, socksPort: Int, headers: Map<String, String> = emptyMap()): Fetched? =
+        fetch({ viaSocks(url, socksPort).with(headers) }, ::bodyOf)
+
+    private fun HttpURLConnection.with(headers: Map<String, String>): HttpURLConnection =
+        apply { headers.forEach(::setRequestProperty) }
 
     /**
      * Куда редиректит ссылка: Location ответа 3xx, за редиректом не идём — тело не читается. [socksPort] — туннелем,

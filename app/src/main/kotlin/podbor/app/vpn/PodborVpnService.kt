@@ -84,6 +84,8 @@ import podbor.driver.xrayApiOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
 import podbor.app.sub.FileTrafficBookStore
+import podbor.app.sub.deviceHeaders
+import podbor.app.sub.hwidOf
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.core.EpochKind
@@ -166,8 +168,9 @@ class PodborVpnService : VpnService(), ServicePort {
             detect = { os, onBoard -> detectLine(line, clock, tape, os, HARDCODED_SERVICES, onBoard) },
             xray = xray,
             scan = ScanPorts(
-                download = underlying::download,
-                downloadVia = underlying::downloadVia,
+                download = { url -> underlying.download(url, device) },
+                downloadVia = { url, port -> underlying.downloadVia(url, port, device) },
+                proxy = { url -> underlying.download(url) },
                 location = underlying::location,
                 servers = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ 0 }, { draftsOf(it).size }) },
                 warm = { text -> live(tunFd = null, text) },
@@ -190,6 +193,9 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Соль ключа подписки — своя у установки; читается в области запуска Xray (не на главном потоке). */
     private val salt by lazy { installSalt(noBackupFilesDir) }
+
+    /** Устройство для панели провайдера — при скачивании подписки (на пуле IO, как и соль). */
+    private val device by lazy { deviceHeaders(hwidOf(salt), Build.VERSION.RELEASE, Build.MODEL) }
 
     /** Свёртка пульса процесса: эпохи сессий и анализов подряд, поверх итогов прошлых процессов ([booksLoaded]). */
     private val pulseState = MutableStateFlow(Pulse.Empty)

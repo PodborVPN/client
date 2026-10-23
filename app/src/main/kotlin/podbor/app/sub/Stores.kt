@@ -80,6 +80,25 @@ fun subscriptionKey(s: Subscription, salt: ByteArray): String =
     Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(salt, "HmacSHA256")) }.doFinal((s.link ?: s.text).encodeToByteArray())
         .take(8).toByteArray().hex()
 
+/**
+ * Номер устройства для панели провайдера (`x-hwid`): HMAC на своём ключе (метка «hwid» + соль установки), 16 байт hex —
+ * стабилен, пока живут данные приложения; ключ не тот, что у [subscriptionKey], поэтому ни с одним ключом подписки не
+ * совпадёт и соль по нему не восстановить. Формат панелей: 10–64 знака `[A-Za-z0-9=-]`, иначе заголовок молча не
+ * засчитывается.
+ */
+fun hwidOf(salt: ByteArray): String =
+    Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec("hwid".encodeToByteArray() + salt, "HmacSHA256")) }
+        .doFinal("device".encodeToByteArray())
+        .take(16).toByteArray().hex()
+
+/** Заголовки устройства при скачивании подписки — так панели (Remnawave и др.) считают устройства на подписке. */
+fun deviceHeaders(hwid: String, osVersion: String, model: String): Map<String, String> = mapOf(
+    "x-hwid" to hwid,
+    "x-device-os" to "Android",
+    "x-ver-os" to osVersion,
+    "x-device-model" to model,
+)
+
 private const val SALT_BYTES = 16
 
 /**

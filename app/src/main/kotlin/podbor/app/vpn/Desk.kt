@@ -92,6 +92,8 @@ class ScanPorts(
     val download: suspend (String) -> Fetched?,
     /** То же через SOCKS сервера на устройстве (порт) — туннелем. */
     val downloadVia: suspend (String, Int) -> Fetched? = { _, _ -> null },
+    /** Ссылка → ответ мимо провайдера (прокси Яндекса): без заголовков устройства; по умолчанию — как [download]. */
+    val proxy: suspend (String) -> Fetched? = download,
     /** Куда редиректит ссылка (Location ответа 3xx): порт SOCKS — туннелем, null — нижележащей сетью; не вышло — null. */
     val location: suspend (String, Int?) -> String? = { _, _ -> null },
     /** Сколько поддерживаемых серверов в тексте (конвертер, без Xray). */
@@ -291,7 +293,7 @@ class Desk(
         onSkipped: (Skipped) -> Unit,
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard> = either {
-        val got = fetchText(input, scan.download, ::whitelistNow, tunnel()).bind()
+        val got = fetchText(input, scan.download, ::whitelistNow, tunnel(), scan.proxy).bind()
         val text = got.body
         val skipped = skippedOf(text, scan.servers(text))
         ensure(skipped.servers > 0) { InputError.NoServers(skipped) }
@@ -368,7 +370,7 @@ class Desk(
             if (!refreshDue(old, scan.clock.nowMs())) return@withContext
             val net = os()
             val line = prior
-            val got = fetchText(SubscriptionInput.Link(link), scan.download, { whiteBy(net, line) }, tunnel()).getOrNull()
+            val got = fetchText(SubscriptionInput.Link(link), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy).getOrNull()
                 ?: return@withContext
             if (scan.servers(got.body) == 0) return@withContext
             scan.subscriptions.save(old.fetched(got, scan.clock.nowMs()))

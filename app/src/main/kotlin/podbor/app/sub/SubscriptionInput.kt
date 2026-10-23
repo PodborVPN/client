@@ -45,24 +45,30 @@ data class Fetched(val body: String, val headers: Map<String, String> = emptyMap
 /**
  * Текст подписки: ссылку качаем через [download] (null — не вышло), текст отдаём как есть. Не скачалась, а сеть похожа
  * на белые списки, — дальше по очереди: через туннель найденного выхода ([tunnel]; выхода нет — null) и через
- * прокси Яндекс Переводчика ([viaYandex]): его подсети в белых. Заголовки прокси — Яндекса, не провайдера: их не
- * берём.
+ * прокси Яндекс Переводчика ([viaYandex]) — своим путём [proxy]: заголовки устройства провайдера Яндексу не уходят.
+ * Заголовки ответа прокси — Яндекса, не провайдера: их не берём. Провайдер ответил отказом по лимиту устройств
+ * (`x-hwid-limit` при 200, тело пустое или заглушки) — DeviceLimit со словами его `announce`.
  */
 suspend fun fetchText(
     input: SubscriptionInput,
     download: suspend (String) -> Fetched?,
     whitelist: suspend () -> Boolean,
     tunnel: (suspend (String) -> Fetched?)? = null,
+    proxy: suspend (String) -> Fetched? = download,
 ): Either<InputError, Fetched> = when (input) {
     is SubscriptionInput.Text -> Fetched(input.text).right()
     is SubscriptionInput.Link -> {
         val got = download(input.url) ?: run {
             val white = whitelist()
             val around = if (!white) null else tunnel?.invoke(input.url)
-                ?: download(viaYandex(input.url))?.body?.let(::unwrapTranslated)?.let(::Fetched)
+                ?: proxy(viaYandex(input.url))?.body?.let(::unwrapTranslated)?.let(::Fetched)
             around ?: return InputError.Download(white).left()
         }
-        if (got.body.isBlank()) InputError.Unreadable.left() else got.right()
+        when {
+            got.headers["x-hwid-limit"] == "true" -> InputError.DeviceLimit(providerOf(got)?.announce).left()
+            got.body.isBlank() -> InputError.Unreadable.left()
+            else -> got.right()
+        }
     }
 }
 
@@ -84,6 +90,8 @@ fun wordsOf(e: InputError): String = when (e) {
         if (e.whitelist) "не могу скачать подписку: похоже, белые списки. Попроси прислать её текстом или QR в VK или Max — или добавь через Wi-Fi"
         else "не могу скачать подписку: сеть не отвечает"
     is InputError.NoServers -> if (e.skipped.recognized) "не нашёл поддерживаемых серверов" else "не узнал формат подписки"
+    is InputError.DeviceLimit ->
+        e.announce?.let { "лимит устройств подписки: $it" } ?: "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
     InputError.ScanFailed -> "не смог проверить подписку — попробуй ещё раз"
     InputError.Empty, InputError.Unreadable -> "в буфере нет подписки"
 }
