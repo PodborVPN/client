@@ -5,8 +5,11 @@ enum class Button { Idle, Ready, Searching, Green, Red }
 
 /** Карточка сети: пока линия молчит — Measuring (только то, что знает ОС), потом Measured. Вышку и сигнал добавит край (план 2). */
 sealed interface NetworkCard {
-    data class Measuring(val os: OsNetwork) : NetworkCard
-    data class Measured(val os: OsNetwork, val scenario: Scenario, val evidence: String) : NetworkCard
+    /** Сеть ОС — есть у карточки в любом состоянии замера. */
+    val os: OsNetwork
+
+    data class Measuring(override val os: OsNetwork) : NetworkCard
+    data class Measured(override val os: OsNetwork, val scenario: Scenario, val evidence: String) : NetworkCard
 }
 
 /** Кто виноват, что текущий выход мёртв, — по диагнозу линии. Unexplained: сеть непонятная или линия не ответила к сроку. */

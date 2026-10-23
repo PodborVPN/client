@@ -31,6 +31,8 @@ class PulseLoopTest : FunSpec({
             "inbound>>>tun>>>traffic>>>downlink" to 20L,
             "outbound>>>s001.tg>>>traffic>>>downlink" to 5L,
             "user>>>a@b>>>traffic>>>uplink" to 7L,
+            "outbound>>>s001>>>traffic>>>downlink>>>лишнее" to 3L,
+            "inbound>>>tun>>>conn>>>uplink" to 4L,
             "мусор" to 1L,
         )
         sampleOf(raw, epoch = 4, atMs = 100, monoMs = 50) shouldBe

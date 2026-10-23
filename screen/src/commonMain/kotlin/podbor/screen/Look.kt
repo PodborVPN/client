@@ -213,13 +213,8 @@ fun trafficLine(t: Traffic): String = "↓ ${bytesText(t.down)} · ↑ ${bytesTe
  * «СЕТЬ» — общий трафик Podbor (приложения через VPN и пробы, анализ тоже) на этой сети: итог показывается, только если
  * его ключ — ключ сети на экране (сеть сменилась, а Xray не запущен, — старый итог чужой сети не показываем).
  */
-fun networkTraffic(pulse: PulseView, card: NetworkCard): String? {
-    val os = when (card) {
-        is NetworkCard.Measuring -> card.os
-        is NetworkCard.Measured -> card.os
-    }
-    return pulse.network?.takeIf { it.key == networkKey(os) }?.total?.let(::trafficLine)
-}
+fun networkTraffic(pulse: PulseView, card: NetworkCard): String? =
+    pulse.network?.takeIf { it.key == networkKey(card.os) }?.total?.let(::trafficLine)
 
 /** «ТЕКУЩИЙ VPN» — трафик, прошедший через VPN на этой подписке. */
 fun vpnTraffic(pulse: PulseView): String? = pulse.vpn?.total?.let(::trafficLine)

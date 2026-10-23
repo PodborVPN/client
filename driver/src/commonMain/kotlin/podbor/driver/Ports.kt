@@ -44,7 +44,6 @@ interface XrayApi {
     suspend fun clearExit(balancer: String): Either<EngineError, Unit>
 }
 
-/** Сколько DC Telegram ответили resPQ на блоб через SOCKS-inbound кандидата. */
 /** Итоги трафика между запусками процесса: «на этой сети» и «через VPN на этой подписке». */
 interface TrafficBookStore {
     fun load(): TrafficBook
@@ -56,6 +55,7 @@ fun interface XrayStats {
     suspend fun query(): Either<EngineError, Map<String, Long>>
 }
 
+/** Сколько DC Telegram ответили resPQ на блоб через SOCKS-inbound кандидата. */
 fun interface TelegramProbe {
     suspend fun probe(socksPort: Int): Int
 }

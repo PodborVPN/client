@@ -29,17 +29,21 @@ const val PULSE_TAPE_MS: Long = 10_000
 /** Итоги — на диск не чаще (и на конце запуска Xray — край): убитый процесс теряет не больше минуты итогов. */
 const val PULSE_SAVE_MS: Long = 60_000
 
-/** Имя счётчика StatsService: `inbound|outbound>>>тег>>>traffic>>>uplink|downlink`. */
-private val STAT = Regex("""^(inbound|outbound)>>>(.+)>>>traffic>>>(uplink|downlink)$""")
+/** Имя счётчика StatsService: `inbound|outbound>>>тег>>>traffic>>>uplink|downlink` — ровно четыре части. */
+private data class Stat(val side: String, val tag: String, val dir: String)
+
+private fun statOf(name: String): Stat? = name.split(">>>").takeIf { p ->
+    p.size == 4 && p[0] in setOf("inbound", "outbound") && p[2] == "traffic" && p[3] in setOf("uplink", "downlink")
+}?.let { p -> Stat(p[0], p[1], p[3]) }
 
 /** Что за запуск Xray меряем и ключи итогов на момент отсчёта: сеть ОС и подписка (её хеш). */
 data class PulseContext(val kind: EpochKind, val network: String, val subscription: String)
 
 /** Отсчёт из ответа QueryStats; чужие имена (пользователи, мусор) — мимо, половины нет — ноль. */
 fun sampleOf(raw: Map<String, Long>, epoch: Long, atMs: Long, monoMs: Long): PulseSample {
-    val parsed = raw.mapNotNull { (name, value) -> STAT.find(name)?.destructured?.let { (side, tag, dir) -> Triple(side, tag, dir) to value } }
+    val parsed = raw.mapNotNull { (name, value) -> statOf(name)?.let { it to value } }
     fun side(which: String): Map<String, Traffic> =
-        parsed.filter { it.first.first == which }.groupBy({ it.first.second }, { it.first.third to it.second }).mapValues { (_, dirs) ->
+        parsed.filter { it.first.side == which }.groupBy({ it.first.tag }, { it.first.dir to it.second }).mapValues { (_, dirs) ->
             Traffic(up = dirs.firstOrNull { it.first == "uplink" }?.second ?: 0, down = dirs.firstOrNull { it.first == "downlink" }?.second ?: 0)
         }
     return PulseSample(epoch, atMs, monoMs, inbound = side("inbound"), outbound = side("outbound"))

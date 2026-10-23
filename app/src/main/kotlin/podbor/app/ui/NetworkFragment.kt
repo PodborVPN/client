@@ -127,9 +127,10 @@ private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false) 
 
 @Composable
 private fun NetworkTier(card: NetworkCard) {
-    val (os, evidence) = when (card) {
-        is NetworkCard.Measuring -> card.os to null
-        is NetworkCard.Measured -> card.os to card.evidence
+    val os = card.os
+    val evidence = when (card) {
+        is NetworkCard.Measuring -> null
+        is NetworkCard.Measured -> card.evidence
     }
     val color = colorOf(toneOf(card))
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
