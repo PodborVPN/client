@@ -23,6 +23,9 @@ const val PULSE_SLOW_MS: Long = 10_000
 /** В Ленту — не чаще: отсчёты накопленные, пропуск теряет разрешение, не байты. */
 const val PULSE_TAPE_MS: Long = 10_000
 
+/** Итоги — на диск не чаще (и на конце запуска Xray — край): убитый процесс теряет не больше минуты итогов. */
+const val PULSE_SAVE_MS: Long = 60_000
+
 /** Имя счётчика StatsService: `inbound|outbound>>>тег>>>traffic>>>uplink|downlink`. */
 private val STAT = Regex("""^(inbound|outbound)>>>(.+)>>>traffic>>>(uplink|downlink)$""")
 
@@ -58,9 +61,9 @@ fun PulseSample.forTape(): PulseSample =
 /**
  * Опрос счётчиков одного запуска Xray (сессии или анализа) до отмены: отсчёт ([essential], с ключами [context]) → общая
  * свёртка процесса [pulse] (эпохи идут в неё подряд) → вид на экран ([emit]) для [effective] (сервис → тег выхода его
- * пары). В Ленту отсчёт уходит не чаще [PULSE_TAPE_MS] и только изменившийся; записан — итоги отдаются на сохранение
- * ([onTaped]); Лента не пишется (диск полон) — опрос живёт дальше. Сбой API — вид на прежней свёртке к текущему моменту:
- * старше двух окон пара сама уходит в ⊥, итоги остаются. [fast] — экран смотрит.
+ * пары). В Ленту отсчёт уходит не чаще [PULSE_TAPE_MS] и только изменившийся; Лента не пишется (диск полон) — опрос
+ * живёт дальше. Итоги — на сохранение ([save]) не чаще [PULSE_SAVE_MS] и только изменившиеся. Сбой API — вид на прежней
+ * свёртке к текущему моменту: старше двух окон пара сама уходит в ⊥, итоги остаются. [fast] — экран смотрит.
  */
 suspend fun pulseLoop(
     stats: XrayStats,
@@ -72,10 +75,11 @@ suspend fun pulseLoop(
     effective: () -> Map<ServiceId, String>,
     pulse: MutableStateFlow<Pulse>,
     tape: TapeSink,
-    onTaped: (TrafficBook) -> Unit,
+    save: (TrafficBook) -> Unit,
     emit: (PulseView) -> Unit,
 ) {
     var taped: PulseSample? = null
+    var saved: Pair<Long, TrafficBook>? = null
     while (true) {
         stats.query().fold(
             { emit(pulse.value.view(effective(), mono())) },
@@ -90,10 +94,12 @@ suspend fun pulseLoop(
                 val changed = last == null || last.inbound != s.inbound || last.outbound != s.outbound ||
                     last.network != s.network || last.subscription != s.subscription
                 if (changed && (last == null || s.monoMs - last.monoMs >= PULSE_TAPE_MS)) {
-                    Either.catch { tape.write(rowLine(Row.Pulse(s))) }.onRight {
-                        taped = s
-                        onTaped(now.book)
-                    }
+                    Either.catch { tape.write(rowLine(Row.Pulse(s))) }.onRight { taped = s }
+                }
+                val was = saved
+                if (was == null || (was.second != now.book && s.monoMs - was.first >= PULSE_SAVE_MS)) {
+                    save(now.book)
+                    saved = s.monoMs to now.book
                 }
             },
         )

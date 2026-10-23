@@ -95,7 +95,7 @@ class PulseLoopTest : FunSpec({
         pulseLoop(
             stats = stats, clock = Clock { 1_000_000 + testScheduler.currentTime }, mono = { testScheduler.currentTime }, epoch = epoch,
             context = { context }, fast = { fast }, effective = { effective }, pulse = pulse, tape = tape,
-            onTaped = { taped += it }, emit = { views += it },
+            save = { taped += it }, emit = { views += it },
         )
     }
 
@@ -176,14 +176,28 @@ class PulseLoopTest : FunSpec({
         }
     }
 
-    test("Лента не пишется (диск полон) — опрос и экран живут дальше, итоги на сохранение не отдаются") {
+    test("Лента не пишется (диск полон) — опрос и экран живут дальше, итоги сохраняются сами по себе") {
         runTest {
             val views = mutableListOf<PulseView>()
             val taped = mutableListOf<TrafficBook>()
             val job = loop(Counters(), tape = TapeSink { error("нет места на диске") }, taped = taped, views = views)
             runCurrent(); advanceTimeBy(3_000); runCurrent()
             views.size shouldBe 4
-            taped shouldBe emptyList()
+            taped.size shouldBe 1
+            job.cancel()
+        }
+    }
+
+    test("итоги — на сохранение не чаще раза в минуту и только изменившиеся") {
+        runTest {
+            val stats = Counters()
+            val saved = mutableListOf<TrafficBook>()
+            val job = loop(stats, tape = TapeSink {}, taped = saved, views = mutableListOf())
+            runCurrent(); advanceTimeBy(125_000); runCurrent()
+            saved.size shouldBe 3 // 0, 60 и 120 с
+            stats.growing = false
+            advanceTimeBy(300_000); runCurrent()
+            saved.size shouldBe 4 // рост за 120…125 с — одним сохранением на 180 с, дальше итоги стоят
             job.cancel()
         }
     }

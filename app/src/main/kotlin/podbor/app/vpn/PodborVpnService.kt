@@ -347,7 +347,7 @@ class PodborVpnService : VpnService(), ServicePort {
                         },
                         pulse = pulseState,
                         tape = tape,
-                        onTaped = books::save,
+                        save = books::save,
                         emit = { pulseNow.value = it },
                     )
                 }
