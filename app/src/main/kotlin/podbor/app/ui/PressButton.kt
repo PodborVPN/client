@@ -77,6 +77,20 @@ private val PETAL_RADIUS = 110.dp
  * Большая кнопка. Тап — подбор (или «включить», если VPN выключен); долгое нажатие раскрывает лепесток «выкл»,
  * протяжка на него и отпускание — выключить VPN. Жест решает машина [radialStep] — здесь только буквы касаний и рисунок.
  */
+/** Слово кнопки при поднятом VPN — по состоянию подбора. */
+private fun labelOf(button: Button): String = when (button) {
+    Button.Idle, Button.Ready -> "ПОДОБРАТЬ"
+    Button.Searching -> "ИЩУ…"
+    Button.Green -> "РАБОТАЕТ"
+    Button.Red -> "НЕ НАШЁЛ"
+}
+
+/** Нажать можно, когда есть что подбирать и подбор не идёт. */
+private fun pressable(button: Button): Boolean = when (button) {
+    Button.Ready, Button.Green, Button.Red -> true
+    Button.Idle, Button.Searching -> false
+}
+
 @Composable
 internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> Unit) {
     val button = when (face) {
@@ -85,20 +99,12 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
         Face.Waiting -> Button.Idle
     }
     val label = when (face) {
-        is Face.Press -> when (face.button) {
-            Button.Idle, Button.Ready -> "ПОДОБРАТЬ"
-            Button.Searching -> "ИЩУ…"
-            Button.Green -> "РАБОТАЕТ"
-            Button.Red -> "НЕ НАШЁЛ"
-        }
+        is Face.Press -> labelOf(face.button)
         Face.TurnOn -> "ВКЛЮЧИТЬ"
         Face.Waiting -> "ПОДОБРАТЬ"
     }
     val tap: (() -> Unit)? = when (face) {
-        is Face.Press -> when (face.button) {
-            Button.Ready, Button.Green, Button.Red -> onPress
-            Button.Idle, Button.Searching -> null
-        }
+        is Face.Press -> if (pressable(face.button)) onPress else null
         Face.TurnOn -> onOn
         Face.Waiting -> null
     }
@@ -140,16 +146,19 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
     val currentPetals by rememberUpdatedState(petals)
     val fan = (radial as? Radial.Fanned)?.takeIf { petals }
 
+    // Навёл на лепесток — щелчок; выбрал «выкл» — выключить. Только пока лепестки есть.
+    fun aimed(aim: Aim) = when (aim) {
+        Aim.Nowhere -> Unit
+        is Aim.At -> if (currentPetals) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) else Unit
+    }
+    fun chose(petal: Petal) = when (petal) {
+        Petal.Off -> if (currentPetals) currentOff() else Unit
+    }
     fun act(g: Gesture) = when (g) {
         Gesture.Tap -> currentTap?.invoke() ?: Unit
         Gesture.Opened -> if (currentPetals) haptic.performHapticFeedback(HapticFeedbackType.LongPress) else Unit
-        is Gesture.Aimed -> when (g.aim) {
-            Aim.Nowhere -> Unit
-            is Aim.At -> if (currentPetals) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) else Unit
-        }
-        is Gesture.Chose -> when (g.petal) {
-            Petal.Off -> if (currentPetals) currentOff() else Unit
-        }
+        is Gesture.Aimed -> aimed(g.aim)
+        is Gesture.Chose -> chose(g.petal)
     }
 
     Box(

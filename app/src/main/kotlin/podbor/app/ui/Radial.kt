@@ -71,37 +71,42 @@ fun aimOf(ring: Ring, p: Point): Aim {
 
 /** Машина жеста: чистая и тотальная. */
 fun radialStep(t: Thresholds, ring: Ring, s: Radial, letter: Touch): Pair<Radial, List<Gesture>> = when (s) {
-    Radial.Idle -> when (letter) {
-        is Touch.Down -> Radial.Holding(letter.atMs, letter.at) to emptyList()
-        is Touch.Move, is Touch.Up, is Touch.Cancel, is Touch.Tick -> s to emptyList()
-    }
+    Radial.Idle -> idle(letter)
     is Radial.Holding -> holding(t, ring, s, letter)
-    is Radial.Fanned -> when (letter) {
-        is Touch.Move -> aimOf(ring, letter.at).let { aim ->
-            Radial.Fanned(aim) to if (aim == s.aim) emptyList() else listOf(Gesture.Aimed(aim))
-        }
-        is Touch.Up -> Radial.Idle to when (val aim = s.aim) {
-            Aim.Nowhere -> emptyList()
-            is Aim.At -> listOf(Gesture.Chose(aim.petal))
-        }
-        is Touch.Cancel -> Radial.Idle to emptyList()
-        is Touch.Down, is Touch.Tick -> s to emptyList()
+    is Radial.Fanned -> whileFanned(ring, s, letter)
+    Radial.Dropped -> dropped(letter)
+}
+
+private fun idle(letter: Touch): Pair<Radial, List<Gesture>> = when (letter) {
+    is Touch.Down -> Radial.Holding(letter.atMs, letter.at) to emptyList()
+    is Touch.Move, is Touch.Up, is Touch.Cancel, is Touch.Tick -> Radial.Idle to emptyList()
+}
+
+/** Лепестки раскрыты: ведёт пальцем — прицел, отпустил — выбор того, на что навёл. */
+private fun whileFanned(ring: Ring, s: Radial.Fanned, letter: Touch): Pair<Radial, List<Gesture>> = when (letter) {
+    is Touch.Move -> aimOf(ring, letter.at).let { aim ->
+        Radial.Fanned(aim) to if (aim == s.aim) emptyList() else listOf(Gesture.Aimed(aim))
     }
-    Radial.Dropped -> when (letter) {
-        is Touch.Up, is Touch.Cancel -> Radial.Idle to emptyList()
-        is Touch.Down, is Touch.Move, is Touch.Tick -> s to emptyList()
-    }
+    is Touch.Up -> Radial.Idle to chosen(s.aim)
+    is Touch.Cancel -> Radial.Idle to emptyList()
+    is Touch.Down, is Touch.Tick -> s to emptyList()
+}
+
+private fun chosen(aim: Aim): List<Gesture> = when (aim) {
+    Aim.Nowhere -> emptyList()
+    is Aim.At -> listOf(Gesture.Chose(aim.petal))
+}
+
+/** Жест сорван (палец ушёл до порога): ждём, пока отпустит. */
+private fun dropped(letter: Touch): Pair<Radial, List<Gesture>> = when (letter) {
+    is Touch.Up, is Touch.Cancel -> Radial.Idle to emptyList()
+    is Touch.Down, is Touch.Move, is Touch.Tick -> Radial.Dropped to emptyList()
 }
 
 private fun holding(t: Thresholds, ring: Ring, s: Radial.Holding, letter: Touch): Pair<Radial, List<Gesture>> {
     val held = letter.atMs - s.downMs >= t.longPressMs
     return when (letter) {
-        is Touch.Move -> when {
-            hypot((letter.at.x - s.origin.x).toDouble(), (letter.at.y - s.origin.y).toDouble()) > t.touchSlopPx && !held ->
-                Radial.Dropped to emptyList()
-            held -> fanned(aimOf(ring, letter.at))
-            else -> s to emptyList()
-        }
+        is Touch.Move -> moved(t, ring, s, letter, held)
         is Touch.Tick -> if (held) fanned(Aim.Nowhere) else s to emptyList()
         // Отпустил после порога, не дождавшись Tick: держал долго — это не тап.
         is Touch.Up -> Radial.Idle to if (held) emptyList() else listOf(Gesture.Tap)
@@ -109,6 +114,14 @@ private fun holding(t: Thresholds, ring: Ring, s: Radial.Holding, letter: Touch)
         // Второй палец жест не перезапускает.
         is Touch.Down -> s to emptyList()
     }
+}
+
+/** Палец ведут, пока держат: ушёл дальше порога до долгого нажатия — жест сорван; держит долго — лепестки. */
+private fun moved(t: Thresholds, ring: Ring, s: Radial.Holding, letter: Touch.Move, held: Boolean): Pair<Radial, List<Gesture>> = when {
+    hypot((letter.at.x - s.origin.x).toDouble(), (letter.at.y - s.origin.y).toDouble()) > t.touchSlopPx && !held ->
+        Radial.Dropped to emptyList()
+    held -> fanned(aimOf(ring, letter.at))
+    else -> s to emptyList()
 }
 
 private fun fanned(aim: Aim): Pair<Radial, List<Gesture>> =

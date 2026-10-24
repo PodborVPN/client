@@ -205,10 +205,7 @@ class Desk(
                 else -> {
                     // Линии до подъёма не было или она устарела (повтор открытия на поднятой сессии, поздняя привязка):
                     // линия — здесь, в сессии, чтобы знать сеть для памяти.
-                    val known = when (val f = live.driver.fresh(line)) {
-                        Prior.None -> detect(net) { boardState.value = it }.prior
-                        is Prior.Detected -> f
-                    }
+                    val known = lineFor(live, net, line)
                     recall(live, bare, net, known)
                     unchecked = recalled()
                     known
@@ -348,12 +345,20 @@ class Desk(
         return live.driver.socksPort(exit, live.warm)
     }
 
+    /** Линия для памяти на поднятой сессии: свежая есть — она, нет — меряем здесь. */
+    private suspend fun lineFor(live: Live, net: OsNetwork, line: Prior): Prior = when (val f = live.driver.fresh(line)) {
+        Prior.None -> detect(net) { boardState.value = it }.prior
+        is Prior.Detected -> f
+    }
+
     private fun whiteBy(net: OsNetwork, p: Prior): Boolean = when (p) {
         Prior.None -> false
-        is Prior.Detected -> when (scenarioOf(net, p.rounds.map { it.line })) {
-            Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> true
-            Scenario.MobileOpen, Scenario.Wifi, Scenario.Offline, Scenario.Unclear -> false
-        }
+        is Prior.Detected -> white(scenarioOf(net, p.rounds.map { it.line }))
+    }
+
+    private fun white(s: Scenario): Boolean = when (s) {
+        Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> true
+        Scenario.MobileOpen, Scenario.Wifi, Scenario.Offline, Scenario.Unclear -> false
     }
 
     /**

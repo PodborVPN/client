@@ -66,12 +66,15 @@ suspend fun fetchText(
                 ?: proxy(viaYandex(input.url))?.body?.let(::unwrapTranslated)?.let(::Fetched)
             around ?: return InputError.Download(white).left()
         }
-        when {
-            got.headers["x-hwid-limit"] == "true" -> providerOf(got).let { InputError.DeviceLimit(it.announce, it.support) }.left()
-            got.body.isBlank() -> InputError.Unreadable.left()
-            else -> got.right()
-        }
+        checked(got)
     }
+}
+
+/** Скачанное — подписка, если провайдер не отказал по лимиту устройств и тело не пустое. */
+private fun checked(got: Fetched): Either<InputError, Fetched> = when {
+    got.headers["x-hwid-limit"] == "true" -> providerOf(got).let { InputError.DeviceLimit(it.announce, it.support) }.left()
+    got.body.isBlank() -> InputError.Unreadable.left()
+    else -> got.right()
 }
 
 /** Ссылка через прокси Яндекс Переводчика: так раздают подписки для белых списков; ссылка уходит Яндексу. */
@@ -92,10 +95,7 @@ fun wordsOf(e: InputError): String = when (e) {
         if (e.whitelist) "не могу скачать подписку: похоже, белые списки. Попроси прислать её текстом или QR в VK или Max — или добавь через Wi-Fi"
         else "не могу скачать подписку: сеть не отвечает"
     is InputError.NoServers -> if (e.skipped.recognized) "не нашёл поддерживаемых серверов" else "не узнал формат подписки"
-    is InputError.DeviceLimit -> when (val a = e.announce) {
-        is Announce.Text -> "лимит устройств подписки: ${a.text}"
-        Announce.None -> "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
-    }
+    is InputError.DeviceLimit -> limitWords(e.announce)
     InputError.ScanFailed -> "не смог проверить подписку — попробуй ещё раз"
     InputError.Empty, InputError.Unreadable -> "в буфере нет подписки"
     InputError.HappOnly ->
@@ -103,6 +103,12 @@ fun wordsOf(e: InputError): String = when (e) {
 }
 
 /** Слова шторки о ссылках, не ставших серверами: заголовок, счёт по схемам, что делать. */
+/** Отказ по лимиту устройств: словами провайдера, если он их дал. */
+private fun limitWords(announce: Announce): String = when (announce) {
+    is Announce.Text -> "лимит устройств подписки: ${announce.text}"
+    Announce.None -> "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
+}
+
 data class SkippedWords(val title: String, val lines: List<String>, val note: String)
 
 private const val OURS_WORDS = "vless, vmess, trojan и shadowsocks"

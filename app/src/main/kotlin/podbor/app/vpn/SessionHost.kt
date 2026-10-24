@@ -37,9 +37,11 @@ fun SessionState<*>.view(): SessionView = when (this) {
     SessionState.Down -> SessionView.Down
     SessionState.Starting -> SessionView.Starting
     is SessionState.Up -> SessionView.Up
-    is SessionState.Failed -> when (val e = error) {
-        is EngineError.Failed -> SessionView.Failed(e.what)
-    }
+    is SessionState.Failed -> failedView(error)
+}
+
+private fun failedView(e: EngineError): SessionView = when (e) {
+    is EngineError.Failed -> SessionView.Failed(e.what)
 }
 
 /** Исход действия на сессии: выполнено — или сессии нет (не поднята либо остановлена посреди действия). */
