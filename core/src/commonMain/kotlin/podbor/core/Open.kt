@@ -83,8 +83,14 @@ private fun lifeOf(answers: List<Verdict>): Life {
  */
 fun renderOpened(s: OpenState, closed: Boolean, service: Service = Telegram): Screen {
     val scenario = s.diagnosis.scenario
-    val button = if (scenario == null || scenario == Scenario.Offline) Button.Idle else Button.Ready
-    return Screen(networkCardOf(s.opened.os, s.diagnosis, closed), button, ResultCard.Exit(exitStateOf(s, closed)))
+    val exit = exitStateOf(s, closed)
+    // Выход работает — подбирать нечего, кнопка зелёная; иначе — «Подобрать», если сеть есть.
+    val button = when {
+        scenario == null || scenario == Scenario.Offline -> Button.Idle
+        exit is ExitState.Works -> Button.Green
+        else -> Button.Ready
+    }
+    return Screen(networkCardOf(s.opened.os, s.diagnosis, closed), button, ResultCard.Exit(exit))
 }
 
 private fun exitStateOf(s: OpenState, closed: Boolean): ExitState = when (val vpn = s.opened.vpn) {

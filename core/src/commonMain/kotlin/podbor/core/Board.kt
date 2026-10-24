@@ -32,12 +32,15 @@ fun board(services: Set<Service>, screens: Map<ServiceId, Screen>): Board {
     return Board(network, buttonOf(own.map { it.button }), cards, overall(own.map { it.stopwatch }))
 }
 
-/** Ищу, пока идёт хоть один; зелёная, если нашлось хоть у одного; красная, только если у всех (с экраном) красная. */
+/**
+ * Ищу, пока идёт хоть один; «Подобрать», если на открытии хоть одному есть что подбирать (зелёная рядом с мёртвым
+ * выходом обманула бы); зелёная, если нашлось хоть у одного; красная, только если у всех (с экраном) красная.
+ */
 private fun buttonOf(buttons: List<Button>): Button = when {
     Button.Searching in buttons -> Button.Searching
+    Button.Ready in buttons -> Button.Ready
     Button.Green in buttons -> Button.Green
     buttons.isNotEmpty() && buttons.all { it == Button.Red } -> Button.Red
-    Button.Ready in buttons -> Button.Ready
     else -> Button.Idle
 }
 

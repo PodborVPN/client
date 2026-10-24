@@ -36,6 +36,13 @@ class BoardTest : FunSpec({
         card(ExitState.Dead(ref, Blame.Server, moved)) shouldBe CardStatus.Dead(ref, Blame.Server, moved)
     }
 
+    test("открытие: один выход жив, другой мёртв — «Подобрать» сильнее зелёной; оба живы — зелёная") {
+        val works = screen(Button.Green, ResultCard.Exit(ExitState.Works(ref)))
+        val dead = screen(Button.Ready, ResultCard.Exit(ExitState.Dead(ref, Blame.Server)))
+        board(setOf(Telegram, Instagram), mapOf(Telegram.id to works, Instagram.id to dead)).button shouldBe Button.Ready
+        board(setOf(Telegram, Instagram), mapOf(Telegram.id to works, Instagram.id to works)).button shouldBe Button.Green
+    }
+
     test("кнопка: Searching сильнее всего; Red только если все Red") {
         val s = { b: Button -> screen(b) }
         board(setOf(Telegram, Instagram), mapOf(Telegram.id to s(Button.Searching), Instagram.id to screen(Button.Red, notFound))).button shouldBe Button.Searching
