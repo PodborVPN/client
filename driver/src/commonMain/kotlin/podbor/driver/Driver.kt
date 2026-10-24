@@ -145,7 +145,7 @@ class Driver(
         val memory = store.loadMemory()
         // Снимок выходов всех сервисов — до старта любого трубопровода; доска с первого экрана — «ищу» у всех.
         val letters = services.associate { s ->
-            val exit = exits.effective(s.id)?.takeIf { id -> servers.any { it.id == id } }
+            val exit = exits.effective(s.id).serverOrNull().takeIf { id -> servers.any { it.id == id } }
             s.id to Letter.Pressed(clock.nowMs(), os, servers, exit, memory, prior, s.id, exits.pinned(s.id), hints)
         }
         val boards = Boards(services, onBoard, services.associate { it.id to render(listOf(letters.getValue(it.id)), it) })
@@ -176,11 +176,9 @@ class Driver(
         val known = freshRounds(prior, clock.nowMs())
         val boards = Boards(services, onBoard, emptyMap())
         val runs = pipes(services, { exits.effective(it) }) { service, exit, hub, inbox, lead ->
-            val listed = servers.find { it.id == exit }
-            val vpn = when {
-                exit == null -> Vpn.Off
-                listed == null -> Vpn.Unlisted(exit)
-                else -> Vpn.On(listed, chosenOn = exits.chosenOn(service.id))
+            val vpn = when (exit) {
+                Route.Free -> Vpn.Off
+                is Route.Fixed -> vpnOn(exit.server, servers, service.id)
             }
             val opened = Letter.Opened(clock.nowMs(), os, vpn)
             // Раунды до Xray машина получает на старте — они в шапке прогона (Head.Open), а не нотой.
@@ -241,7 +239,24 @@ class Driver(
         tape.write(noteLine("scan: прерван, частичный паспорт — серверов: ${partial.servers.size}"))
     }
 
-    private fun savePassport(p: Passport) = passportStore.save(passportStore.load()?.merged(p) ?: p)
+    /** Выход сервиса на сервере [id]: есть в подписке — VPN на нём; нет — чужой выход. */
+    private fun vpnOn(id: ServerId, servers: List<Server>, service: ServiceId): Vpn = when (val listed = servers.find { it.id == id }) {
+        null -> Vpn.Unlisted(id)
+        else -> Vpn.On(listed, chosenOn = exits.chosenOn(service))
+    }
+
+    private fun savePassport(p: Passport) = passportStore.save(
+        when (val was = passportStore.load()) {
+            null -> p
+            else -> was.merged(p)
+        },
+    )
+
+    /** Страна IP по локальному geoip; не знаем — «?». */
+    private fun countryOrUnknown(ip: String): String = when (val c = countryOf(ip)) {
+        null -> "?"
+        else -> c
+    }
 
     /**
      * Дела анализа портами. Проба — сервиса из дела (его ProbeSpec), ответ несёт тот же сервис: по нему машина находит
@@ -269,7 +284,7 @@ class Driver(
                     val server = byId.getValue(deed.server)
                     // Эталон ходит тем же TCP до того же IP:порт — под тем же потолком, что пробы.
                     val ip = gate.withEndpoint(server.endpoint) { exitProbe.exitIp(socksPortOf(deed.server, servers, opts)) }
-                    val exit = ip?.let { Exit.At(it, countryOf(it) ?: "?") } ?: Exit.Unknown
+                    val exit = if (ip == null) Exit.Unknown else Exit.At(ip, countryOrUnknown(ip))
                     inbox.send(Letter.ExitSeen(clock.nowMs(), deed.server, exit))
                 }
                 is Deed.Remember -> memoryLock.withLock {
@@ -310,14 +325,14 @@ class Driver(
 
     /** Раунды линии, ещё годные сейчас (тот же срок LINE_FRESH_MS, что у открытия и восстановления); иначе None. */
     fun fresh(prior: Prior): Prior =
-        freshRounds(prior, clock.nowMs()).toNonEmptyListOrNull()?.let(Prior::Detected) ?: Prior.None
+        priorOf(freshRounds(prior, clock.nowMs()))
 
     /**
      * Снять выход сервиса [service] (Exits.clear): его балансер снова повторяет общий; у GENERAL_FOLLOWS — и общий
      * балансировщик Xray выбирает сам. Память не трогается — её меняет только нажатие; на Ленте — только тег.
      */
     suspend fun dropExit(service: ServiceId): Either<EngineError, Unit> {
-        val tag = exits.effective(service)?.tag ?: "—"
+        val tag = exits.effective(service).tagOr("—")
         return exits.clear(service)
             .onRight { tape.write(noteLine("dropExit ${service.id} $tag: выход снят, Xray выбирает сам")) }
             .onLeft { tape.write(noteLine("dropExit ${service.id} $tag: $it")) }
@@ -334,8 +349,9 @@ class Driver(
 
     /** Адрес — разрешённый IP; вход — по правилу geoip:ru самого Xray (TestRoute → direct). */
     private suspend fun locate(s: Server): Server {
-        val ip = resolver.resolve(s.endpoint.host) ?: return s
-        val entry = api.routeOf(ip).fold({ Entry.Unknown }, { if (it == DIRECT) Entry.Ru else Entry.Foreign(countryOf(ip) ?: "?") })
+        val ip = resolver.resolve(s.endpoint.host)
+        if (ip == null) return s
+        val entry = api.routeOf(ip).fold({ Entry.Unknown }, { if (it == DIRECT) Entry.Ru else Entry.Foreign(countryOrUnknown(ip)) })
         return s.copy(endpoint = Endpoint(ip, s.endpoint.port), entry = entry)
     }
 
@@ -429,7 +445,13 @@ private class Boards(private val services: Set<Service>, private val onBoard: (B
  */
 private fun priorOf(known: List<Letter.LineObserved>, runs: Collection<Run<*>>): Prior {
     val observed = runs.map { run -> run.letters.filterIsInstance<Letter.LineObserved>() }.maxByOrNull { it.size }.orEmpty()
-    return (known + observed).toNonEmptyListOrNull()?.let(Prior::Detected) ?: Prior.None
+    return priorOf(known + observed)
+}
+
+/** Раунды линии — прежнее знание о сети; раундов нет — его нет. */
+private fun priorOf(rounds: List<Letter.LineObserved>): Prior = when (val nel = rounds.toNonEmptyListOrNull()) {
+    null -> Prior.None
+    else -> Prior.Detected(nel)
 }
 
 /** Раунды, ещё годные для замера при открытии [atMs] (по последнему, как freshPrior нажатия); иначе пусто. */

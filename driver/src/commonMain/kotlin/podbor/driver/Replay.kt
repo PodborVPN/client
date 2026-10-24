@@ -36,16 +36,16 @@ private data class Numbered<T>(val line: Int, val value: T)
  * оборванная последняя — «Поделиться» читал живую ленту) — своя запись «?»: прогоны вокруг судятся по целым строкам.
  */
 fun replay(tape: String): List<RunReplay> {
-    val lines = tape.lines().mapIndexedNotNull { i, text ->
-        text.takeIf { it.isNotBlank() }?.let { Numbered(i + 1, Either.catch { rowOf(it) }.mapLeft { e -> "не строка Ленты v1–v$TAPE_FORMAT: ${e.message?.lineSequence()?.first()}" }) }
+    val lines = tape.lines().withIndex().filter { it.value.isNotBlank() }.map { (i, text) ->
+        Numbered(i + 1, Either.catch { rowOf(text) }.mapLeft { e -> "не строка Ленты v1–v$TAPE_FORMAT: ${firstLineOf(e.message)}" })
     }
     val firstRun = lines.indexOfFirst { it.value.getOrNull() is Row.Run }.let { if (it < 0) lines.size else it }
     val v0 = lines.take(firstRun)
-        .firstOrNull { n -> n.value.fold({ true }, { row -> runOf(row) != null }) }
-        ?.let { RunReplay(it.line, "v0", Replayed.Unplayable(it.line, "формат v0: буквы без шапки прогона")) }
+        .filter { n -> n.value.fold({ true }, { row -> whose(row) != Whose.Nobody }) }.take(1)
+        .map { RunReplay(it.line, "v0", Replayed.Unplayable(it.line, "формат v0: буквы без шапки прогона")) }
     val after = lines.drop(firstRun)
-    val broken = after.mapNotNull { n -> n.value.leftOrNull()?.let { RunReplay(n.line, "?", Replayed.Unplayable(n.line, it)) } }
-    val rows = after.mapNotNull { n -> n.value.getOrNull()?.let { Numbered(n.line, it) } }
+    val broken = after.mapNotNull { n -> n.value.swap().map { RunReplay(n.line, "?", Replayed.Unplayable(n.line, it)) }.getOrNull() }
+    val rows = after.mapNotNull { n -> n.value.map { Numbered(n.line, it) }.getOrNull() }
     val runs = rows.mapNotNull { n ->
         when (val row = n.value) {
             is Row.Run -> Numbered(n.line, row)
@@ -53,19 +53,36 @@ fun replay(tape: String): List<RunReplay> {
         }
     }
     val ids = runs.map { it.value.id }.toSet()
-    val orphans = rows.filter { n -> runOf(n.value)?.let { it !in ids } ?: false }
+    val orphans = rows.filter { n -> orphan(whose(n.value), ids) }
         .map { RunReplay(it.line, "?", Replayed.Unplayable(it.line, "строка прогона без его шапки")) }
     val judged = runs.map { run ->
-        RunReplay(run.line, nameOf(run.value.head), judge(run, rows.filter { runOf(it.value) == run.value.id }), serviceOf(run.value.head))
+        RunReplay(run.line, nameOf(run.value.head), judge(run, rows.filter { whose(it.value) == Whose.Of(run.value.id) }), serviceOf(run.value.head))
     }
-    return (listOfNotNull(v0) + judged + broken + orphans).sortedBy { it.line }
+    return (v0 + judged + broken + orphans).sortedBy { it.line }
 }
 
-/** Чей прогон строка; шапка, нота и пульс — ничьи. */
-private fun runOf(row: Row): Long? = when (row) {
-    is Row.Step -> row.run
-    is Row.Closed -> row.run
-    is Row.Run, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns -> null
+/** Первая строка сообщения исключения (у kotlinx — многострочные); сообщения нет — «null», как в шаблоне строки. */
+private fun firstLineOf(message: String?): String = when (message) {
+    null -> "null"
+    else -> message.lineSequence().first()
+}
+
+/** Чья строка: прогона [Of.run] или ничья (шапка, нота, пульс). */
+private sealed interface Whose {
+    data object Nobody : Whose
+    data class Of(val run: Long) : Whose
+}
+
+private fun whose(row: Row): Whose = when (row) {
+    is Row.Step -> Whose.Of(row.run)
+    is Row.Closed -> Whose.Of(row.run)
+    is Row.Run, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns -> Whose.Nobody
+}
+
+/** Строка прогона, чьей шапки в Ленте нет. */
+private fun orphan(w: Whose, ids: Set<Long>): Boolean = when (w) {
+    Whose.Nobody -> false
+    is Whose.Of -> w.run !in ids
 }
 
 private fun nameOf(head: Head): String = when (head) {
@@ -91,7 +108,8 @@ private fun judge(run: Numbered<Row.Run>, rows: List<Numbered<Row>>): Replayed =
         }
     }
     val closed = rows.any { it.value is Row.Closed }
-    val first = steps.firstOrNull() ?: raise(Replayed.Unplayable(run.line, "прогон без букв"))
+    ensure(steps.isNotEmpty()) { Replayed.Unplayable(run.line, "прогон без букв") }
+    val first = steps.first()
     when (val head = run.value.head) {
         is Head.Press -> play(PressMachine(head.service), steps, closed)
         is Head.Open -> playOpen(head, first, steps, closed)
@@ -107,25 +125,22 @@ private fun playOpen(head: Head.Open, first: Numbered<Row.Step>, steps: List<Num
             Replayed.Unplayable(first.line, "шапка открытия, а первая буква не Opened")
     }
 
-/** Машина по буквам прогона: первое несовпадение дел — Diverged, дальше прогон не судится. */
+/**
+ * Машина по буквам прогона (их хоть одна): первое несовпадение дел — Diverged, дальше прогон не судится.
+ * [go] сверяет дела буквы [i], выданные из состояния [state] после неё.
+ */
 private fun <S> play(machine: Machine<S>, steps: List<Numbered<Row.Step>>, closed: Boolean): Replayed {
-    fun diverged(i: Int, deeds: List<Deed>): Replayed.Diverged? {
+    tailrec fun go(state: S, deeds: List<Deed>, i: Int): Replayed {
         val recorded = steps[i].value.recorded()
         val replayed = recordedOf(deeds)
-        return when (recorded.matches(replayed)) {
-            true -> null
-            false -> Replayed.Diverged(i, steps[i].line, recorded, replayed)
+        if (!recorded.matches(replayed)) return Replayed.Diverged(i, steps[i].line, recorded, replayed)
+        if (i + 1 == steps.size) {
+            return Replayed.Converged(steps.size, if (closed) Ending.Closed else if (machine.done(state)) Ending.Done else Ending.Torn)
         }
+        val (next, nextDeeds) = machine.step(state, steps[i + 1].value.letter)
+        return go(next, nextDeeds, i + 1)
     }
 
-    tailrec fun go(state: S, i: Int): Replayed =
-        if (i == steps.size) {
-            Replayed.Converged(steps.size, if (closed) Ending.Closed else if (machine.done(state)) Ending.Done else Ending.Torn)
-        } else {
-            val (next, deeds) = machine.step(state, steps[i].value.letter)
-            diverged(i, deeds) ?: go(next, i + 1)
-        }
-
     val (state, deeds) = machine.start(steps.first().value.letter)
-    return diverged(0, deeds) ?: go(state, 1)
+    return go(state, deeds, 0)
 }

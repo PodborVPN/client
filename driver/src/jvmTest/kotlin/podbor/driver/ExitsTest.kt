@@ -33,7 +33,7 @@ class ExitsTest : FunSpec({
         val exits = Exits(api, HARDCODED_SERVICES)
         runBlocking { exits.make(Telegram.id, s1, wifi) }
         api.calls shouldContainExactly listOf("svc.tg=s1", "exit=s1", "svc.insta=s1")
-        exits.state.value shouldBe ExitsState(general = s1, pinned = mapOf(Telegram.id to Pin(s1, wifi)))
+        exits.state.value shouldBe ExitsState(general = Route.Fixed(s1), pinned = mapOf(Telegram.id to Pin(s1, wifi)))
     }
 
     test("закреплённый сервис не едет за общим выходом") {
@@ -45,8 +45,8 @@ class ExitsTest : FunSpec({
             exits.make(Telegram.id, s3, wifi)
         }
         api.calls shouldContainExactly listOf("svc.tg=s1", "exit=s1", "svc.insta=s1", "svc.insta=s2", "svc.tg=s3", "exit=s3")
-        exits.effective(Instagram.id) shouldBe s2
-        exits.effective(Telegram.id) shouldBe s3
+        exits.effective(Instagram.id) shouldBe Route.Fixed(s2)
+        exits.effective(Telegram.id) shouldBe Route.Fixed(s3)
     }
 
     test("где подобран: свой выход — у своего закрепления, незакреплённый — у общего; вышка не хранится") {
@@ -66,10 +66,10 @@ class ExitsTest : FunSpec({
 
     test("до своей находки сервис идёт общим выходом и не закреплён; после make — закреплён") {
         val exits = Exits(Overrides(), HARDCODED_SERVICES)
-        exits.effective(Instagram.id) shouldBe null
+        exits.effective(Instagram.id) shouldBe Route.Free
         exits.pinned(Instagram.id) shouldBe false
         runBlocking { exits.make(Telegram.id, s1, wifi) }
-        exits.effective(Instagram.id) shouldBe s1
+        exits.effective(Instagram.id) shouldBe Route.Fixed(s1)
         exits.pinned(Instagram.id) shouldBe false
         runBlocking { exits.make(Instagram.id, s2, wifi) }
         exits.pinned(Instagram.id) shouldBe true
@@ -80,7 +80,7 @@ class ExitsTest : FunSpec({
         val exits = Exits(api, HARDCODED_SERVICES)
         runBlocking { exits.make(Instagram.id, s2, wifi) }
         api.calls shouldContainExactly listOf("svc.insta=s2")
-        exits.state.value.general shouldBe null
+        exits.state.value.general shouldBe Route.Free
     }
 
     test("clear(GENERAL_FOLLOWS) снимает общий; незакреплённые снимаются вместе, закреплённые остаются") {
@@ -92,7 +92,7 @@ class ExitsTest : FunSpec({
             exits.clear(Telegram.id)
         }
         api.calls shouldContainExactly listOf("exit=", "svc.insta=", "svc.tg=")
-        exits.state.value shouldBe ExitsState(general = null, pinned = emptyMap())
+        exits.state.value shouldBe ExitsState(general = Route.Free, pinned = emptyMap())
     }
 
     test("clear сервиса возвращает его балансер к общему выходу") {
@@ -105,7 +105,7 @@ class ExitsTest : FunSpec({
             exits.clear(Instagram.id)
         }
         api.calls shouldContainExactly listOf("svc.insta=s1")
-        exits.effective(Instagram.id) shouldBe s1
+        exits.effective(Instagram.id) shouldBe Route.Fixed(s1)
         exits.pinned(Instagram.id) shouldBe false
     }
 
@@ -114,7 +114,7 @@ class ExitsTest : FunSpec({
         val exits = Exits(api, HARDCODED_SERVICES, ::pairTag)
         runBlocking { exits.make(Telegram.id, s1, wifi) }
         api.calls shouldContainExactly listOf("svc.tg=pair.tg.s1", "exit=s1", "svc.insta=pair.insta.s1")
-        exits.state.value shouldBe ExitsState(general = s1, pinned = mapOf(Telegram.id to Pin(s1, wifi)))
+        exits.state.value shouldBe ExitsState(general = Route.Fixed(s1), pinned = mapOf(Telegram.id to Pin(s1, wifi)))
     }
 
     test("clear сервиса с парами возвращает его балансер к паре общего выхода") {

@@ -60,6 +60,7 @@ import podbor.core.scenarioOf
 import podbor.core.sniWhite
 import podbor.core.whiteHint
 import podbor.driver.Clock
+import podbor.driver.serverOrNull
 import podbor.driver.Driver
 import podbor.driver.EngineError
 import podbor.driver.FRAME_MS
@@ -341,7 +342,7 @@ class Desk(
 
     private fun tunnelPort(): Int? {
         val live = (host.state.value as? SessionState.Up)?.live ?: return null
-        val exit = live.driver.exits.state.value.general ?: return null
+        val exit = live.driver.exits.state.value.general.serverOrNull() ?: return null
         return live.driver.socksPort(exit, live.warm)
     }
 
@@ -423,7 +424,7 @@ class Desk(
     private suspend fun dropDead(live: Live, board: Board) {
         val dead = board.cards.filter { it.status is CardStatus.Dead }.map { it.service }.toSet()
         val drop = recalled().filter { it in dead }
-        val general = live.driver.exits.state.value.general
+        val general = live.driver.exits.state.value.general.serverOrNull()
         if (GENERAL_FOLLOWS in drop && general != null) {
             board.cards
                 .filter { it.status is CardStatus.Works && !live.driver.exits.pinned(it.service) }

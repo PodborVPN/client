@@ -1,6 +1,9 @@
 package podbor.driver
 
 import arrow.core.Either
+import arrow.core.None
+import arrow.core.Option
+import arrow.core.Some
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,19 +35,22 @@ const val PULSE_SAVE_MS: Long = 60_000
 /** Имя счётчика StatsService: `inbound|outbound>>>тег>>>traffic>>>uplink|downlink` — ровно четыре части. */
 private data class Stat(val side: String, val tag: String, val dir: String)
 
-private fun statOf(name: String): Stat? = name.split(">>>").takeIf { p ->
-    p.size == 4 && p[0] in setOf("inbound", "outbound") && p[2] == "traffic" && p[3] in setOf("uplink", "downlink")
-}?.let { p -> Stat(p[0], p[1], p[3]) }
+private fun statOf(name: String): Option<Stat> {
+    val p = name.split(">>>")
+    val ours = p.size == 4 && p[0] in setOf("inbound", "outbound") && p[2] == "traffic" && p[3] in setOf("uplink", "downlink")
+    return if (ours) Some(Stat(p[0], p[1], p[3])) else None
+}
 
 /** Что за запуск Xray меряем и ключи итогов на момент отсчёта: сеть ОС и подписка (её хеш). */
 data class PulseContext(val kind: EpochKind, val network: String, val subscription: String)
 
 /** Отсчёт из ответа QueryStats; чужие имена (пользователи, мусор) — мимо, половины нет — ноль. */
 fun sampleOf(raw: Map<String, Long>, epoch: Long, atMs: Long, monoMs: Long): PulseSample {
-    val parsed = raw.mapNotNull { (name, value) -> statOf(name)?.let { it to value } }
+    val parsed = raw.mapNotNull { (name, value) -> statOf(name).map { it to value }.getOrNull() }
     fun side(which: String): Map<String, Traffic> =
         parsed.filter { it.first.side == which }.groupBy({ it.first.tag }, { it.first.dir to it.second }).mapValues { (_, dirs) ->
-            Traffic(up = dirs.firstOrNull { it.first == "uplink" }?.second ?: 0, down = dirs.firstOrNull { it.first == "downlink" }?.second ?: 0)
+            val byDir = dirs.toMap()
+            Traffic(up = byDir.getOrElse("uplink") { 0 }, down = byDir.getOrElse("downlink") { 0 })
         }
     return PulseSample(epoch, atMs, monoMs, inbound = side("inbound"), outbound = side("outbound"))
 }

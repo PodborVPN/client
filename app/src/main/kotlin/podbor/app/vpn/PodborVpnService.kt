@@ -65,6 +65,7 @@ import podbor.core.ScanBoard
 import podbor.core.ServerId
 import podbor.core.ServiceId
 import podbor.driver.ApiListen
+import podbor.driver.serverOrNull
 import podbor.driver.Clock
 import podbor.driver.ConfigOpts
 import podbor.driver.Driver
@@ -416,7 +417,7 @@ class PodborVpnService : VpnService(), ServicePort {
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun sessionExits(): Flow<Pair<SessionState<Live>, ServerId?>> = host.state.flatMapLatest { s ->
         when (s) {
-            is SessionState.Up -> s.live.driver.exits.state.map { s to it.general }
+            is SessionState.Up -> s.live.driver.exits.state.map { s to it.general.serverOrNull() }
             SessionState.Down, SessionState.Starting, is SessionState.Failed -> flowOf(s to null)
         }
     }
@@ -518,7 +519,7 @@ class PodborVpnService : VpnService(), ServicePort {
                         context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
                         watching = watching,
                         effective = {
-                            HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
+                            HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull()?.let { s.id to tagOf(it, s.id) } }.toMap()
                         },
                         pulse = pulseState,
                         tape = tape,
@@ -595,7 +596,7 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Имя общего выхода сессии сейчас — для уведомления. */
     private fun currentExitName(): String = when (val s = host.state.value) {
-        is SessionState.Up -> exitName(s, s.live.driver.exits.state.value.general)
+        is SessionState.Up -> exitName(s, s.live.driver.exits.state.value.general.serverOrNull())
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> exitName(s, null)
     }
 

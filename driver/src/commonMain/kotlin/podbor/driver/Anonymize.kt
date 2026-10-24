@@ -24,7 +24,7 @@ fun anonymize(tape: String): String {
     val a = Aliases()
     return tape.lineSequence()
         .filter { it.isNotBlank() }
-        .mapNotNull { line -> Either.catch { Json.parseToJsonElement(line) }.getOrNull()?.let { a.walk(it).toString() } }
+        .mapNotNull { line -> Either.catch { Json.parseToJsonElement(line) }.map { a.walk(it).toString() }.getOrNull() }
         .joinToString("") { it + "\n" }
 }
 
@@ -64,7 +64,7 @@ private class Aliases {
         val server = "endpoint" in o && "key" in o
         // Хеш тяжёлого дела (Digest): по хешу памяти с адресами перебором узнали бы адреса — стираем.
         val digest = "at" in o && "kind" in o && "sha256" in o
-        val tower = (o["type"] as? JsonPrimitive)?.contentOrNull == TOWER_KNOWN
+        val tower = o.text("type") == TOWER_KNOWN
         return JsonObject(
             o.entries.associate { (k, v) ->
                 val name = if (HEX_KEY.matches(k)) key(k) else k

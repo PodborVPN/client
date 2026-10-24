@@ -37,7 +37,8 @@ class EndpointGate(private val perEndpoint: Int = 1) {
             val slot = slots.getOrPut(e) { Slot() }
             if (slot.busy < perEndpoint) { slot.busy++; null }
             else CompletableDeferred<Unit>().also { (if (priority) slot.first else slot.rest).addLast(it) }
-        } ?: return
+        }
+        if (wait == null) return
         try {
             wait.await()
         } catch (c: CancellationException) {
@@ -50,7 +51,8 @@ class EndpointGate(private val perEndpoint: Int = 1) {
 
     private fun release(e: Endpoint) = synchronized(lock) {
         val slot = slots.getValue(e)
-        val next = slot.first.removeFirstOrNull() ?: slot.rest.removeFirstOrNull()
-        if (next == null) slot.busy-- else next.complete(Unit)
+        // Место — первому в очереди приоритетных, иначе первому из остальных; ждущих нет — место свободно.
+        val queue = if (slot.first.isNotEmpty()) slot.first else slot.rest
+        if (queue.isEmpty()) slot.busy-- else queue.removeFirst().complete(Unit)
     }
 }

@@ -28,6 +28,7 @@ suspend fun <T : Any, R> paced(periodMs: Long, sink: (T) -> Unit, block: suspend
     }
     val out = block { latest.value = it }
     pump.cancelAndJoin()
-    latest.value?.takeIf { it != given }?.let(sink)
+    val last = latest.value
+    if (last != null && last != given) sink(last)
     out
 }

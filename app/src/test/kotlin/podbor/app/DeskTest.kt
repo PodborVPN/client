@@ -57,6 +57,7 @@ import podbor.core.memoryKey
 import podbor.core.rememberSuccess
 import podbor.driver.Clock
 import podbor.driver.ConfigOpts
+import podbor.driver.Route
 import podbor.driver.Driver
 import podbor.driver.EXIT_BALANCER
 import podbor.driver.ExitsState
@@ -192,7 +193,7 @@ private class Rig(
     suspend fun up() = host.state.first { it is SessionState.Up }
 
     /** Выходы балансеров поднятой сессии; без сессии — пусто (новая сессия начинает без выходов). */
-    fun exits(): ExitsState = (host.state.value as? SessionState.Up)?.live?.driver?.exits?.state?.value ?: ExitsState(null, emptyMap())
+    fun exits(): ExitsState = (host.state.value as? SessionState.Up)?.live?.driver?.exits?.state?.value ?: ExitsState(Route.Free, emptyMap())
 
     fun status(service: ServiceId): CardStatus = desk.board.value.cards.single { it.service == service }.status
 }
@@ -248,7 +249,7 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.exits().general shouldBe ServerId("s002")
+            s.exits().general shouldBe Route.Fixed(ServerId("s002"))
             s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
             s.desk.origin.value shouldBe emptyMap()
             s.saved shouldBe null
@@ -263,7 +264,7 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             open.await() shouldBe true
             s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server, Relocation.Stayed)
-            s.exits() shouldBe ExitsState(null, emptyMap())
+            s.exits() shouldBe ExitsState(Route.Free, emptyMap())
             s.saved shouldBe null
         }
     }
@@ -277,7 +278,7 @@ class DeskTest : FunSpec({
             open.await() shouldBe true
             s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
             s.status(Instagram.id) shouldBe CardStatus.Dead(first, Blame.Server, Relocation.Stayed)
-            s.exits() shouldBe ExitsState(ServerId("s002"), mapOf(Telegram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
+            s.exits() shouldBe ExitsState(Route.Fixed(ServerId("s002")), mapOf(Telegram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
             s.desk.origin.value shouldBe emptyMap()
         }
     }
@@ -293,7 +294,7 @@ class DeskTest : FunSpec({
             open.await() shouldBe true
             s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server, Relocation.Stayed)
             s.status(Instagram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
-            s.exits() shouldBe ExitsState(null, mapOf(Instagram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
+            s.exits() shouldBe ExitsState(Route.Free, mapOf(Instagram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
         }
     }
 
@@ -329,7 +330,7 @@ class DeskTest : FunSpec({
             s.up()
             s.desk.open() shouldBe true
             s.desk.board.value.network.shouldBeInstanceOf<NetworkCard.Measured>()
-            s.exits().general shouldBe ServerId("s002")
+            s.exits().general shouldBe Route.Fixed(ServerId("s002"))
             s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
         }
     }
@@ -342,7 +343,7 @@ class DeskTest : FunSpec({
             val up = s.up()
             // Выход выставлен в этой сессии (прошлым нажатием): через выходы драйвера, как в бою.
             (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"), ChosenOn.Unknown)
-            s.exits().general shouldBe ServerId("s001")
+            s.exits().general shouldBe Route.Fixed(ServerId("s001"))
             s.desk.open() shouldBe true
             s.status(Telegram.id) shouldBe CardStatus.Works(first)
         }
@@ -381,7 +382,7 @@ class DeskTest : FunSpec({
             open.await() shouldBe true
             s.events.count { it == "line" } shouldBe 1
             s.desk.board.value.button shouldBe Button.Green
-            s.exits().general shouldNotBe null
+            s.exits().general shouldNotBe Route.Free
             s.saves shouldBe 1
         }
     }
