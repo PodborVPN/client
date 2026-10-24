@@ -30,6 +30,8 @@ import podbor.app.vpn.SessionHost
 import podbor.app.vpn.SessionState
 import podbor.core.WhiteLists
 import podbor.core.Blame
+import podbor.core.ChosenOn
+import podbor.core.Relocation
 import podbor.core.Button
 import podbor.core.CardStatus
 import podbor.core.ExitRef
@@ -58,6 +60,7 @@ import podbor.driver.ConfigOpts
 import podbor.driver.Driver
 import podbor.driver.EXIT_BALANCER
 import podbor.driver.ExitsState
+import podbor.driver.Pin
 import podbor.driver.EndpointGate
 import podbor.driver.InMemoryPassportStore
 import podbor.driver.ExitProbe
@@ -246,7 +249,7 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             open.await() shouldBe true
             s.exits().general shouldBe ServerId("s002")
-            s.status(Telegram.id) shouldBe CardStatus.Works(second)
+            s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
             s.desk.origin.value shouldBe emptyMap()
             s.saved shouldBe null
         }
@@ -259,7 +262,7 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server)
+            s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server, Relocation.Stayed)
             s.exits() shouldBe ExitsState(null, emptyMap())
             s.saved shouldBe null
         }
@@ -272,9 +275,9 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.status(Telegram.id) shouldBe CardStatus.Works(second)
-            s.status(Instagram.id) shouldBe CardStatus.Dead(first, Blame.Server)
-            s.exits() shouldBe ExitsState(ServerId("s002"), mapOf(Telegram.id to ServerId("s002")))
+            s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
+            s.status(Instagram.id) shouldBe CardStatus.Dead(first, Blame.Server, Relocation.Stayed)
+            s.exits() shouldBe ExitsState(ServerId("s002"), mapOf(Telegram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
             s.desk.origin.value shouldBe emptyMap()
         }
     }
@@ -288,9 +291,9 @@ class DeskTest : FunSpec({
             val open = async { s.desk.open() }
             s.gate.complete(Unit)
             open.await() shouldBe true
-            s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server)
-            s.status(Instagram.id) shouldBe CardStatus.Works(second)
-            s.exits() shouldBe ExitsState(null, mapOf(Instagram.id to ServerId("s002")))
+            s.status(Telegram.id) shouldBe CardStatus.Dead(second, Blame.Server, Relocation.Stayed)
+            s.status(Instagram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
+            s.exits() shouldBe ExitsState(null, mapOf(Instagram.id to Pin(ServerId("s002"), ChosenOn.Network(mts))))
         }
     }
 
@@ -305,13 +308,16 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             s.host.start(1)
             val up = s.up()
-            (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
+            (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"), ChosenOn.Unknown)
             s.events.clear()
             s.desk.open() shouldBe true
             s.events.filter { it.startsWith("probe") }.toSet() shouldBe setOf("probe 20000 (Chosen)", "probe IG 20001 (Recalled)")
             s.status(Telegram.id) shouldBe CardStatus.Works(first)
-            s.status(Instagram.id) shouldBe CardStatus.Works(second)
-            s.exits().pinned shouldBe mapOf(Telegram.id to ServerId("s001"), Instagram.id to ServerId("s002"))
+            s.status(Instagram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
+            s.exits().pinned shouldBe mapOf(
+                Telegram.id to Pin(ServerId("s001"), ChosenOn.Unknown),
+                Instagram.id to Pin(ServerId("s002"), ChosenOn.Network(mts)),
+            )
         }
     }
 
@@ -324,7 +330,7 @@ class DeskTest : FunSpec({
             s.desk.open() shouldBe true
             s.desk.board.value.network.shouldBeInstanceOf<NetworkCard.Measured>()
             s.exits().general shouldBe ServerId("s002")
-            s.status(Telegram.id) shouldBe CardStatus.Works(second)
+            s.status(Telegram.id) shouldBe CardStatus.Works(second, Relocation.Stayed)
         }
     }
 
@@ -335,7 +341,7 @@ class DeskTest : FunSpec({
             s.host.start(1)
             val up = s.up()
             // Выход выставлен в этой сессии (прошлым нажатием): через выходы драйвера, как в бою.
-            (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
+            (up as SessionState.Up).live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s001"), ChosenOn.Unknown)
             s.exits().general shouldBe ServerId("s001")
             s.desk.open() shouldBe true
             s.status(Telegram.id) shouldBe CardStatus.Works(first)
@@ -417,7 +423,7 @@ class DeskTest : FunSpec({
             s.gate.complete(Unit)
             // Восстановление по ServiceId: svc.insta уже принят, общий выход Телеги висит.
             s.setExitStarted.await()
-            s.exits().pinned[Instagram.id] shouldBe ServerId("s001")
+            s.exits().pinned[Instagram.id] shouldBe Pin(ServerId("s001"), ChosenOn.Network(mts))
             s.desk.press()
             open.await() shouldBe true
             // Инста в нажатии не нашлась — своего выхода у неё нет, балансер за общим.

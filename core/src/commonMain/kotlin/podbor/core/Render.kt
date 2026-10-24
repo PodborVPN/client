@@ -18,13 +18,13 @@ enum class Blame { Whitelist, SuspectedWhitelist, NoNetwork, Server, Unexplained
 /** Откуда выход, на котором сидит человек, и что с ним. Экран при открытии. */
 data class ExitRef(val name: String, val transport: Transport)
 
-/** [moved] — выход подобран на другой сети: обстоятельство рядом с причиной ([Blame]), не сама причина. */
+/** [relocation] — выход и нынешняя сеть: обстоятельство рядом с причиной ([Blame]), не сама причина. */
 sealed interface ExitState {
     data object Off : ExitState
     data class Unlisted(val tag: ServerId) : ExitState
-    data class Checking(val ref: ExitRef, val moved: NetworkMove? = null) : ExitState
-    data class Works(val ref: ExitRef, val moved: NetworkMove? = null) : ExitState
-    data class Dead(val ref: ExitRef, val blame: Blame, val moved: NetworkMove? = null) : ExitState
+    data class Checking(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : ExitState
+    data class Works(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : ExitState
+    data class Dead(val ref: ExitRef, val blame: Blame, val relocation: Relocation = Relocation.Unknown) : ExitState
 }
 
 sealed interface ResultCard {
@@ -177,20 +177,28 @@ fun exitHead(e: ExitState): String = when (e) {
     is ExitState.Dead -> refWords(e.ref.name, e.ref.transport)
 }
 
-/** Пояснение к выходу второй строкой экрана; `null` — пояснять нечего (выход работает). */
-fun exitNote(e: ExitState, service: Service = Telegram): String? = when (e) {
-    ExitState.Off -> "Xray выбирает сам — нажми «Подобрать»"
-    is ExitState.Works -> worksNote(e)
-    is ExitState.Unlisted -> "такого сервера нет в подписке, проверить нечем"
-    is ExitState.Checking -> "проверяю ${service.titleAcc}…".let { checking -> e.moved?.let { m -> "${moveWords(m)} — $checking" } ?: checking }
-    is ExitState.Dead -> blameWords(e.blame).let { blame ->
-        e.moved?.let { m -> "подобран на ${networkWords(m.from)}; на ${networkWords(m.to)} — $blame. Нажми — подберу под эту сеть" } ?: blame
+/**
+ * Пояснение к выходу под строкой с ним — по строке на мысль: что с выходом, затем что с переездом сети. Пусто —
+ * пояснять нечего (выход работает на той же сети).
+ */
+fun exitNotes(e: ExitState, service: Service = Telegram): List<String> = when (e) {
+    ExitState.Off -> listOf("Xray выбирает сам — нажми «Подобрать»")
+    is ExitState.Unlisted -> listOf("такого сервера нет в подписке, проверить нечем")
+    is ExitState.Checking -> listOf(
+        when (val r = e.relocation) {
+            Relocation.Unknown, Relocation.Stayed -> "проверяю ${service.titleAcc}…"
+            is Relocation.Moved -> "${moveWords(r.move)} — проверяю ${service.titleAcc}…"
+        },
+    )
+    is ExitState.Works -> when (val r = e.relocation) {
+        Relocation.Unknown, Relocation.Stayed -> emptyList()
+        is Relocation.Moved -> listOf("подобран на ${networkWords(r.move.from)}, на ${networkWords(r.move.to)} тоже работает")
+    }
+    is ExitState.Dead -> listOf(blameWords(e.blame)) + when (val r = e.relocation) {
+        Relocation.Unknown, Relocation.Stayed -> emptyList()
+        is Relocation.Moved -> listOf("подобран на ${networkWords(r.move.from)} — нажми, подберу под ${networkWords(r.move.to)}")
     }
 }
-
-/** Пояснение к живому выходу: молчим, пока сеть та же; после переезда — что выход пережил его. */
-private fun worksNote(e: ExitState.Works): String? =
-    e.moved?.let { m -> "подобран на ${networkWords(m.from)}, на ${networkWords(m.to)} тоже работает" }
 
 private fun blameWords(blame: Blame): String = when (blame) {
     Blame.Whitelist -> "белые списки: сеть его не пропускает"
@@ -204,7 +212,11 @@ private fun blameWords(blame: Blame): String = when (blame) {
 fun moveWords(m: NetworkMove): String = "сеть сменилась: ${networkWords(m.from)} → ${networkWords(m.to)}"
 
 /** Сеть словом: «Wi-Fi», оператор симки данных; нет сети — «без сети» (переезд из неё не строится, слово — для тотальности). */
-private fun networkWords(os: OsNetwork): String = operatorOf(os) ?: "без сети"
+private fun networkWords(os: OsNetwork): String = when (os) {
+    is OsNetwork.Cellular -> os.operator
+    OsNetwork.Wifi -> "Wi-Fi"
+    OsNetwork.None -> "без сети"
+}
 
 /** Выход по имени и транспорту: «NL-7» (gRPC); транспорт, уже названный в имени целым словом, не повторяется. */
 fun refWords(name: String, transport: Transport): String {

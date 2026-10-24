@@ -22,16 +22,25 @@ const val NETWORK_SETTLE_MS = 2_000L
  * тот же ключ — не переезд. Нет сети — не сеть: ждём ключа и сравниваем с последней. Сеть, простоявшая меньше
  * [NETWORK_SETTLE_MS], не в счёт. Пока сессия не поднята, переездов нет; поднялась — отсчёт от сети на подъёме.
  */
-@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 fun networkMoves(networks: Flow<OsNetwork>, up: Flow<Boolean>): Flow<NetworkMove> =
-    up.distinctUntilChanged().flatMapLatest { on ->
-        if (on) movesOf(networks.filter { networkKey(it) != null }.debounce(NETWORK_SETTLE_MS).distinctUntilChangedBy(::networkKey)) else emptyFlow()
-    }
+    up.distinctUntilChanged().flatMapLatest { on -> if (on) networks.settled().moves() else emptyFlow() }
 
-private fun movesOf(settled: Flow<OsNetwork>): Flow<NetworkMove> = flow {
+/** Устоявшиеся сети: только с ключом памяти, простоявшие [NETWORK_SETTLE_MS], подряд — разные по ключу. */
+@OptIn(FlowPreview::class)
+private fun Flow<OsNetwork>.settled(): Flow<OsNetwork> =
+    filter { networkKey(it) != null }
+        .debounce(NETWORK_SETTLE_MS)
+        .distinctUntilChangedBy(::networkKey)
+
+/** Пары соседних сетей: первая — отсчёт, каждая следующая — переезд с предыдущей. */
+private fun Flow<OsNetwork>.moves(): Flow<NetworkMove> = flow {
     var last: OsNetwork? = null
-    settled.collect { now ->
-        last?.let { emit(NetworkMove(it, now)) }
+    collect { now ->
+        when (val from = last) {
+            null -> Unit
+            else -> emit(NetworkMove(from, now))
+        }
         last = now
     }
 }

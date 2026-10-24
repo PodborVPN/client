@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import podbor.core.Board
+import podbor.core.ChosenOn
 import podbor.core.Deed
 import podbor.core.Diagnosis
 import podbor.core.Endpoint
@@ -172,9 +173,11 @@ class Driver(
         val known = freshRounds(prior, clock.nowMs())
         val boards = Boards(services, onBoard, emptyMap())
         val runs = pipes(services, { exits.effective(it) }) { service, exit, hub, inbox, lead ->
-            val vpn = when (exit) {
-                null -> Vpn.Off
-                else -> servers.find { it.id == exit }?.let { Vpn.On(it, chosenOn = exits.chosenOn(service.id)) } ?: Vpn.Unlisted(exit)
+            val listed = servers.find { it.id == exit }
+            val vpn = when {
+                exit == null -> Vpn.Off
+                listed == null -> Vpn.Unlisted(exit)
+                else -> Vpn.On(listed, chosenOn = exits.chosenOn(service.id))
             }
             val opened = Letter.Opened(clock.nowMs(), os, vpn)
             // Раунды до Xray машина получает на старте — они в шапке прогона (Head.Open), а не нотой.
@@ -291,7 +294,7 @@ class Driver(
             val server = memory.successes[memoryKey(os, scenario, service.id)]?.firstNotNullOfOrNull { success ->
                 warm.servers.find { it.key == success.serverKey }?.takeUnless { memory.isBlocked(it.endpoint, now) }
             } ?: return@mapNotNull null
-            exits.make(service.id, server.id, on = os).fold(
+            exits.make(service.id, server.id, ChosenOn.Network(os)).fold(
                 { e -> tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: setExit $e")); null },
                 { tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: из памяти сети")); service.id to server },
             )
@@ -318,7 +321,7 @@ class Driver(
      * за которым сервис шёл; сеть подбора — та же, что у общего. Память не трогается; на Ленте — только тег.
      */
     suspend fun pinExit(service: ServiceId, server: ServerId): Either<EngineError, Unit> =
-        exits.make(service, server, on = exits.chosenOn(service))
+        exits.make(service, server, exits.chosenOn(service))
             .onRight { tape.write(noteLine("pinExit ${service.id} ${server.tag}: прошёл пробу сервиса, закреплён")) }
             .onLeft { tape.write(noteLine("pinExit ${service.id} ${server.tag}: $it")) }
 
@@ -389,7 +392,7 @@ class Driver(
                     }
                     if (general) lead.complete(Unit)
                 }
-                is Deed.MakeExit -> exits.make(service.id, deed.server, on = os).onLeft { tape.write(noteLine("setExit ${service.id.id}: $it")) }
+                is Deed.MakeExit -> exits.make(service.id, deed.server, ChosenOn.Network(os)).onLeft { tape.write(noteLine("setExit ${service.id.id}: $it")) }
                 is Deed.MeasureSpeed -> tape.write(noteLine("MeasureSpeed ${deed.server.tag}: скорость пока не меряется"))
                 is Deed.Remember -> memoryLock.withLock { store.saveMemory(store.loadMemory().merged(deed.memory, service.id)) }
                 // Дела анализа подписки: нажатие их не выдаёт, у анализа свой scanExecutor.

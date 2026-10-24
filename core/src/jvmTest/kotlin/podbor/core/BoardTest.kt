@@ -29,7 +29,7 @@ class BoardTest : FunSpec({
     }
 
     test("переезд сети доходит до карточки: проверяю, работает, мёртв") {
-        val moved = NetworkMove(OsNetwork.Wifi, os)
+        val moved = Relocation.Moved(NetworkMove(OsNetwork.Wifi, os))
         fun card(e: ExitState) = board(setOf(Telegram), mapOf(Telegram.id to screen(Button.Ready, ResultCard.Exit(e)))).cards.single().status
         card(ExitState.Checking(ref, moved)) shouldBe CardStatus.Checking(ref, moved)
         card(ExitState.Works(ref, moved)) shouldBe CardStatus.Works(ref, moved)

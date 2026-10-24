@@ -123,7 +123,7 @@ private fun tgFoundAt(services: Set<podbor.core.Service>, lastFirst: Boolean = f
             resourceScope {
                 val d = w.driver()
                 val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
-                d.exits.make(GENERAL_FOLLOWS, ServerId("s001"))
+                d.exits.make(GENERAL_FOLLOWS, ServerId("s001"), podbor.core.ChosenOn.Unknown)
                 d.press(warm, services, mts) { b ->
                     if (foundAt < 0 && b.cards.any { it.service == Telegram.id && it.status is CardStatus.Found }) foundAt = currentTime
                 }

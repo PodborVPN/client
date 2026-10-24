@@ -17,7 +17,7 @@ import podbor.core.Stopwatch
 import podbor.core.Traffic
 import podbor.core.networkKey
 import podbor.core.exitHead
-import podbor.core.exitNote
+import podbor.core.exitNotes
 import podbor.core.transportWords
 
 /*
@@ -123,28 +123,34 @@ fun rowsOf(
  * [sharedHead] — первая строка тупика уже показана у другого сервиса: здесь её нет.
  */
 private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, sharedHead: Boolean = false): ServiceRow {
-    fun server(mark: Mark, ref: ExitRef, note: Note? = null) =
-        ServiceRow(card.label, mark, ref.name, transportWords(ref.transport), listOfNotNull(note), searching = false)
-    fun bare(name: String, note: String?) =
-        ServiceRow(card.label, null, name, null, listOfNotNull(note?.let { Note(it, Tone.Muted) }), searching = false)
+    fun server(mark: Mark, ref: ExitRef, notes: List<Note> = emptyList()) =
+        ServiceRow(card.label, mark, ref.name, transportWords(ref.transport), notes, searching = false)
+    fun bare(name: String, notes: List<String>) =
+        ServiceRow(card.label, null, name, null, notes.map { Note(it, Tone.Muted) }, searching = false)
     return when (val st = card.status) {
         // Ничего не известно — балансер выбирает сам: слова прежнего «выход не выбран».
         // Слова Off, Unlisted и Dead от сервиса не зависят — только «проверяю <сервис>…».
-        CardStatus.Unknown -> bare(exitHead(ExitState.Off), exitNote(ExitState.Off))
-        is CardStatus.Unlisted -> ExitState.Unlisted(st.tag).let { bare(exitHead(it), exitNote(it)) }
+        CardStatus.Unknown -> bare(exitHead(ExitState.Off), exitNotes(ExitState.Off))
+        is CardStatus.Unlisted -> ExitState.Unlisted(st.tag).let { bare(exitHead(it), exitNotes(it)) }
         CardStatus.Searching -> ServiceRow(card.label, null, "подбираю выход…", null, emptyList(), searching = true)
         is CardStatus.Checking -> {
-            // Переезд сети сильнее происхождения: восстановленный из памяти выход подобран на этой же сети.
-            val note = when {
-                st.moved != null || origin == ExitOrigin.Chosen ->
-                    service?.let { exitNote(ExitState.Checking(st.ref, st.moved), it) } ?: "проверяю…"
-                else -> "последний рабочий: ${st.ref.name} — проверяю"
+            // Восстановленный из памяти подобран на этой же сети — переезда у него нет, слова свои.
+            val notes = when (origin) {
+                ExitOrigin.Recalled -> listOf("последний рабочий: ${st.ref.name} — проверяю")
+                ExitOrigin.Chosen -> when (service) {
+                    null -> listOf("проверяю…")
+                    else -> exitNotes(ExitState.Checking(st.ref, st.relocation), service)
+                }
             }
-            server(Mark.Checking, st.ref, Note(note, Tone.Warn))
+            server(Mark.Checking, st.ref, notes.map { Note(it, Tone.Warn) })
         }
-        is CardStatus.Works -> server(Mark.Works, st.ref, exitNote(ExitState.Works(st.ref, st.moved))?.let { Note(it, Tone.Ok) })
-        is CardStatus.Dead -> server(Mark.Dead, st.ref, exitNote(ExitState.Dead(st.ref, st.blame, st.moved))?.let { Note(it, Tone.Fail) })
-        is CardStatus.Found -> server(Mark.Works, st.ref, Note(st.coverage, Tone.Ok))
+        is CardStatus.Works -> server(Mark.Works, st.ref, exitNotes(ExitState.Works(st.ref, st.relocation)).map { Note(it, Tone.Ok) })
+        // Причина — красным, подсказка после переезда — янтарным: это действие, а не приговор.
+        is CardStatus.Dead -> server(
+            Mark.Dead, st.ref,
+            exitNotes(ExitState.Dead(st.ref, st.blame, st.relocation)).mapIndexed { i, n -> Note(n, if (i == 0) Tone.Fail else Tone.Warn) },
+        )
+        is CardStatus.Found -> server(Mark.Works, st.ref, listOf(Note(st.coverage, Tone.Ok)))
         // Тупик — словами explain: первая строка (что за сеть) ярче, остальное — серым.
         is CardStatus.NotFound -> ServiceRow(
             card.label, Mark.Dead, "нет рабочего сервера", null,

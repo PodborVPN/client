@@ -92,24 +92,17 @@ private fun exitStateOf(s: OpenState, closed: Boolean): ExitState = when (val vp
     is Vpn.Unlisted -> ExitState.Unlisted(vpn.tag)
     is Vpn.On -> {
         val ref = ExitRef(vpn.exit.name, vpn.exit.transport)
-        val moved = movedOf(vpn.chosenOn, s.opened.os)
+        val relocation = relocationOf(vpn.chosenOn, s.opened.os)
         when (lifeOf(s.exitAnswers)) {
-            Life.Checking -> ExitState.Checking(ref, moved)
-            Life.Works -> ExitState.Works(ref, moved)
+            Life.Checking -> ExitState.Checking(ref, relocation)
+            Life.Works -> ExitState.Works(ref, relocation)
             // Линия ещё молчит — причину не назвать: до срока ждём, по сроку — «не объяснено».
             Life.Dead -> when (val sc = s.diagnosis.scenario) {
-                null -> if (closed) ExitState.Dead(ref, Blame.Unexplained, moved) else ExitState.Checking(ref, moved)
-                else -> ExitState.Dead(ref, blameOf(sc), moved)
+                null -> if (closed) ExitState.Dead(ref, Blame.Unexplained, relocation) else ExitState.Checking(ref, relocation)
+                else -> ExitState.Dead(ref, blameOf(sc), relocation)
             }
         }
     }
-}
-
-/** Переезд — обе сети известны и ключи памяти разные; иначе сравнивать нечего. */
-private fun movedOf(chosenOn: OsNetwork?, now: OsNetwork): NetworkMove? {
-    val from = chosenOn?.let(::networkKey) ?: return null
-    val to = networkKey(now) ?: return null
-    return if (from != to) NetworkMove(chosenOn, now) else null
 }
 
 private fun blameOf(s: Scenario): Blame = when (s) {

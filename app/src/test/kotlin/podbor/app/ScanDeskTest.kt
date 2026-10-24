@@ -528,7 +528,7 @@ class ScanDeskTest : FunSpec({
             s.start()
             val up = s.up() as SessionState.Up<Live>
             s.desk.open()
-            up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"))
+            up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"), podbor.core.ChosenOn.Unknown)
             s.desk.refreshSubscription()
             ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
             s.subscriptions.load()?.text shouldBe "vless://тоннель"
@@ -567,7 +567,7 @@ class ScanDeskTest : FunSpec({
             s.start()
             val up = s.up() as SessionState.Up<Live>
             s.desk.open()
-            up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"))
+            up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"), podbor.core.ChosenOn.Unknown)
             s.desk.latestRelease() shouldBe Release("v0.11.0", apkUrlOf("v0.11.0"))
         }
     }

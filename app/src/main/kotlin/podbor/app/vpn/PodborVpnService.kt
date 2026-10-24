@@ -260,12 +260,11 @@ class PodborVpnService : VpnService(), ServicePort {
             val networks = underlying.changes().map { telephony.osNetworkLight(underlying.transport()) }
             networkMoves(networks, host.state.map { it is SessionState.Up }).collectLatest { move ->
                 log("сеть сменилась: ${networkKey(move.from)} → ${networkKey(move.to)}, перемеряю")
-                val name = { exitName(host.state.value, (host.state.value as? SessionState.Up)?.live?.driver?.exits?.state?.value?.general) }
-                nm.notify(NOTIFICATION_ID, notification(name(), "${moveWords(move)} — проверяю выходы"))
+                nm.notify(NOTIFICATION_ID, notification(currentExitName(), "${moveWords(move)} — проверяю выходы"))
                 try {
                     desk.open()
                 } finally {
-                    if (host.state.value is SessionState.Up) nm.notify(NOTIFICATION_ID, notification(name()))
+                    if (host.state.value is SessionState.Up) nm.notify(NOTIFICATION_ID, notification(currentExitName()))
                 }
             }
         }
@@ -452,13 +451,18 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     private fun startForeground() {
-        val s = host.state.value
-        val n = notification(exitName(s, (s as? SessionState.Up)?.live?.driver?.exits?.state?.value?.general))
+        val n = notification(currentExitName())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, n)
         }
+    }
+
+    /** Имя общего выхода сессии сейчас — для уведомления. */
+    private fun currentExitName(): String = when (val s = host.state.value) {
+        is SessionState.Up -> exitName(s, s.live.driver.exits.state.value.general)
+        SessionState.Down, SessionState.Starting, is SessionState.Failed -> exitName(s, null)
     }
 
     private fun exitName(s: SessionState<Live>, exit: ServerId?): String = when (s) {

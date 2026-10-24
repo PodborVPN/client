@@ -22,6 +22,7 @@ import kotlinx.serialization.json.putJsonObject
 import podbor.core.Blame
 import podbor.core.Board
 import podbor.core.CardStatus
+import podbor.core.ChosenOn
 import podbor.core.GENERAL_FOLLOWS
 import podbor.core.Service
 import podbor.core.ServiceId
@@ -142,7 +143,7 @@ internal fun Board.card(id: ServiceId = Telegram.id): CardStatus = cards.single 
 
 /** Выход, на котором «сидит» общий балансер до нажатия: как будто его выставило прошлое нажатие. */
 private suspend fun Driver.sitOn(exit: ServerId?, w: World) {
-    exit?.let { exits.make(GENERAL_FOLLOWS, it) }
+    if (exit != null) exits.make(GENERAL_FOLLOWS, exit, ChosenOn.Unknown)
     synchronized(w.exits) { w.exits.clear(); w.overrides.clear() }
 }
 
@@ -286,9 +287,9 @@ class DriverTest : FunSpec({
             }
         }
         val ref = ExitRef("Сервер 0", podbor.core.Transport.Other("tcp"))
-        opening.board.card() shouldBe CardStatus.Works(ref, podbor.core.NetworkMove(OsNetwork.Wifi, onTower))
+        opening.board.card() shouldBe CardStatus.Works(ref, podbor.core.Relocation.Moved(podbor.core.NetworkMove(OsNetwork.Wifi, onTower)))
         w.tape.map(::rowOf).filterIsInstance<Row.Step>().map { it.letter }.filterIsInstance<Letter.Opened>().single()
-            .vpn.shouldBeInstanceOf<podbor.core.Vpn.On>().chosenOn shouldBe OsNetwork.Wifi
+            .vpn.shouldBeInstanceOf<podbor.core.Vpn.On>().chosenOn shouldBe ChosenOn.Network(OsNetwork.Wifi)
     }
 
     test("Лента открытия: шапка Run(Open) без раундов, затем Opened с выходом целиком") {

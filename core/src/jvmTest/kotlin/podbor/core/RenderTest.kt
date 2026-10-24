@@ -145,6 +145,6 @@ class RenderTest : FunSpec({
         lines shouldContain "2 входа в РФ — соединился, но Инста не ответила"
         lines.none { "Телега" in it } shouldBe true
 
-        exitNote(ExitState.Checking(ExitRef("NL-7", Transport.Grpc)), Instagram) shouldBe "проверяю Инсту…"
+        exitNotes(ExitState.Checking(ExitRef("NL-7", Transport.Grpc)), Instagram) shouldBe listOf("проверяю Инсту…")
     }
 })
