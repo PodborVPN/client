@@ -45,10 +45,10 @@ class FilesTest : FunSpec({
     }
 
     test("FileTape: строки дописываются построчно") {
-        val file = File(tempdir(), "tape.jsonl")
-        val tape = FileTape(file)
+        val dir = tempdir()
+        val tape = FileTape(dir) { 42L }
         tape.write("""{"a":1}""")
         tape.write("""{"b":2}""")
-        file.readLines() shouldBe listOf("""{"a":1}""", """{"b":2}""")
+        File(dir, "tape-42.jsonl").readLines() shouldBe listOf("""{"a":1}""", """{"b":2}""")
     }
 })

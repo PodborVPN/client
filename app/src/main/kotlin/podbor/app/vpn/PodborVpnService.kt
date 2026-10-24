@@ -164,7 +164,7 @@ class PodborVpnService : VpnService(), ServicePort {
     private val line by lazy { LineProbeImpl(shaker = TlsHandshaker(resolve = underlying::resolve)) }
 
     /** Лента сервиса: замер до подъёма и сессии пишут в один файл. */
-    private val tape by lazy { FileTape(File(filesDir, "tape-${System.currentTimeMillis()}.jsonl")) }
+    private val tape by lazy { FileTape(filesDir) }
 
     private val clock = Clock { System.currentTimeMillis() }
 

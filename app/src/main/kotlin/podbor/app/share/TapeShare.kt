@@ -3,6 +3,7 @@ package podbor.app.share
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
+import podbor.app.net.tapeFilesIn
 import podbor.driver.anonymize
 import java.io.File
 import java.time.LocalDateTime
@@ -32,8 +33,6 @@ sealed interface Unshared {
     data object Unreadable : Unshared
 }
 
-private val TAPE_NAME = Regex("""tape-(\d+)\.jsonl""")
-
 private val STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
 
 /** Каталог выгрузок внутри cacheDir: FileProvider открывает только его. */
@@ -62,11 +61,10 @@ fun wordsOf(u: Unshared): String = when (u) {
  * вперёд) берутся. Ошибка ввода-вывода — [Unshared.Unreadable].
  */
 fun readTapes(dir: File, nowMs: Long, windowMs: Long = SHARE_WINDOW_MS): Either<Unshared.Unreadable, List<Tape>> = Either.catch {
-    (dir.listFiles() ?: emptyArray())
-        .mapNotNull { f -> TAPE_NAME.matchEntire(f.name)?.takeIf { f.isFile }?.let { m -> m.groupValues[1].toLong() to f } }
-        .filter { (startedAt, f) -> maxOf(startedAt, f.lastModified()) >= nowMs - windowMs }
-        .sortedBy { it.first }
-        .map { (startedAt, f) -> Tape(startedAt, f.readText()) }
+    tapeFilesIn(dir)
+        .filter { (t, f) -> maxOf(t.startedAt, f.lastModified()) >= nowMs - windowMs }
+        .sortedBy { it.first.startedAt }
+        .map { (t, f) -> Tape(t.startedAt, f.readText()) }
 }.mapLeft { Unshared.Unreadable }
 
 /** Пишет выгрузку в cache/share/, прошлые выгрузки удаляет (в кэше копится не больше одной). */
