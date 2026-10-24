@@ -199,10 +199,12 @@ class LineProbeImpl(
     private val russia: Nel<Reference> = RUSSIA_REFS,
     private val abroad: Nel<Reference> = ABROAD_REFS,
     private val shaker: Handshaker = TlsHandshaker(),
+    /** Свежие эталоны — новые имена каждый раунд ([freshRefs]); они среди российских: адрес — Яндекс DNS. */
+    private val fresh: () -> List<Reference> = { freshRefs() },
 ) : LineProbe {
     override suspend fun observe(): LineObservation =
-        parZip({ round(russia) }, { round(abroad) }) { ru, far -> LineObservation(ru, far) }
+        parZip({ round(russia + fresh()) }, { round(abroad) }) { ru, far -> LineObservation(ru, far) }
 
     private suspend fun round(refs: Nel<Reference>): Nel<Sample> =
-        refs.toList().parMap { Sample(it.label, shaker.shake(it), it.role) }.let { NonEmptyList(it.first(), it.drop(1)) }
+        refs.toList().parMap { Sample(it.label, shaker.shake(it), it.role, it.lookup) }.let { NonEmptyList(it.first(), it.drop(1)) }
 }

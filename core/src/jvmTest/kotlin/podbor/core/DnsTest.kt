@@ -33,6 +33,27 @@ class DnsTest : FunSpec({
         dnsOf(round(dns, ok, ok, ok, ok)) shouldBe DnsHealth.Unknown
     }
 
+    /** Раунд со свежими именами (случайный поддомен — его нет в кеше DNS): решают они, кешированные имена — нет. */
+    fun withFresh(names: Handshake, fresh1: Handshake, fresh2: Handshake, yandexIp: Handshake) = LineObservation(
+        nonEmptyListOf(
+            Sample("ya.ru", names), Sample("vk.com", names), Sample("dns.yandex", yandexIp),
+            Sample("fresh.sslip.io", fresh1, lookup = Lookup.Fresh), Sample("fresh.nip.io", fresh2, lookup = Lookup.Fresh),
+        ),
+        nonEmptyListOf(Sample("one.one.one.one", ok)),
+    )
+
+    test("свежие имена решают: кеш отвечает за ya.ru, а случайный поддомен не резолвится — DNS сломан") {
+        dnsOf(withFresh(names = ok, fresh1 = dns, fresh2 = dns, yandexIp = ok)) shouldBe DnsHealth.Broken
+    }
+
+    test("свежие резолвятся — работает; не резолвится один сервис из двух — не знаем (лёг сервис, а не DNS)") {
+        dnsOf(withFresh(names = ok, fresh1 = ok, fresh2 = ok, yandexIp = ok)) shouldBe DnsHealth.Works
+        dnsOf(withFresh(names = ok, fresh1 = dns, fresh2 = ok, yandexIp = ok)) shouldBe DnsHealth.Unknown
+        // Связи по IP нет — сломанный DNS не отличить от «нет сети».
+        dnsOf(withFresh(names = dns, fresh1 = dns, fresh2 = dns, yandexIp = silent).copy(abroad = nonEmptyListOf(Sample("x", silent)))) shouldBe
+            DnsHealth.Unknown
+    }
+
     test("карточка сети несёт DNS по диагнозу — экран скажет и предложит ремонт") {
         val opened = Letter.Opened(0, OsNetwork.Wifi, Vpn.Off)
         val card = render(listOf(opened, Letter.LineObserved(100, round(dns, dns, dns, ok, ok)))).network

@@ -51,9 +51,16 @@ sealed interface Handshake {
 @Serializable
 enum class Role { Public, Own }
 
+/**
+ * Как эталон узнал адрес: обычно (имя, которое мог закешировать DNS телефона, или IP) или свежим именем — случайным
+ * поддоменом, которого нет ни в каком кеше: только оно честно говорит, отвечает ли DNS сети прямо сейчас.
+ */
+@Serializable
+enum class Lookup { Usual, Fresh }
+
 /** Эталон и его исход. target — публичное имя эталона, не адрес сервера подписки. */
 @Serializable
-data class Sample(val target: String, val handshake: Handshake, val role: Role = Role.Public)
+data class Sample(val target: String, val handshake: Handshake, val role: Role = Role.Public, val lookup: Lookup = Lookup.Usual)
 
 /** Один раунд линии: прямые TLS-пробы мимо туннеля к российским эталонам (опора) и к загранице. */
 @Serializable
@@ -122,18 +129,24 @@ enum class DnsHealth { Unknown, Works, Broken }
  */
 fun dnsOf(line: LineObservation): DnsHealth {
     val all = line.russia + line.abroad
-    val failed = all.count { s ->
-        when (val h = s.handshake) {
-            is Handshake.Unknown -> h.what == DNS_FAILURE
-            is Handshake.Ok, is Handshake.Silent, is Handshake.Reset, Handshake.Mirage, Handshake.Refused, Handshake.NoRoute -> false
-        }
-    }
-    val linked = all.any { it.handshake is Handshake.Ok }
-    return when {
-        failed == 0 -> DnsHealth.Works
-        failed >= QUORUM && linked -> DnsHealth.Broken
-        else -> DnsHealth.Unknown
-    }
+    val fresh = all.filter { it.lookup == Lookup.Fresh }
+    // Свежие имена есть — голосуют они, и сломан — только если не резолвится ни одно (оба сервиса: один лёг — это
+    // сервис, а не DNS): кеш телефона может отвечать за обычные имена, когда DNS сети уже сломан. Лента до свежих
+    // имён — голосуют обычные, с кворумом.
+    val voters = fresh.ifEmpty { all }
+    val needed = maxOf(QUORUM, fresh.size)
+    return verdictOf(failed = voters.count { notResolved(it.handshake) }, needed, linked = all.any { it.handshake is Handshake.Ok })
+}
+
+private fun verdictOf(failed: Int, needed: Int, linked: Boolean): DnsHealth = when {
+    failed == 0 -> DnsHealth.Works
+    failed >= needed && linked -> DnsHealth.Broken
+    else -> DnsHealth.Unknown
+}
+
+private fun notResolved(h: Handshake): Boolean = when (h) {
+    is Handshake.Unknown -> h.what == DNS_FAILURE
+    is Handshake.Ok, is Handshake.Silent, is Handshake.Reset, Handshake.Mirage, Handshake.Refused, Handshake.NoRoute -> false
 }
 
 /** DNS сети по последнему раунду диагноза; раундов нет — не знаем. */

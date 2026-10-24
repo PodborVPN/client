@@ -57,7 +57,9 @@ class LineProbeTest : FunSpec({
         handshakeOf(c.stage, c.error, 1_500) shouldBe c.expected
     }
 
-    fun probe(delayMs: Long = 0) = LineProbeImpl(shaker = { ref -> delay(delayMs); Handshake.Ok(connectMs = ref.label.length.toLong()) })
+    // Постоянные эталоны; свежие (случайный поддомен) — свой тест, FreshRefsTest.
+    fun probe(delayMs: Long = 0) =
+        LineProbeImpl(shaker = { ref -> delay(delayMs); Handshake.Ok(connectMs = ref.label.length.toLong()) }, fresh = { emptyList() })
 
     test("все эталоны параллельно: раунд ≤ задержки одного + 100 мс") {
         val started = System.currentTimeMillis()
