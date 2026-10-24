@@ -115,19 +115,19 @@ fun NetworkScreen(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp),
+            .padding(horizontal = Space.screen)
+            .padding(top = Space.m),
     ) {
         // Высота строки одна с чипом и без: появившись, чип не сдвигает страницу.
-        TierWithTraffic("СЕТЬ", traffic, Modifier.height(40.dp)) {
+        TierWithTraffic("СЕТЬ", traffic, Modifier.height(Space.control)) {
             if (update == null) {
-                Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall)
+                Text("v$version", color = Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             } else {
                 AssistChip(
                     onClick = { onUpdate(update.url) },
-                    label = { Text("обновить до ${update.version}", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("обновить до ${update.version}", style = MaterialTheme.typography.labelMedium, maxLines = 1) },
                     leadingIcon = { Icon(painterResource(R.drawable.ic_download), contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = Corner,
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = PodborColors.Accent,
                         labelColor = PodborColors.Background,
@@ -148,31 +148,21 @@ fun NetworkScreen(
 @Composable
 private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false, color: Color = Muted, action: (@Composable () -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().height(40.dp).alpha(if (dim) 0.4f else 1f),
+        Modifier.fillMaxWidth().height(Space.control).alpha(if (dim) DIM else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(12.dp))
+        Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(Space.icon))
+        Spacer(Modifier.width(Space.m))
         Text(text, color = color, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         action?.invoke()
     }
-    HorizontalDivider(thickness = 1.dp, color = Rule)
+    HorizontalDivider(thickness = Space.hairline, color = Rule)
 }
 
-/** 🔧 в строке улики: круг 32 dp в строке 40 dp — попасть пальцем можно, строка не растёт. */
+/** 🔧 в строке улики — кнопкой-значком: касание 48dp выступает за строку 40dp, строка не растёт. */
 @Composable
 private fun Wrench(onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .border(1.dp, Rule, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "DNS сети" },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(painterResource(R.drawable.ic_wrench), contentDescription = null, tint = PodborColors.Accent, modifier = Modifier.size(18.dp))
-    }
+    IconSquareButton(R.drawable.ic_wrench, "DNS сети", onClick)
 }
 
 @Composable
@@ -183,12 +173,18 @@ private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
         is NetworkCard.Measured -> card.evidence
     }
     val color = colorOf(toneOf(card))
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(Space.control), verticalAlignment = Alignment.CenterVertically) {
         Dot(color)
-        Spacer(Modifier.width(12.dp))
-        Text(networkTitle(card).uppercase(), color = color, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.width(Space.m))
+        Text(
+            networkTitle(card).uppercase(),
+            color = color,
+            style = MaterialTheme.typography.titleMedium.copy(letterSpacing = CapsSpacing),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
-    HorizontalDivider(thickness = 1.dp, color = Rule)
+    HorizontalDivider(thickness = Space.hairline, color = Rule)
     // Строка оператора — только у сотовой и всегда, от замера до итога: есть она или нет, решает сеть ОС, а не
     // заголовок, иначе страница под сетью прыгает. Wi-Fi назван в заголовке. Вышка — только с разрешением геолокации.
     when (os) {
@@ -200,7 +196,8 @@ private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
     SideEffect { if (evidence != null) last.value = evidence }
     // DNS сети — в той же строке: сломан — словами янтарём и 🔧 «починить», починен — как обошли и 🔧 «вернуть».
     when (dns) {
-        DnsLine.Quiet -> IconRow(R.drawable.ic_globe, evidence ?: last.value ?: "", dim = evidence == null)
+        // Улики ещё не было — строка держит место словами о том, что проверяем, а не пустотой.
+        DnsLine.Quiet -> IconRow(R.drawable.ic_globe, evidence ?: last.value ?: "проверяю, отвечает ли заграница…", dim = evidence == null)
         is DnsLine.Broken -> IconRow(R.drawable.ic_globe, dns.text, color = PodborColors.Accent) { Wrench(onDns) }
         is DnsLine.Fixed -> IconRow(R.drawable.ic_globe, dns.text) { Wrench(onDns) }
     }

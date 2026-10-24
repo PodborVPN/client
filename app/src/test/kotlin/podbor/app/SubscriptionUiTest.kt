@@ -3,6 +3,7 @@ package podbor.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
@@ -17,6 +18,7 @@ import podbor.screen.InputError
 import podbor.screen.Support
 import podbor.screen.SubscriptionNote
 import podbor.app.sub.wordsOf
+import podbor.app.ui.MENU_LABEL
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.SubscriptionScreen
@@ -46,7 +48,7 @@ class SubscriptionUiTest {
         RuntimeEnvironment.getApplication().getSystemService(ClipboardManager::class.java)
             .setPrimaryClip(ClipData.newPlainText("", "vless://сервер"))
         show()
-        compose.onNodeWithText("ДОБАВЬ ПОДПИСКУ").assertExists()
+        compose.onNodeWithText("добавь подписку").assertExists()
         compose.onNodeWithText("вставить из буфера").performClick()
         assertEquals(listOf("vless://сервер"), inputs)
     }
@@ -100,7 +102,7 @@ class SubscriptionUiTest {
             }
         }
         compose.onNodeWithText("Сменить подписку").assertDoesNotExist()
-        compose.onNodeWithText("⋮").performClick()
+        compose.onNodeWithContentDescription(MENU_LABEL).performClick()
         compose.onNodeWithText("Сменить подписку").performClick()
         assertEquals(listOf("change"), calls)
     }
@@ -122,7 +124,7 @@ class SubscriptionUiTest {
         }
         compose.onNodeWithText("Оплата до пятницы").assertExists()
         compose.onNodeWithText("Мой VPN").assertDoesNotExist()
-        compose.onNodeWithText("⋮").performClick()
+        compose.onNodeWithContentDescription(MENU_LABEL).performClick()
         compose.onNodeWithText("Мой VPN").assertExists()
         compose.onNodeWithText("обновлена 2 ч назад").assertExists()
         compose.onNodeWithText("оплачена до конца года").assertExists()
@@ -140,7 +142,7 @@ class SubscriptionUiTest {
                 )
             }
         }
-        compose.onNodeWithText("⋮").performClick()
+        compose.onNodeWithContentDescription(MENU_LABEL).performClick()
         compose.onNodeWithText("добавлена текстом — сама не обновляется").assertExists()
         compose.onNodeWithText("Поддержка провайдера").assertDoesNotExist()
     }

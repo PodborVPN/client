@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Знак Podbor на большой кнопке: «П»-рупор с лучами, как в иконке и плитке; цвет задаёт экран (tint), яркость лучей —
+     прозрачностью. Центр — по массе рисунка (как у иконки), а не по рамке: иначе «П» съезжает влево от лучей. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="80"
+    android:viewportHeight="80">
+    <group android:translateX="-8.9" android:translateY="-19.1">
+        <path android:fillColor="#FFFFFF" android:pathData="M56,48 L83,27 L89,37 Z" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.75" android:pathData="M57,54 L89,48 L89,58 Z" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.55" android:pathData="M55,42 L72,19 L80,23 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M24,50 H56 V57 H24 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M24,84 V60 H56 V84 H48 V67 H32 V84 Z" />
+    </group>
+</vector>

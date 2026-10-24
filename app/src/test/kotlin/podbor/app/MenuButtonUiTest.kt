@@ -2,7 +2,7 @@ package podbor.app
 
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,13 +12,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import podbor.app.ui.MENU_LABEL
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
 import podbor.screen.Link
 
-/** Кнопка «⋮» — кнопка, а не значок: в неё попадаешь пальцем (не меньше 40 dp), и она открывает меню. */
+/** Кнопка «⋮» — кнопка, а не значок: касание не меньше 48 dp, и она открывает меню. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class MenuButtonUiTest {
@@ -36,9 +37,9 @@ class MenuButtonUiTest {
                 )
             }
         }
-        val button = compose.onNode(hasClickAction() and hasText("⋮"), useUnmergedTree = false)
+        val button = compose.onNode(hasClickAction() and hasContentDescription(MENU_LABEL), useUnmergedTree = false)
         val b = button.getBoundsInRoot()
-        assert(b.bottom - b.top >= 40.dp && b.right - b.left >= 40.dp) { "кнопка меню меньше 40 dp: $b" }
+        assert(b.bottom - b.top >= 48.dp && b.right - b.left >= 48.dp) { "касание кнопки меню меньше 48 dp: $b" }
         button.performClick()
         compose.onNodeWithText("Сменить подписку").assertExists()
     }

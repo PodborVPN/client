@@ -31,9 +31,6 @@ import podbor.core.transportWords
 /** Смысловой цвет: Ok — зелёный, Warn — янтарный, Fail — красный, Neutral — текст, Muted — серый. */
 enum class Tone { Ok, Warn, Fail, Neutral, Muted }
 
-/** Значок над словом кнопки: щит без знака, с галочкой, с крестиком. */
-enum class Shield { Plain, Check, Cross }
-
 /** Отметка сервиса в строке: проверяю, работает, не работает. */
 enum class Mark { Checking, Works, Dead }
 
@@ -58,6 +55,8 @@ data class ServiceRow(
     val pulse: String? = null,
     /** Мини-статус — вторая строка строки сервиса ([miniOf]); у строки связи с VPN — её первая заметка. */
     val mini: Note = firstNote(notes),
+    /** Сервис строки — по нему экран рисует его знак; у строки связи с VPN — пустой. */
+    val service: ServiceId = ServiceId(""),
 )
 
 private fun firstNote(notes: List<Note>): Note = when (val n = notes.firstOrNull()) {
@@ -82,12 +81,6 @@ fun toneOf(button: Button): Tone = when (button) {
     Button.Ready, Button.Searching -> Tone.Warn
     Button.Green -> Tone.Ok
     Button.Red -> Tone.Fail
-}
-
-fun shieldOf(button: Button): Shield = when (button) {
-    Button.Idle, Button.Ready, Button.Searching -> Shield.Plain
-    Button.Green -> Shield.Check
-    Button.Red -> Shield.Cross
 }
 
 private fun plain(name: String, vararg notes: Note) = ServiceRow("", null, name, null, notes.toList(), searching = false)
@@ -127,7 +120,7 @@ fun rowsOf(
             val from = origin.getOrElse(card.service) { ExitOrigin.Chosen }
             val pair = pulse.pairs.getOrElse(card.service) { PairPulse.Unseen }
             rowOf(card, services.find { it.id == card.service }, from, repeats)
-                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = miniOf(card.status, from, pair))
+                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = miniOf(card.status, from, pair), service = card.service)
         }
     }
 }

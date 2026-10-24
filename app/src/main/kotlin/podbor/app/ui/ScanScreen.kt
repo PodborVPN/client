@@ -65,7 +65,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextOverflow
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.Mark3
@@ -129,16 +130,13 @@ fun ScanScreen(board: ScanBoard?, onOk: () -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-            .padding(horizontal = 20.dp)
-            .padding(top = 16.dp, bottom = 12.dp),
+            .padding(horizontal = Space.screen)
+            .padding(vertical = Space.m),
     ) {
         Head(board)
         if (board == null) {
-            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = PodborColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(12.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("читаю подписку…", color = Muted, style = MaterialTheme.typography.bodyMedium)
-            }
+            // Полоса над строкой уже бежит — своей крутилки не нужно.
+            Text("читаю подписку…", color = Muted, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.weight(1f))
         } else {
             Summary(board)
@@ -153,15 +151,17 @@ fun ScanScreen(board: ScanBoard?, onOk: () -> Unit) {
 @Composable
 private fun Head(board: ScanBoard?) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-        Text(
-            "АНАЛИЗИРУЮ ПОДПИСКУ",
-            color = PodborColors.Accent,
-            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.06.em),
-            modifier = Modifier.weight(1f),
-        )
-        if (board != null) Text("${board.done} / ${board.total}", color = Muted, style = MaterialTheme.typography.labelSmall)
+        Caps("анализирую подписку", MaterialTheme.typography.titleMedium, PodborColors.Accent, Modifier.weight(1f))
+        if (board != null) {
+            Text(
+                "${board.done} / ${board.total}",
+                color = Muted,
+                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                maxLines = 1,
+            )
+        }
     }
-    val bar = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp).height(3.dp)
+    val bar = Modifier.fillMaxWidth().padding(top = Space.s, bottom = Space.m).height(Space.xs)
     if (board == null || board.total == 0) {
         LinearProgressIndicator(color = PodborColors.Accent, trackColor = Rule, modifier = bar)
     } else {
@@ -175,9 +175,9 @@ private fun Head(board: ScanBoard?) {
 @Composable
 private fun Summary(board: ScanBoard) {
     FlowRow(
-        Modifier.fillMaxWidth().padding(bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().padding(bottom = Space.m),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         Chip("", board.total, " " + plural(board.total, "сервер", "сервера", "серверов"), PodborColors.Accent, board.total)
         Chip("", board.ruEntries, " " + plural(board.ruEntries, "вход", "входа", "входов") + " в РФ", PodborColors.Accent, board.total)
@@ -197,8 +197,8 @@ private fun Chip(before: String, n: Int, after: String, accent: Color, cap: Int)
     }
     Box(
         Modifier
-            .border(1.dp, Rule, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .border(Space.hairline, Rule, Corner)
+            .padding(horizontal = Space.s, vertical = Space.xs),
     ) {
         Placeholders(listOf(text("8".repeat(cap.toString().length))), MaterialTheme.typography.labelSmall)
         Text(text(shown.toString()), color = PodborColors.Text, style = MaterialTheme.typography.labelSmall)
@@ -231,8 +231,8 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
         // поверх вердикта и «ОК» под лентой.
         modifier.fillMaxWidth().clipToBounds(),
         state = list,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+        contentPadding = PaddingValues(bottom = Space.s),
     ) {
         items(shown, key = { it.key }) { card ->
             Box(Modifier.animateItem(fadeInSpec = tween(450), placementSpec = tween(450), fadeOutSpec = tween(300))) { Card(card) }
@@ -242,30 +242,26 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
 
 @Composable
 private fun Card(card: ServerCard) {
-    val edge by animateColorAsState(if (card.live) PodborColors.Accent.copy(alpha = 0.4f) else Rule, tween(400), label = "рамка")
+    val edge by animateColorAsState(if (card.live) PodborColors.Accent.copy(alpha = DIM) else Rule, tween(400), label = "рамка")
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = Corner,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, edge),
+        border = BorderStroke(Space.hairline, edge),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(Modifier.padding(Space.m)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AnimatedContent(routeOf(card), Modifier.weight(1f), transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) using null }, label = "маршрут") {
-                    Text(it, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(it, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(
-                    transportWords(card.transport).uppercase(),
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.08.em),
-                )
+                Caps(transportWords(card.transport), MaterialTheme.typography.labelSmall, Muted)
             }
             val sni = if (card.sniWhite) " · SNI белый" else ""
             when (card.whiteHint) {
                 WhiteHint.Likely -> Line("белые списки: вероятно$sni", PodborColors.Accent)
                 WhiteHint.Unlikely -> Line("белые списки: нет$sni", Muted)
             }
-            Row(Modifier.padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                 card.services.forEachIndexed { i, (label, mark) ->
                     if (i > 0) Text(" · ", color = Muted, style = MaterialTheme.typography.bodyMedium)
                     // «…», «✓» и «✗» разной ширины: место — под самую широкую, иначе соседняя отметка ездит.
@@ -289,15 +285,15 @@ private fun colorOf(m: Mark3): Color = when (m) {
 
 @Composable
 private fun Line(text: String, color: Color) {
-    Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 5.dp))
+    Text(text, color = color, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xs))
 }
 
 /** Итог по сценариям — словами ядра; появляется, когда ядро его дало. */
 @Composable
 private fun Verdict(lines: List<String>) {
     AnimatedVisibility(visible = lines.isNotEmpty()) {
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            lines.forEach { Text(it, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
+        Column(Modifier.fillMaxWidth().padding(top = Space.s)) {
+            lines.forEach { Text(it, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = Space.xs)) }
         }
     }
 }
@@ -322,17 +318,14 @@ private fun Ok(board: ScanBoard?, onOk: () -> Unit) {
     val fill by animateColorAsState(if (finished) PodborColors.Accent else Color.Transparent, tween(400), label = "ок")
     Surface(
         onClick = { if (finished) onOk() else asking = true },
-        shape = RoundedCornerShape(12.dp),
+        shape = Corner,
         color = fill,
-        border = BorderStroke(1.dp, if (finished) PodborColors.Accent else Rule),
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        border = BorderStroke(Space.hairline, if (finished) PodborColors.Accent else Rule),
+        modifier = Modifier.fillMaxWidth().padding(top = Space.m),
     ) {
-        Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-            Text(
-                if (finished) "ОК" else "ОК, дальше",
-                color = if (finished) PodborColors.Background else Muted,
-                style = MaterialTheme.typography.labelLarge,
-            )
+        // Главная кнопка, пока анализ не кончился, — тихая: заливка приходит с концом анализа.
+        Box(Modifier.fillMaxWidth().heightIn(min = Space.touch), contentAlignment = Alignment.Center) {
+            Caps(if (finished) "ОК" else "ОК, дальше", MaterialTheme.typography.labelLarge, if (finished) PodborColors.Background else Muted)
         }
     }
     if (asking) SkipSheet(board, onStay = { asking = false }, onSkip = { asking = false; onOk() })
@@ -344,47 +337,11 @@ private fun Ok(board: ScanBoard?, onOk: () -> Unit) {
 private fun SkipSheet(board: ScanBoard?, onStay: () -> Unit, onSkip: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val close = rememberSheetAnswer(state)
-    ModalBottomSheet(
-        onDismissRequest = { close(onStay) },
-        sheetState = state,
-        containerColor = PodborColors.Surface,
-        scrimColor = Color.Black.copy(alpha = 0.6f),
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Rule) },
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
-        ) {
-            Text("Пропустить анализ?", color = PodborColors.Text, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(skipProgress(board), color = PodborColors.Accent, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(SKIP_WARNING, color = Muted, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(24.dp))
-            Surface(
-                onClick = { close(onStay) },
-                shape = RoundedCornerShape(12.dp),
-                color = PodborColors.Accent,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                    Text("Досмотреть", color = PodborColors.Background, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Surface(
-                onClick = { close(onSkip) },
-                shape = RoundedCornerShape(12.dp),
-                color = Color.Transparent,
-                border = BorderStroke(1.dp, Rule),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                    Text("Пропустить", color = Muted, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
+    PodborSheet(state, onDismiss = { close(onStay) }, title = "Пропустить анализ?") {
+        Text(skipProgress(board), color = PodborColors.Accent, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(Space.xs))
+        Text(SKIP_WARNING, color = Muted, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(Space.xl))
+        Answers("Досмотреть", "Пропустить", onYes = { close(onStay) }, onNo = { close(onSkip) })
     }
 }

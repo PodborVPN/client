@@ -63,7 +63,7 @@ class ScanUiTest {
     @Test
     fun threeServicesThreeChipsThreeMarks() {
         show(board(finished = false))
-        compose.onNodeWithText("АНАЛИЗИРУЮ ПОДПИСКУ").assertExists()
+        compose.onNodeWithText("анализирую подписку").assertExists()
         compose.onNodeWithText("7 / 35").assertExists()
         compose.onNodeWithText("35 серверов").assertExists()
         compose.onNodeWithText("4 входа в РФ").assertExists()
@@ -127,7 +127,7 @@ class ScanUiTest {
     @Test
     fun noBoardYetSaysWhatIsGoingOn() {
         show(null)
-        compose.onNodeWithText("АНАЛИЗИРУЮ ПОДПИСКУ").assertExists()
+        compose.onNodeWithText("анализирую подписку").assertExists()
         compose.onNodeWithText("читаю подписку…").assertExists()
         compose.onNodeWithText("ОК, дальше").assertExists()
     }

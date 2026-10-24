@@ -51,14 +51,12 @@ class LookTest : FunSpec({
         toneOf(measured(Scenario.Unclear)) shouldBe Tone.Neutral
     }
 
-    test("кнопка: цвет и щит по состоянию") {
-        Button.entries.map { toneOf(it) to shieldOf(it) } shouldBe listOf(
-            Tone.Muted to Shield.Plain, // Idle
-            Tone.Warn to Shield.Plain, // Ready
-            Tone.Warn to Shield.Plain, // Searching
-            Tone.Ok to Shield.Check, // Green
-            Tone.Fail to Shield.Cross, // Red
-        )
+    test("кнопка: цвет по состоянию — итог виден цветом знака, а не своим значком") {
+        Button.entries.map { toneOf(it) } shouldBe listOf(Tone.Muted, Tone.Warn, Tone.Warn, Tone.Ok, Tone.Fail)
+    }
+
+    test("строка сервиса знает свой сервис — экран рисует его знак") {
+        rowsOf(board(Button.Ready, CardStatus.Searching), Link.Up, emptyMap()).single { it.label == "TG" }.service shouldBe Telegram.id
     }
 
     test("строка на сервис по ServiceId: IG не нашёл — ✗ и «нет рабочего сервера»; TG нашёл — ✓, сервер, протокол") {
@@ -73,23 +71,27 @@ class LookTest : FunSpec({
             listOf(Note("Белые списки.", Tone.Neutral), Note("Проверил 3 сервера:", Tone.Muted)),
             searching = false,
             mini = Note("Белые списки.", Tone.Fail),
+            service = Instagram.id,
         )
         rows[1] shouldBe ServiceRow(
             "TG", Mark.Works, "🇳🇱 Netherlands-60s(xHTTP)", "XHTTP", listOf(Note("проверено 2 из 92 серверов", Tone.Ok)), searching = false,
             mini = Note("найден · проверено 2 из 92 серверов", Tone.Ok),
+            service = Telegram.id,
         )
     }
 
     test("строка: работающий выход — ✓, имя, протокол; мёртвый — ✗ и вина красным; проверка — «проверяю <сервис>…»") {
         tg(CardStatus.Works(nl)) shouldBe
-            ServiceRow("TG", Mark.Works, "🇳🇱 NL-7", "gRPC", emptyList(), searching = false, mini = Note("работает", Tone.Ok))
+            ServiceRow("TG", Mark.Works, "🇳🇱 NL-7", "gRPC", emptyList(), searching = false, mini = Note("работает", Tone.Ok), service = Telegram.id)
         tg(CardStatus.Dead(nl, Blame.Server)) shouldBe ServiceRow(
             "TG", Mark.Dead, "🇳🇱 NL-7", "gRPC", listOf(Note("сеть ни при чём — проблема у сервера", Tone.Fail)), searching = false,
             mini = Note("сервер не отвечает", Tone.Fail),
+            service = Telegram.id,
         )
         tg(CardStatus.Checking(nl)) shouldBe ServiceRow(
             "TG", Mark.Checking, "🇳🇱 NL-7", "gRPC", listOf(Note("проверяю Телегу…", Tone.Warn)), searching = false,
             mini = Note("проверяю", Tone.Warn),
+            service = Telegram.id,
         )
         rowsOf(board(Button.Ready, CardStatus.Unknown, CardStatus.Checking(nl)), Link.Up, emptyMap())
             .single { it.label == "IG" }.notes shouldBe listOf(Note("проверяю Инсту…", Tone.Warn))
@@ -99,17 +101,19 @@ class LookTest : FunSpec({
         tg(CardStatus.Unknown) shouldBe ServiceRow(
             "TG", null, "выход не выбран", null, listOf(Note("Xray выбирает сам — нажми «Подобрать»", Tone.Muted)), searching = false,
             mini = Note("Xray выбирает сам", Tone.Muted),
+            service = Telegram.id,
         )
         tg(CardStatus.Unlisted(ServerId("s042"))) shouldBe ServiceRow(
             "TG", null, "s042", null, listOf(Note("такого сервера нет в подписке, проверить нечем", Tone.Muted)), searching = false,
             mini = Note("нет в подписке", Tone.Muted),
+            service = Telegram.id,
         )
     }
 
     test("строка: поиск — полоска только во время поиска, у каждого сервиса своя") {
         val rows = rowsOf(board(Button.Searching, CardStatus.Searching, CardStatus.Found(nl, 0, "проверено 1 из 9")), Link.Up, emptyMap())
         rows.single { it.label == "TG" } shouldBe
-            ServiceRow("TG", null, "подбираю выход…", null, emptyList(), searching = true, mini = Note("подбираю…", Tone.Warn))
+            ServiceRow("TG", null, "подбираю выход…", null, emptyList(), searching = true, mini = Note("подбираю…", Tone.Warn), service = Telegram.id)
         rows.single { it.label == "IG" }.searching shouldBe false
     }
 
@@ -138,6 +142,7 @@ class LookTest : FunSpec({
         tg(CardStatus.Checking(nl), origin = recalledTg) shouldBe ServiceRow(
             "TG", Mark.Checking, "🇳🇱 NL-7", "gRPC", listOf(Note("последний рабочий: 🇳🇱 NL-7 — проверяю", Tone.Warn)), searching = false,
             mini = Note("последний рабочий — проверяю", Tone.Warn),
+            service = Telegram.id,
         )
         // Восстановлен только выход Телеги: Инста проверяет общий — своими словами.
         rowsOf(board(Button.Ready, CardStatus.Checking(nl), CardStatus.Checking(nl)), Link.Up, recalledTg)
@@ -170,7 +175,7 @@ class LookTest : FunSpec({
     test("карточка сервиса без описания — строка с её меткой, без слов сервиса, не падение") {
         val stray = Board(NetworkCard.Measuring(mts), Button.Ready, listOf(ServiceCard(ServiceId("yt"), "YT", CardStatus.Checking(nl))))
         rowsOf(stray, Link.Up, emptyMap()) shouldBe
-            listOf(ServiceRow("YT", Mark.Checking, "🇳🇱 NL-7", "gRPC", listOf(Note("проверяю…", Tone.Warn)), searching = false, mini = Note("проверяю", Tone.Warn)))
+            listOf(ServiceRow("YT", Mark.Checking, "🇳🇱 NL-7", "gRPC", listOf(Note("проверяю…", Tone.Warn)), searching = false, mini = Note("проверяю", Tone.Warn), service = ServiceId("yt")))
     }
 
     test("отказ в VPN: вероятная причина — постоянный VPN другого приложения") {

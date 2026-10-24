@@ -63,7 +63,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.Dp
 import podbor.app.R
 import podbor.screen.Announce
 import podbor.screen.SubscriptionNote
@@ -85,10 +85,6 @@ import podbor.screen.rowsOf
 import podbor.screen.vpnTraffic
 import podbor.screen.cardTime
 import podbor.screen.ExitOrigin
-
-internal val Muted = Color(0xFF6F7A72)
-internal val Rule = Color(0xFF222622)
-internal val Idle = Color(0xFF3A403C)
 
 internal fun colorOf(t: Tone): Color = when (t) {
     Tone.Ok -> PodborColors.Ok
@@ -135,7 +131,7 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = Space.screen, vertical = Space.m),
         ) {
             PressButton(faceOf(board, link), onPress, onOff, onOn)
             TierWithTraffic("ТЕКУЩИЙ VPN", vpnTraffic(pulse))
@@ -173,13 +169,7 @@ private fun announceOf(note: SubscriptionNote?): Announce = when (note) {
  */
 @Composable
 private fun StuckSupport(onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Rule),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Accent),
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-    ) { Text("Написать в поддержку провайдера", style = MaterialTheme.typography.labelLarge) }
+    QuietButton("Написать в поддержку провайдера", onClick, Modifier.fillMaxWidth().padding(top = Space.m), color = PodborColors.Accent)
 }
 
 /** Объявление провайдера (`announce`): серым под карточкой — его слова, не наши; длинное — две строки и многоточие. */
@@ -192,7 +182,7 @@ private fun AnnounceLine(text: String) {
         textAlign = TextAlign.Center,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = Space.m),
     )
 }
 
@@ -203,20 +193,18 @@ private fun AnnounceLine(text: String) {
 @Composable
 private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, onChangeSubscription: () -> Unit, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
-    Box(modifier.padding(end = 12.dp)) {
-        // Как тихие кнопки нижней линии: контур, цветной — сам знак; круг 40 dp — попасть пальцем легко.
-        OutlinedButton(
-            onClick = { open = true },
-            shape = CircleShape,
-            border = BorderStroke(1.dp, Rule),
-            contentPadding = PaddingValues(0.dp),
-            modifier = Modifier.size(40.dp),
+    // Контур квадрата — по отступу экрана: касание 48dp выступает за него на 4dp с каждой стороны.
+    Box(modifier.padding(end = Space.screen - Space.xs)) {
+        IconSquareButton(R.drawable.ic_more, MENU_LABEL, onClick = { open = true })
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = Corner,
+            containerColor = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(Space.hairline, Rule),
         ) {
-            Text("⋮", color = PodborColors.Accent, style = MaterialTheme.typography.titleLarge)
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = MaterialTheme.colorScheme.surface) {
             subscription?.takeIf { it.title != null || it.lines.isNotEmpty() }?.let { note ->
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Column(Modifier.padding(horizontal = Space.m, vertical = Space.s)) {
                     note.title?.let { Text(it, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) }
                     note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
                 }
@@ -242,6 +230,9 @@ private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, o
     }
 }
 
+/** Подпись кнопки «⋮» для озвучки и UI-тестов. */
+const val MENU_LABEL = "Меню"
+
 /** Тег кнопки «поделиться Лентой» для UI-тестов. */
 const val SHARE_TAG = "share"
 
@@ -252,14 +243,14 @@ const val SHARE_TAG = "share"
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ShareLink(note: String?, onShare: () -> Unit, onDonate: (() -> Unit)?) {
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth().padding(top = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
         // Узкий экран или крупный шрифт — вторая кнопка уходит на новую строку, а не обрезается.
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(Space.s, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            Quiet("поделиться Лентой", R.drawable.ic_bug_report, PodborColors.Accent, onShare, Modifier.testTag(SHARE_TAG))
-            onDonate?.let { Quiet("Поддержать", R.drawable.ic_favorite, PodborColors.Heart, it) }
+            QuietButton("поделиться Лентой", onShare, Modifier.testTag(SHARE_TAG), R.drawable.ic_bug_report, PodborColors.Accent)
+            onDonate?.let { QuietButton("Поддержать", it, icon = R.drawable.ic_favorite, tint = PodborColors.Heart) }
         }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
@@ -268,32 +259,14 @@ private fun ShareLink(note: String?, onShare: () -> Unit, onDonate: (() -> Unit)
     }
 }
 
-/** Отступы тихой кнопки — уже стандартных: две кнопки в строку на обычном телефоне. */
-private val QUIET_PADDING = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-
-/** Тихая кнопка нижней линии: контур, слова — текстом; цветной только значок ([tint]) — по нему и узнают кнопку. */
-@Composable
-private fun Quiet(text: String, @DrawableRes icon: Int, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(
-        onClick = onClick,
-        border = BorderStroke(1.dp, Rule),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Text),
-        contentPadding = QUIET_PADDING,
-        modifier = modifier,
-    ) {
-        Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(ButtonDefaults.IconSize))
-        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-        Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-    }
-}
-
 @Composable
 internal fun Tier(label: String) {
     Text(
         label,
         color = Muted,
-        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.14.em),
-        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = TierSpacing),
+        maxLines = 1,
+        modifier = Modifier.padding(top = Space.m, bottom = Space.s),
     )
 }
 
@@ -306,7 +279,7 @@ internal fun TierWithTraffic(label: String, traffic: String?, modifier: Modifier
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Tier(label)
         if (traffic != null) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(Space.m))
             Text(
                 traffic,
                 color = Muted,
@@ -323,9 +296,19 @@ internal fun TierWithTraffic(label: String, traffic: String?, modifier: Modifier
 }
 
 @Composable
-internal fun Dot(color: Color, size: Int = 8) {
-    Box(Modifier.size(size.dp).background(color, CircleShape))
+internal fun Dot(color: Color, size: Dp = Space.dot) {
+    Box(Modifier.size(size).background(color, CircleShape))
 }
+
+/** Ширина колонки знака сервиса в строке и времени в истории. */
+private val SERVICE_COLUMN = 44.dp
+
+/** Протокол в строке не шире — имени сервера нужнее место. */
+private val PROTOCOL_MAX = 96.dp
+
+/** Точка — на середине первой строки текста рядом, время истории — на его базовой линии. */
+private val DOT_TOP = 6.dp
+private val TIME_TOP = 2.dp
 
 /**
  * Карточка текущего VPN: строка на сервис (или одна строка связи с VPN), разделены линией. Строка — всегда две
@@ -337,14 +320,14 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit, history: suspen
     // Открытая шторка — по метке сервиса: строки обновляются, шторка показывает живую.
     var open by remember { mutableStateOf("") }
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = Corner,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, Rule),
+        border = BorderStroke(Space.hairline, Rule),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
             rows.forEachIndexed { i, row ->
-                if (i > 0) HorizontalDivider(thickness = 1.dp, color = Rule)
+                if (i > 0) HorizontalDivider(thickness = Space.hairline, color = Rule)
                 ServiceLine(row, onTap = { open = row.label })
             }
         }
@@ -354,18 +337,10 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit, history: suspen
         else -> ServiceSheet(row, history, onDismiss = { open = "" })
     }
     if (rows.any { it.retry }) {
-        // Акцентом, а не серым, как «поделиться Лентой»: сейчас это единственное, что человек может сделать.
-        Text(
-            "повторить",
-            color = PodborColors.Accent,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier
-                .clickable(role = Role.Button, onClick = onRetry)
-                .padding(top = 6.dp)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        )
+        // Главной кнопкой: сейчас это единственное, что человек может сделать.
+        PrimaryButton("повторить", onRetry, Modifier.fillMaxWidth().padding(top = Space.m))
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Space.l))
 }
 
 /** Сколько событий истории в шторке: без прокрутки — столько, сколько влезает на телефоне. */
@@ -383,47 +358,46 @@ private val CLOCK = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
 private fun ServiceSheet(row: ServiceRow, history: suspend (String) -> List<HistoryEvent>, onDismiss: () -> Unit) {
     var events by remember(row.label) { mutableStateOf(emptyList<HistoryEvent>()) }
     LaunchedEffect(row.label) { events = history(row.label).take(HISTORY_SHOWN) }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = PodborColors.Surface,
-        scrimColor = Color.Black.copy(alpha = 0.6f),
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Rule) },
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+    PodborSheet(rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismiss, title = row.label) {
+        Text(
+            listOfNotNull(row.name, row.protocol).joinToString(" · "),
+            color = PodborColors.Text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(Space.m))
+        Text(row.mini.text, color = colorOf(row.mini.tone), style = MaterialTheme.typography.bodyMedium)
+        // Величины пары — если добавляют к мини-статусу («сейчас не пользуется» там уже сказано).
+        row.pulse?.takeUnless { it in row.mini.text }?.let {
+            Text(it, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = Space.xs))
+        }
+        // Заметки — кроме уже сказанной мини-статусом.
+        row.notes.filterNot { it.text in row.mini.text }.forEach { n ->
+            Row(Modifier.fillMaxWidth().padding(top = Space.m), verticalAlignment = Alignment.Top) {
+                Box(Modifier.padding(top = DOT_TOP)) { Dot(colorOf(n.tone)) }
+                Spacer(Modifier.width(Space.m))
+                Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (events.isNotEmpty()) {
             Text(
-                listOfNotNull(row.label, row.name, row.protocol).joinToString(" · "),
-                color = PodborColors.Text,
-                style = MaterialTheme.typography.titleMedium,
+                "ИСТОРИЯ",
+                color = Muted,
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = TierSpacing),
+                modifier = Modifier.padding(top = Space.xl, bottom = Space.xs),
             )
-            Spacer(Modifier.height(12.dp))
-            Text(row.mini.text, color = colorOf(row.mini.tone), style = MaterialTheme.typography.bodyMedium)
-            // Величины пары — если добавляют к мини-статусу («сейчас не пользуется» там уже сказано).
-            row.pulse?.takeUnless { it in row.mini.text }?.let {
-                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = 4.dp))
-            }
-            // Заметки — кроме уже сказанной мини-статусом.
-            row.notes.filterNot { it.text in row.mini.text }.forEach { n ->
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
-                    Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(n.tone)) }
-                    Spacer(Modifier.width(10.dp))
-                    Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            if (events.isNotEmpty()) {
-                Text("ИСТОРИЯ", color = Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
-                events.forEach { e ->
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Top) {
-                        Text(
-                            CLOCK.format(java.time.Instant.ofEpochMilli(e.atMs).atZone(java.time.ZoneId.systemDefault())),
-                            color = Muted,
-                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-                            modifier = Modifier.width(44.dp).padding(top = 2.dp),
-                        )
-                        Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(toneOf(e.mood))) }
-                        Spacer(Modifier.width(10.dp))
-                        Text(e.text, color = PodborColors.Text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
+            events.forEach { e ->
+                Row(Modifier.fillMaxWidth().padding(top = Space.s), verticalAlignment = Alignment.Top) {
+                    Text(
+                        CLOCK.format(java.time.Instant.ofEpochMilli(e.atMs).atZone(java.time.ZoneId.systemDefault())),
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        modifier = Modifier.width(SERVICE_COLUMN).padding(top = TIME_TOP),
+                    )
+                    Box(Modifier.padding(top = DOT_TOP)) { Dot(colorOf(toneOf(e.mood))) }
+                    Spacer(Modifier.width(Space.m))
+                    Text(e.text, color = PodborColors.Text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -453,19 +427,27 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
             .then(if (tappable) Modifier.clickable(role = Role.Button, onClick = onTap) else Modifier),
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 14.dp).height(IntrinsicSize.Min),
+            Modifier.padding(horizontal = Space.l, vertical = Space.m).height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (tappable) {
-                val (sign, color) = when (row.mark) {
-                    Mark.Checking -> "…" to PodborColors.Accent
-                    Mark.Works -> "✓" to PodborColors.Ok
-                    Mark.Dead -> "✗" to PodborColors.Fail
-                    null -> "–" to Muted
+                // Состояние — цветом точки, сервис — его знаком одним цветом (нет знака — меткой словом).
+                val color = when (row.mark) {
+                    Mark.Checking -> PodborColors.Accent
+                    Mark.Works -> PodborColors.Ok
+                    Mark.Dead -> PodborColors.Fail
+                    null -> Idle
                 }
-                // Под меткой — секундомер подбора этого сервиса (с десятыми); подбора не было — пустая строка той же высоты.
-                Column(Modifier.widthIn(min = 44.dp)) {
-                    Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                // Под знаком — секундомер подбора этого сервиса (с десятыми); подбора не было — пустая строка той же высоты.
+                Column(Modifier.widthIn(min = SERVICE_COLUMN)) {
+                    Row(Modifier.height(Space.icon + Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                        Dot(color)
+                        Spacer(Modifier.width(Space.s))
+                        when (val glyph = glyphOf(row.service)) {
+                            null -> Text(row.label, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                            else -> Icon(painterResource(glyph), contentDescription = row.label, tint = PodborColors.Text, modifier = Modifier.size(Space.icon))
+                        }
+                    }
                     Text(
                         elapsedOf(row.stopwatch)?.let(::cardTime).orEmpty(),
                         color = Muted,
@@ -473,7 +455,7 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
                         maxLines = 1,
                     )
                 }
-                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = Space.m))
             }
             Column(Modifier.weight(1f)) {
                 Text(row.name, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -486,7 +468,7 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
                 )
             }
             row.protocol?.let { p ->
-                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = Space.m))
                 Column {
                     Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                     Text(
@@ -495,11 +477,11 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 96.dp),
+                        modifier = Modifier.widthIn(max = PROTOCOL_MAX),
                     )
                 }
             }
-            if (tappable) Text("›", color = Muted, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+            if (tappable) Text("›", color = Muted, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = Space.s))
         }
         // Полоска — только во время поиска: после результата «1 из 92» читалась бы как 1 %. Лежит поверх нижнего отступа
         // строки, а не своей строкой: появляясь и уходя, не двигает то, что ниже.
@@ -507,7 +489,7 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
             LinearProgressIndicator(
                 color = PodborColors.Accent,
                 trackColor = Rule,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 5.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l).padding(bottom = Space.xs).height(Space.hairline * 3),
             )
         }
     }

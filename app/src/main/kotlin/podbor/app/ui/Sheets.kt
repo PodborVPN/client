@@ -66,43 +66,23 @@ internal fun ChoiceSheet(
 ) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val close = rememberSheetAnswer(state)
-    ModalBottomSheet(
-        onDismissRequest = { close(onNo) },
-        sheetState = state,
-        containerColor = PodborColors.Surface,
-        scrimColor = Color.Black.copy(alpha = 0.6f),
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Rule) },
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text(title, color = PodborColors.Text, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
-            body()
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = { close(onYes) },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PodborColors.Accent, contentColor = PodborColors.Background),
-                contentPadding = PaddingTall,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(yes, style = MaterialTheme.typography.labelLarge) }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { close(onNo) },
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Rule),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Muted),
-                contentPadding = PaddingTall,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(no, style = MaterialTheme.typography.labelLarge) }
-        }
+    PodborSheet(state, onDismiss = { close(onNo) }, title = title) {
+        body()
+        Spacer(Modifier.height(Space.l))
+        Answers(yes, no, onYes = { close(onYes) }, onNo = { close(onNo) })
     }
+}
+
+/** Ответы шторки: главная на всю ширину и под ней тихая. */
+@Composable
+internal fun Answers(yes: String, no: String, onYes: () -> Unit, onNo: () -> Unit) {
+    PrimaryButton(yes, onYes, Modifier.fillMaxWidth())
+    Spacer(Modifier.height(Space.s))
+    QuietButton(no, onNo, Modifier.fillMaxWidth(), color = Muted)
 }
 
 /** Абзац шторки. */
 @Composable
 internal fun Para(text: String, color: Color = PodborColors.Text) {
-    Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+    Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = Space.s))
 }
-
-/** Кнопки шторки — той же высоты, что «Досмотреть» / «Пропустить» у анализа. */
-private val PaddingTall = PaddingValues(horizontal = 24.dp, vertical = 14.dp)

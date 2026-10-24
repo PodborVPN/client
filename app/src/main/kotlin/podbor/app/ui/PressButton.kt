@@ -54,14 +54,11 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import podbor.app.R
 import podbor.core.Button
 import podbor.core.Stopwatch
 import podbor.screen.Face
-import podbor.screen.Shield
 import podbor.screen.toneOf
-import podbor.screen.shieldOf
 import podbor.screen.buttonTime
 
 /** Тег большой кнопки для UI-тестов. */
@@ -69,6 +66,12 @@ const val PRESS_TAG = "press"
 
 /** Радиус кнопки: за ним начинаются лепестки. */
 private val BUTTON_RADIUS = 80.dp
+
+/** Знак на кнопке. */
+private val SIGN = 48.dp
+
+/** Место под кнопку с лепестками и свечением. */
+private val PRESS_HEIGHT = 250.dp
 
 /** Радиус дуги лепестка — между кнопкой и внешним кольцом. */
 private val PETAL_RADIUS = 110.dp
@@ -122,11 +125,6 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
         Button.Idle -> Idle
         Button.Ready, Button.Searching, Button.Green, Button.Red -> colorOf(toneOf(button))
     }
-    val icon = when (shieldOf(button)) {
-        Shield.Plain -> R.drawable.ic_shield
-        Shield.Check -> R.drawable.ic_shield_check
-        Shield.Cross -> R.drawable.ic_shield_cross
-    }
     // Пульс поиска: свечение дышит, от основного кольца расходится волна.
     // Состояние анимации читается в фазе рисования (drawBehind), не в композиции: кадр пульса не перекомпонует экран.
     val pulse: State<Float>? = when (button) {
@@ -164,8 +162,8 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 20.dp)
-            .height(250.dp)
+            .padding(vertical = Space.l)
+            .height(PRESS_HEIGHT)
             .testTag(PRESS_TAG)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
@@ -260,8 +258,8 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
             Text(
                 "ВЫКЛ",
                 color = MaterialTheme.colorScheme.background,
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.08.em),
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 7.dp),
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = CapsSpacing),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = Space.s),
             )
         }
         Surface(
@@ -271,9 +269,10 @@ internal fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onO
             modifier = Modifier.size(BUTTON_RADIUS * 2).clip(CircleShape),
         ) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Icon(painterResource(icon), contentDescription = null, tint = color, modifier = Modifier.size(40.dp))
-                Spacer(Modifier.height(8.dp))
-                Text(label, color = color, style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 0.08.em))
+                // Знак Podbor — «П»-рупор, как в иконке; итог нажатия — цветом знака и слова.
+                Icon(painterResource(R.drawable.ic_podbor_sign), contentDescription = null, tint = color, modifier = Modifier.size(SIGN))
+                Spacer(Modifier.height(Space.s))
+                Text(label, color = color, style = MaterialTheme.typography.titleMedium.copy(letterSpacing = CapsSpacing))
                 // Цифры одной ширины: идущий секундомер не дёргает строку.
                 elapsed?.let {
                     Text(buttonTime(it), color = color, style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
