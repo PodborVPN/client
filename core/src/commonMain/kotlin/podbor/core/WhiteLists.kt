@@ -1,5 +1,10 @@
 package podbor.core
 
+import arrow.core.Option
+import arrow.core.raise.ensure
+import arrow.core.raise.ensureNotNull
+import arrow.core.raise.option
+
 /**
  * Списки белых IP (CIDR v4/v6) и SNI (домен = он и поддомены). Чистый разбор без java.net:
  * InetAddress может ходить в DNS. Строки-мусор пропускаются.
@@ -9,10 +14,7 @@ class WhiteLists private constructor(private val nets: List<Net>, private val do
     /** Сеть в 128 битах: IPv4 лежит как ::ffff:a.b.c.d, префикс сдвинут на 96. */
     private class Net(val hi: Long, val lo: Long, val prefix: Int)
 
-    fun hasIp(ip: String): Boolean {
-        val (hi, lo) = parseIp(ip.trim()) ?: return false
-        return nets.any { matches(it, hi, lo) }
-    }
+    fun hasIp(ip: String): Boolean = parseIp(ip.trim()).fold({ false }) { (hi, lo) -> nets.any { matches(it, hi, lo) } }
 
     /** host или любой его родитель в списке; регистр не важен. */
     fun hasSni(host: String): Boolean {
@@ -28,13 +30,13 @@ class WhiteLists private constructor(private val nets: List<Net>, private val do
 
     companion object {
         /**
-         * IP-литерал (v4 или v6) в 128 битах: IPv4 лежит как ::ffff:a.b.c.d. null — не IP. Чистый разбор, DNS не трогает.
+         * IP-литерал (v4 или v6) в 128 битах: IPv4 лежит как ::ffff:a.b.c.d. None — не IP. Чистый разбор, DNS не трогает.
          */
-        fun ipBits(s: String): Pair<Long, Long>? = parseIp(s.trim())
+        fun ipBits(s: String): Option<Pair<Long, Long>> = parseIp(s.trim())
 
         fun of(cidrs: List<String>, domains: List<String>): WhiteLists =
             WhiteLists(
-                cidrs.mapNotNull(::parseCidr),
+                cidrs.mapNotNull { parseCidr(it).getOrNull() },
                 domains.map { it.trim().trimEnd('.').lowercase() }.filter(String::isNotEmpty).toSet(),
             )
 
@@ -48,66 +50,62 @@ class WhiteLists private constructor(private val nets: List<Net>, private val do
         /** Оставить старшие bits (1..64) бит. */
         private fun maskHigh(v: Long, bits: Int): Long = if (bits >= 64) v else v and (-1L shl (64 - bits))
 
-        private fun parseCidr(line: String): Net? {
+        private fun parseCidr(line: String): Option<Net> = option {
             val s = line.trim()
             val slash = s.indexOf('/')
             val addr = if (slash < 0) s else s.substring(0, slash)
-            val (hi, lo) = parseIp(addr) ?: return null
+            val (hi, lo) = parseIp(addr).bind()
             val v4 = !addr.contains(':')
             val max = if (v4) 32 else 128
-            val p = if (slash < 0) max else s.substring(slash + 1).toIntOrNull() ?: return null
-            if (p !in 0..max) return null
-            return Net(hi, lo, if (v4) p + 96 else p)
+            val p = if (slash < 0) max else ensureNotNull(s.substring(slash + 1).toIntOrNull())
+            ensure(p in 0..max)
+            Net(hi, lo, if (v4) p + 96 else p)
         }
 
-        private fun parseIp(s: String): Pair<Long, Long>? =
-            if (s.contains(':')) parseV6(s) else parseV4(s)?.let { 0L to (0xFFFFL shl 32 or it) }
+        private fun parseIp(s: String): Option<Pair<Long, Long>> =
+            if (s.contains(':')) parseV6(s) else parseV4(s).map { 0L to (0xFFFFL shl 32 or it) }
 
-        private fun parseV4(s: String): Long? {
+        private fun parseV4(s: String): Option<Long> = option {
             val parts = s.split('.')
-            if (parts.size != 4) return null
-            var v = 0L
-            for (p in parts) {
-                if (p.isEmpty() || p.length > 3 || !p.all { it in '0'..'9' }) return null
+            ensure(parts.size == 4)
+            parts.fold(0L) { v, p ->
+                ensure(p.isNotEmpty() && p.length <= 3 && p.all { it in '0'..'9' })
                 val n = p.toInt()
-                if (n > 255) return null
-                v = v shl 8 or n.toLong()
+                ensure(n <= 255)
+                v shl 8 or n.toLong()
             }
-            return v
         }
 
-        private fun parseV6(s: String): Pair<Long, Long>? {
-            val halves = s.split("::")
-            if (halves.size > 2) return null
-            fun groups(part: String): List<Int>? {
-                if (part.isEmpty()) return emptyList()
-                val out = ArrayList<Int>()
-                val items = part.split(':')
-                for ((i, g) in items.withIndex()) {
-                    if (g.contains('.')) { // хвост вида a.b.c.d
-                        if (i != items.lastIndex) return null
-                        val v4 = parseV4(g) ?: return null
-                        out += (v4 shr 16).toInt(); out += (v4 and 0xFFFF).toInt()
-                    } else {
-                        if (g.isEmpty() || g.length > 4) return null
-                        out += g.toIntOrNull(16) ?: return null
-                    }
+        /** Группы половины v6 (по 16 бит); хвост вида a.b.c.d — две группы. */
+        private fun groups(part: String): Option<List<Int>> = option {
+            if (part.isEmpty()) return@option emptyList()
+            val items = part.split(':')
+            items.withIndex().flatMap { (i, g) ->
+                if (g.contains('.')) {
+                    ensure(i == items.lastIndex)
+                    val v4 = parseV4(g).bind()
+                    listOf((v4 shr 16).toInt(), (v4 and 0xFFFF).toInt())
+                } else {
+                    ensure(g.isNotEmpty() && g.length <= 4)
+                    listOf(ensureNotNull(g.toIntOrNull(16)))
                 }
-                return out
             }
-            val head = groups(halves[0]) ?: return null
+        }
+
+        private fun parseV6(s: String): Option<Pair<Long, Long>> = option {
+            val halves = s.split("::")
+            ensure(halves.size <= 2)
+            val head = groups(halves[0]).bind()
             val all: List<Int> = if (halves.size == 2) {
-                val tail = groups(halves[1]) ?: return null
+                val tail = groups(halves[1]).bind()
                 val zeros = 8 - head.size - tail.size
-                if (zeros < 1) return null
+                ensure(zeros >= 1)
                 head + List(zeros) { 0 } + tail
             } else head
-            if (all.size != 8) return null
-            var hi = 0L
-            var lo = 0L
-            for (i in 0 until 4) hi = hi shl 16 or all[i].toLong()
-            for (i in 4 until 8) lo = lo shl 16 or all[i].toLong()
-            return hi to lo
+            ensure(all.size == 8)
+            val hi = all.take(4).fold(0L) { v, g -> v shl 16 or g.toLong() }
+            val lo = all.drop(4).fold(0L) { v, g -> v shl 16 or g.toLong() }
+            hi to lo
         }
     }
 }

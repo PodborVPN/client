@@ -1,6 +1,7 @@
 package podbor.screen
 
 import podbor.core.Blame
+import podbor.core.Since
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.Relocation
@@ -257,8 +258,13 @@ fun pulseLine(p: PairPulse): String? = when (p) {
         if (p.downBps == 0L && p.upBps == 0L) {
             "сейчас не пользуется"
         } else {
-            listOfNotNull("↓ ${rateText(p.downBps)}", "↑ ${rateText(p.upBps)}", p.answeredAgoMs?.let(::answeredText)).joinToString(" · ")
+            (listOf("↓ ${rateText(p.downBps)}", "↑ ${rateText(p.upBps)}") + answeredWords(p.answered)).joinToString(" · ")
         }
+}
+
+private fun answeredWords(s: Since): List<String> = when (s) {
+    Since.Never -> emptyList()
+    is Since.Ago -> listOf(answeredText(s.ms))
 }
 
 /** Трафик сессии: ↓ первым. */

@@ -94,7 +94,7 @@ private const val QUORUM = 2
 fun roundOf(line: LineObservation): RoundKind {
     val ruOk = line.russia.map { it.handshake }.filterIsInstance<Handshake.Ok>()
     val farOk = line.abroad.count { it.handshake is Handshake.Ok }
-    val rtt = ruOk.map { it.connectMs }.sorted().getOrNull(ruOk.size / 2) ?: 0
+    val rtt = ruOk.map { it.connectMs }.sorted().getOrElse(ruOk.size / 2) { 0 }
     val floor = minOf(maxOf(SILENCE_RTT_FACTOR * rtt, SILENCE_FLOOR_MS), SILENCE_FLOOR_CAP_MS)
     fun closed(h: Handshake): Boolean = when (h) {
         is Handshake.Silent -> h.waitedMs >= floor

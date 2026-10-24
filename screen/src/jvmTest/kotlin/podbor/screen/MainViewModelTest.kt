@@ -16,6 +16,7 @@ import podbor.core.Board
 import podbor.core.Button
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.PairPulse
+import podbor.core.Since
 import podbor.core.PulseView
 import podbor.core.ServiceId
 import podbor.core.Tally
@@ -53,7 +54,7 @@ class MainViewModelTest : FunSpec({
             val port = FakePort()
             vm.attach(port)
             val watching = launch { vm.pulse.collect {} }
-            val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000)), Tally("wifi", Traffic(192_000, 32_200_000)), null)
+            val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, Since.Ago(2_000))), Tally("wifi", Traffic(192_000, 32_200_000)), null)
             port.pulse.value = seen
             runCurrent()
             vm.pulse.value shouldBe seen

@@ -127,7 +127,7 @@ class ServiceCardUiTest {
             NetworkCard.Measuring(OsNetwork.Wifi), Button.Green,
             listOf(ServiceCard(Telegram.id, "TG", CardStatus.Works(podbor.core.ExitRef("NL-7", podbor.core.Transport.Grpc)))),
         )
-        val pulse = podbor.core.PulseView(mapOf(Telegram.id to podbor.core.PairPulse.Seen(340_000, 12_000, 2_000)), null, null)
+        val pulse = podbor.core.PulseView(mapOf(Telegram.id to podbor.core.PairPulse.Seen(340_000, 12_000, podbor.core.Since.Ago(2_000))), null, null)
         compose.setContent {
             PodborTheme {
                 MainScreen(

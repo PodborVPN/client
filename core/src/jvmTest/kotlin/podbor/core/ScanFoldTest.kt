@@ -123,12 +123,12 @@ private fun referenceBoard(services: Set<Service>, letters: List<Letter>): ScanB
     }
     val finished = state is ScanState.Done
     val whiteLine = if (likelyWhite > 0) "Белые списки: вероятно ${serversCount(likelyWhite)}" else "Белые списки: в этой подписке нет подходящих серверов"
-    val verdict = when (diagnosis.scenario) {
-        Scenario.MobileWhitelist, Scenario.SuspectWhitelist ->
+    val verdict = when (diagnosis.scene) {
+        Scene.Chosen(Scenario.MobileWhitelist), Scene.Chosen(Scenario.SuspectWhitelist) ->
             listOf("сейчас белые списки — проверил только вероятно-белые; обычную сеть проверю, когда она вернётся") +
                 if (finished) listOf(whiteLine) else emptyList()
-        Scenario.Offline -> listOf("нет сети — проверю серверы, когда она появится")
-        Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear, null ->
+        Scene.Chosen(Scenario.Offline) -> listOf("нет сети — проверю серверы, когда она появится")
+        else ->
             if (finished) listOf("Обычная сеть: " + tallies.joinToString(" · ") { "${it.label} ✓ ${it.works}" }, whiteLine) else emptyList()
     }
     return ScanBoard(

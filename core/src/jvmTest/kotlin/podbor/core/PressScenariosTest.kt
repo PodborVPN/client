@@ -47,7 +47,7 @@ class PressScenariosTest : FunSpec({
         val servers = (1..12).map { server("s%03d".format(it), Entry.Foreign("NL")) } +
             listOf(server("s013", Entry.Ru), server("s014", Entry.Ru))
         val run = runPress(pressed(servers), FakeWorld(open, emptyMap(), lineAfter = 4 to whitelist))
-        explain(run.letters).diagnosis.scenario shouldBe Scenario.MobileWhitelist
+        explain(run.letters).diagnosis.scene shouldBe Scene.Chosen(Scenario.MobileWhitelist)
         run.probed.drop(9).shouldContainExactly(id(13), id(14))
     }
 
@@ -84,7 +84,7 @@ class PressScenariosTest : FunSpec({
         val servers = ru3 + foreign3
         val world = FakeWorld(open, emptyMap())
         runPress(pressed(servers, os = OsNetwork.Wifi), world).probed shouldBe runPress(pressed(servers), world).probed
-        explain(runPress(pressed(servers, os = OsNetwork.Wifi), FakeWorld(whitelist, emptyMap())).letters).diagnosis.scenario shouldBe
-            Scenario.MobileWhitelist
+        explain(runPress(pressed(servers, os = OsNetwork.Wifi), FakeWorld(whitelist, emptyMap())).letters).diagnosis.scene shouldBe
+            Scene.Chosen(Scenario.MobileWhitelist)
     }
 })

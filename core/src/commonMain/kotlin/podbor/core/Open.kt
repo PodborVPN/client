@@ -59,11 +59,7 @@ fun OpenState.settled(): Boolean = diagnosis is Diagnosis.Settled && when (opene
     Vpn.Off, is Vpn.Unlisted -> true
 }
 
-/** История букв после последнего Opened, свёрнутая машиной открытия; null — открытия в истории нет. */
-internal fun openStateOf(letters: List<Letter>): OpenState? =
-    (letters.lastOrNull { it is Letter.Opened } as? Letter.Opened)?.let { openStateFrom(letters, it) }
-
-/** Состояние открытия от уже найденного письма Opened — тотально: искать нечего, значит и null неоткуда. */
+/** Состояние открытия: буквы после письма Opened, свёрнутые машиной открытия. */
 internal fun openStateFrom(letters: List<Letter>, opened: Letter.Opened): OpenState =
     letters.drop(letters.lastIndexOf(opened) + 1).fold(openStart(opened).first) { s, letter -> openStep(s, letter).first }
 
@@ -72,8 +68,8 @@ private enum class Life { Checking, Works, Dead }
 
 /** Fits — сразу; неоднозначный провал ждёт повтора; второй провал или Unreachable — мёртв. */
 private fun lifeOf(answers: List<Verdict>): Life {
-    val last = answers.lastOrNull()?.kind() ?: return Life.Checking
-    return when (last) {
+    if (answers.isEmpty()) return Life.Checking
+    return when (answers.last().kind()) {
         VerdictKind.Fits -> Life.Works
         VerdictKind.Unreachable -> Life.Dead
         VerdictKind.TlsSilence, VerdictKind.ServiceDead -> if (answers.size >= 2) Life.Dead else Life.Checking
@@ -85,11 +81,10 @@ private fun lifeOf(answers: List<Verdict>): Life {
  * closed — срок замера вышел (край): подтверждающего раунда уже не ждём, «проверяю» не пишем.
  */
 fun renderOpened(s: OpenState, closed: Boolean, service: Service = Telegram): Screen {
-    val scenario = s.diagnosis.scenario
     val exit = exitStateOf(s, closed)
     // Выход работает — подбирать нечего, кнопка зелёная; иначе — «Подобрать», если сеть есть.
     val button = when {
-        scenario == null || scenario == Scenario.Offline -> Button.Idle
+        !s.diagnosis.scene.fold({ false }) { it != Scenario.Offline } -> Button.Idle
         exit is ExitState.Works -> Button.Green
         else -> Button.Ready
     }
@@ -101,20 +96,20 @@ private fun exitStateOf(s: OpenState, closed: Boolean): ExitState = when (val vp
     is Vpn.Unlisted -> ExitState.Unlisted(vpn.tag)
     is Vpn.On -> exitOf(
         ExitRef(vpn.exit.name, vpn.exit.transport), relocationOf(vpn.chosenOn, s.opened.os),
-        lifeOf(s.exitAnswers), s.diagnosis.scenario, closed,
+        lifeOf(s.exitAnswers), s.diagnosis.scene, closed,
     )
 }
 
-private fun exitOf(ref: ExitRef, relocation: Relocation, life: Life, scenario: Scenario?, closed: Boolean): ExitState = when (life) {
+private fun exitOf(ref: ExitRef, relocation: Relocation, life: Life, scene: Scene, closed: Boolean): ExitState = when (life) {
     Life.Checking -> ExitState.Checking(ref, relocation)
     Life.Works -> ExitState.Works(ref, relocation)
-    Life.Dead -> deadOf(ref, relocation, scenario, closed)
+    Life.Dead -> deadOf(ref, relocation, scene, closed)
 }
 
 /** Мёртв, а линия ещё молчит — причину не назвать: до срока ждём, по сроку — «не объяснено». */
-private fun deadOf(ref: ExitRef, relocation: Relocation, scenario: Scenario?, closed: Boolean): ExitState = when (scenario) {
-    null -> if (closed) ExitState.Dead(ref, Blame.Unexplained, relocation) else ExitState.Checking(ref, relocation)
-    else -> ExitState.Dead(ref, blameOf(scenario), relocation)
+private fun deadOf(ref: ExitRef, relocation: Relocation, scene: Scene, closed: Boolean): ExitState = when (scene) {
+    Scene.Pending -> if (closed) ExitState.Dead(ref, Blame.Unexplained, relocation) else ExitState.Checking(ref, relocation)
+    is Scene.Chosen -> ExitState.Dead(ref, blameOf(scene.scenario), relocation)
 }
 
 private fun blameOf(s: Scenario): Blame = when (s) {

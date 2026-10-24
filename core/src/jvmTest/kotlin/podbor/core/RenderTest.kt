@@ -31,7 +31,7 @@ class RenderTest : FunSpec({
         render(dead).stopwatch shouldBe Stopwatch.Stopped(0, 500)
         render(dead + Letter.LineObserved(2_000, whitelist)).stopwatch shouldBe Stopwatch.Stopped(0, 500)
         // Письма в момент срока нет: время замирает на сроке, а не откатывается к последнему ответу.
-        render(listOf(pressed(servers), Letter.LineObserved(10, whitelist)), closedAtMs = 30_000).stopwatch shouldBe Stopwatch.Stopped(0, 30_000)
+        render(listOf(pressed(servers), Letter.LineObserved(10, whitelist)), deadline = Deadline.Passed(30_000)).stopwatch shouldBe Stopwatch.Stopped(0, 30_000)
     }
 
     test("секундомер: до нажатия и на экране открытия — нет") {
@@ -51,13 +51,13 @@ class RenderTest : FunSpec({
 
     test("срок трубопровода вышел посреди перебора → Red, «не найдено» со словами о сроке; подозрение без «проверяю»") {
         val letters = listOf(pressed(listOf(server("s001", Entry.Ru), server("s002", Entry.Ru))), Letter.LineObserved(10, whitelist))
-        val screen = render(letters, Instagram, closedAtMs = 30_000)
+        val screen = render(letters, Instagram, Deadline.Passed(30_000))
         screen.button shouldBe Button.Red
         screen.network.shouldBeInstanceOf<NetworkCard.Measured>().evidence shouldBe "заграница не отвечает, РФ работает"
         screen.result.shouldBeInstanceOf<ResultCard.NotFound>().lines.last() shouldBe
             "Инста: за отведённое время рабочий сервер не нашёлся — нажми ещё раз."
         // Кончившееся нажатие срок не меняет.
-        render(letters + answer("s001", Verdict.TelegramDc(3)), closedAtMs = 30_000).button shouldBe Button.Green
+        render(letters + answer("s001", Verdict.TelegramDc(3)), deadline = Deadline.Passed(30_000)).button shouldBe Button.Green
     }
 
     test("повторное нажатие: выход подтвердился после линии → «текущий выход работает»") {

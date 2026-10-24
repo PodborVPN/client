@@ -21,6 +21,8 @@ fun Stopwatch.elapsedMs(nowMs: Long): Long? = when (this) {
 fun overall(watches: List<Stopwatch>): Stopwatch {
     val running = watches.filterIsInstance<Stopwatch.Running>()
     val stopped = watches.filterIsInstance<Stopwatch.Stopped>()
-    val start = (running.map { it.startedAtMs } + stopped.map { it.startedAtMs }).minOrNull() ?: return Stopwatch.None
+    val starts = running.map { it.startedAtMs } + stopped.map { it.startedAtMs }
+    if (starts.isEmpty()) return Stopwatch.None
+    val start = starts.min()
     return if (running.isNotEmpty()) Stopwatch.Running(start) else Stopwatch.Stopped(start, stopped.maxOf { it.stoppedAtMs })
 }

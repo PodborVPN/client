@@ -53,12 +53,12 @@ private fun <L : Letter> fed(
 }
 
 private fun press(p: Letter.Pressed): Pair<PressState, List<Deed>> {
-    val exit = p.currentExit?.let { id -> p.servers.find { it.id == id } }
+    val exit = currentExitOf(p)
     val running = PressState.Running(
-        pressed = p, letters = listOf(p), memory = p.memory, queue = emptyList(), inFlight = listOfNotNull(exit),
+        pressed = p, letters = listOf(p), memory = p.memory, queue = emptyList(), inFlight = exit,
         retried = emptySet(), rediagnoses = 0, diagnosis = Diagnosis.Pending,
     )
-    val exitProbe = listOfNotNull(exit?.let { Deed.Probe(it.id) })
+    val exitProbe = exit.map { Deed.Probe(it.id) }
     return when (val prior = p.freshPrior()) {
         Prior.None -> running to listOf(Deed.ProbeLine) + exitProbe
         is Prior.Detected -> {
@@ -96,13 +96,22 @@ private fun onLine(s: PressState.Running, l: Letter.LineObserved): Pair<PressSta
     is Diagnosis.Settled -> s to emptyList()
 }
 
+/** Текущий выход из подписки — первым в полёт; выхода нет или его нет в подписке — пусто. */
+private fun currentExitOf(p: Letter.Pressed): List<Server> = when (val id = p.currentExit) {
+    null -> emptyList()
+    else -> p.servers.filter { it.id == id }.take(1)
+}
+
 /**
  * Сценарий по диагнозу и очередь под него. Подозрение не ждёт подтверждения: входы в РФ
  * годны при обеих гипотезах — их перебор идёт, пока снимается второй раунд; зарубежные ждут итога.
  */
 private fun decide(s: PressState.Running, atMs: Long): Pair<PressState, List<Deed>> {
     // decide зовут только после observe, а он Pending не возвращает.
-    val scenario = s.diagnosis.scenario ?: return s to emptyList()
+    val scenario = when (val scene = s.diagnosis.scene) {
+        Scene.Pending -> return s to emptyList()
+        is Scene.Chosen -> scene.scenario
+    }
     if (scenario == Scenario.Offline) return PressState.Done(s.letters, s.diagnosis) to listOf(Deed.Remember(s.memory))
     // Отложенный повтор переживает перепроверку линии: сервер ответил один раз и ждёт второго шанса.
     val answers = s.letters.filterIsInstance<Letter.ProbeAnswered>().groupingBy { it.server }.eachCount()
@@ -114,7 +123,8 @@ private fun decide(s: PressState.Running, atMs: Long): Pair<PressState, List<Dee
 }
 
 private fun onAnswer(s: PressState.Running, a: Letter.ProbeAnswered): Pair<PressState, List<Deed>> {
-    val server = s.inFlight.find { it.id == a.server } ?: return s to emptyList()
+    val server = s.inFlight.find { it.id == a.server }
+    if (server == null) return s to emptyList()
     val after = s.copy(inFlight = s.inFlight - server)
     return when (a.verdict.kind()) {
         VerdictKind.Fits -> found(after, server, a.atMs)
@@ -132,7 +142,7 @@ private fun retry(s: PressState.Running, server: Server): PressState.Running =
     s.copy(queue = s.queue + server, retried = s.retried + server.id)
 
 private fun found(s: PressState.Running, server: Server, atMs: Long): Pair<PressState, List<Deed>> {
-    val memory = s.diagnosis.scenario?.let { s.memory.rememberSuccess(s.key(it), server, atMs) } ?: s.memory
+    val memory = s.diagnosis.scene.fold({ s.memory }) { s.memory.rememberSuccess(s.key(it), server, atMs) }
     val exit = if (server.id == s.pressed.currentExit && s.pressed.pinned) emptyList() else listOf(Deed.MakeExit(server.id))
     return PressState.Done(s.letters, s.diagnosis) to exit + Deed.Remember(memory) + Deed.MeasureSpeed(server.id)
 }

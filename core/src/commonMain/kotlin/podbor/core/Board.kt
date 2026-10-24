@@ -27,9 +27,14 @@ data class Board(val network: NetworkCard, val button: Button, val cards: List<S
 fun board(services: Set<Service>, screens: Map<ServiceId, Screen>): Board {
     val sorted = services.sortedBy { it.id.id }
     val own = sorted.mapNotNull { screens[it.id] }
-    val network = (screens[GENERAL_FOLLOWS] ?: own.firstOrNull())?.network ?: NetworkCard.Measuring(OsNetwork.None)
-    val cards = sorted.map { ServiceCard(it.id, it.label, statusOf(screens[it.id]), screens[it.id]?.stopwatch ?: Stopwatch.None) }
-    return Board(network, buttonOf(own.map { it.button }), cards, overall(own.map { it.stopwatch }))
+    val shown = listOfNotNull(screens[GENERAL_FOLLOWS]) + own
+    val network = if (shown.isEmpty()) NetworkCard.Measuring(OsNetwork.None) else shown.first().network
+    return Board(network, buttonOf(own.map { it.button }), sorted.map { cardOf(it, screens) }, overall(own.map { it.stopwatch }))
+}
+
+private fun cardOf(service: Service, screens: Map<ServiceId, Screen>): ServiceCard = when (val screen = screens[service.id]) {
+    null -> ServiceCard(service.id, service.label, CardStatus.Unknown)
+    else -> ServiceCard(service.id, service.label, statusOf(screen), screen.stopwatch)
 }
 
 /**
@@ -44,8 +49,7 @@ private fun buttonOf(buttons: List<Button>): Button = when {
     else -> Button.Idle
 }
 
-private fun statusOf(screen: Screen?): CardStatus = when (val r = screen?.result) {
-    null -> CardStatus.Unknown
+private fun statusOf(screen: Screen): CardStatus = when (val r = screen.result) {
     // Пустой результат при поиске — «ищу»; иначе ещё ничего не известно.
     ResultCard.Empty -> if (screen.button == Button.Searching) CardStatus.Searching else CardStatus.Unknown
     is ResultCard.Found -> CardStatus.Found(ExitRef(r.serverName, r.transport), r.probedAtMs, r.coverage)

@@ -46,10 +46,10 @@ fun plan(
             memory.isBlocked(s.endpoint, nowMs) -> SkipReason.BlockedRecently
             else -> null
         }
-        reason?.let { skips += cls to it }
+        if (reason != null) skips += cls to reason
         reason == null
     }
-    val remembered = memory.successes[key]?.toList().orEmpty().mapNotNull { m -> admissible.find { it.key == m.serverKey } }
+    val remembered = memory.successesOf(key).mapNotNull { m -> admissible.find { it.key == m.serverKey } }
     val rest = admissible - remembered.toSet()
     val tiers = rest.groupBy { (if (likely(it)) 0 else NOT_LIKELY_SHIFT) + tierOf(scenario, it) }.entries.sortedBy { it.key }.map { it.value }.map { interleaveByHost(it.sortedBy { s -> s.id.tag }) }
     return SearchPlan(
@@ -91,6 +91,6 @@ private fun transportTier(t: Transport): Int = when (t) {
 private fun interleaveByHost(servers: List<Server>): List<Server> {
     val groups = servers.groupBy { it.endpoint.host }.values.map { it.toMutableList() }
     return buildList {
-        while (groups.any { it.isNotEmpty() }) groups.forEach { g -> g.removeFirstOrNull()?.let(::add) }
+        while (groups.any { it.isNotEmpty() }) groups.filter { it.isNotEmpty() }.forEach { add(it.removeFirst()) }
     }
 }

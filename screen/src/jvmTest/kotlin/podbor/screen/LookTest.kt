@@ -13,6 +13,7 @@ import podbor.core.NetworkCard
 import podbor.core.NetworkMove
 import podbor.core.OsNetwork
 import podbor.core.PairPulse
+import podbor.core.Since
 import podbor.core.PulseView
 import podbor.core.Relocation
 import podbor.core.Scenario
@@ -224,12 +225,12 @@ class LookTest : FunSpec({
     }
 
     test("строка пульса — только величины: темп, «ответ N с назад»; простой — «сейчас не пользуется»; ⊥ — строки нет") {
-        pulseLine(PairPulse.Seen(340_000, 12_000, 2_000)) shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
-        pulseLine(PairPulse.Seen(0, 2_000, 14_000)) shouldBe "↓ 0 Б/с · ↑ 2 КБ/с · ответ 14 с назад"
-        pulseLine(PairPulse.Seen(5_000, 0, null)) shouldBe "↓ 5 КБ/с · ↑ 0 Б/с"
-        pulseLine(PairPulse.Seen(0, 0, null)) shouldBe "сейчас не пользуется"
-        pulseLine(PairPulse.Seen(0, 0, 90_000)) shouldBe "сейчас не пользуется"
-        pulseLine(PairPulse.Seen(1_000, 0, 125_000)) shouldBe "↓ 1 КБ/с · ↑ 0 Б/с · ответ 2 мин назад"
+        pulseLine(PairPulse.Seen(340_000, 12_000, Since.Ago(2_000))) shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
+        pulseLine(PairPulse.Seen(0, 2_000, Since.Ago(14_000))) shouldBe "↓ 0 Б/с · ↑ 2 КБ/с · ответ 14 с назад"
+        pulseLine(PairPulse.Seen(5_000, 0, Since.Never)) shouldBe "↓ 5 КБ/с · ↑ 0 Б/с"
+        pulseLine(PairPulse.Seen(0, 0, Since.Never)) shouldBe "сейчас не пользуется"
+        pulseLine(PairPulse.Seen(0, 0, Since.Ago(90_000))) shouldBe "сейчас не пользуется"
+        pulseLine(PairPulse.Seen(1_000, 0, Since.Ago(125_000))) shouldBe "↓ 1 КБ/с · ↑ 0 Б/с · ответ 2 мин назад"
         pulseLine(PairPulse.Unseen) shouldBe null
     }
 
@@ -252,7 +253,7 @@ class LookTest : FunSpec({
     }
 
     test("пульс — у строки с сервером; поиск, тупик и VPN не поднят — без пульса") {
-        val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, 2_000), Instagram.id to PairPulse.Seen(0, 0, null)), null, null)
+        val seen = PulseView(mapOf(Telegram.id to PairPulse.Seen(340_000, 12_000, Since.Ago(2_000)), Instagram.id to PairPulse.Seen(0, 0, Since.Never)), null, null)
         val up = rowsOf(board(Button.Green, CardStatus.Works(nl), CardStatus.Checking(nlx)), Link.Up, emptyMap(), pulse = seen)
         up.single { it.label == "TG" }.pulse shouldBe "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"
         up.single { it.label == "IG" }.pulse shouldBe "сейчас не пользуется"

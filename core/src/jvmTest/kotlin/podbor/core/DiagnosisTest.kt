@@ -40,9 +40,12 @@ class DiagnosisTest : FunSpec({
     ) { row -> row.before.observe(row.os, row.line) shouldBe row.after }
 
     test("сценарий для экрана: ждём — ещё нет, подозрение — подозрение, итог — свой, перепроверка — прежний") {
-        Diagnosis.Pending.scenario shouldBe null
-        Diagnosis.Rechecking(Diagnosis.Settled(Scenario.Wifi, nonEmptyListOf(open))).scenario shouldBe Scenario.Wifi
-        Diagnosis.Suspected(wl).scenario shouldBe Scenario.SuspectWhitelist
-        settled.scenario shouldBe Scenario.MobileOpen
+        Diagnosis.Pending.scene shouldBe Scene.Pending
+        Diagnosis.Rechecking(Diagnosis.Settled(Scenario.Wifi, nonEmptyListOf(open))).scene shouldBe Scene.Chosen(Scenario.Wifi)
+        Diagnosis.Suspected(wl).scene shouldBe Scene.Chosen(Scenario.SuspectWhitelist)
+        settled.scene shouldBe Scene.Chosen(Scenario.MobileOpen)
+        Scene.Pending.whitelist shouldBe false
+        Scene.Chosen(Scenario.SuspectWhitelist).whitelist shouldBe true
+        Scene.Chosen(Scenario.Wifi).whitelist shouldBe false
     }
 })

@@ -23,11 +23,11 @@ class PulseTest : FunSpec({
     fun fold(vararg s: PulseSample) = s.fold(Pulse.Empty) { p, x -> p.after(x) }
 
     test("rateOverWindow: 0 → 50 000 Б вниз за 10 с — 5000 Б/с") {
-        fold(at(0, 0), at(10_000, 50_000)).view(tg, 10_000).pairs[Telegram.id] shouldBe PairPulse.Seen(5_000, 0, 0)
+        fold(at(0, 0), at(10_000, 50_000)).view(tg, 10_000).pairs[Telegram.id] shouldBe PairPulse.Seen(5_000, 0, Since.Ago(0))
     }
 
     test("idleIsSeenWithZero: счётчики стоят — пара видна, темп ноль, ответа в сессии не было") {
-        fold(at(0, 700), at(1_000, 700)).view(tg, 1_000).pairs[Telegram.id] shouldBe PairPulse.Seen(0, 0, null)
+        fold(at(0, 700), at(1_000, 700)).view(tg, 1_000).pairs[Telegram.id] shouldBe PairPulse.Seen(0, 0, Since.Never)
     }
 
     test("unseenWithoutSamples: нет отсчётов или один — ⊥, а не ноль") {
@@ -39,9 +39,9 @@ class PulseTest : FunSpec({
 
     test("lostSamplesKeepBytes: пропуск опроса теряет разрешение, не байты") {
         // Опрос раз в 10 с вместо секунды: база темпа — последний отсчёт до окна.
-        fold(at(0, 0), at(20_000, 100_000)).view(tg, 20_000).pairs[Telegram.id] shouldBe PairPulse.Seen(5_000, 0, 0)
+        fold(at(0, 0), at(20_000, 100_000)).view(tg, 20_000).pairs[Telegram.id] shouldBe PairPulse.Seen(5_000, 0, Since.Ago(0))
         fold(at(0, 0), at(5_000, 30_000), at(20_000, 100_000)).view(tg, 20_000).pairs[Telegram.id] shouldBe
-            PairPulse.Seen(70_000 * 1_000 / 15_000, 0, 0)
+            PairPulse.Seen(70_000 * 1_000 / 15_000, 0, Since.Ago(0))
     }
 
     test("epochChangeKeepsSessionTotal: Xray перезапустился — итог сессии — сумма эпох, темп не в минус") {
@@ -52,7 +52,7 @@ class PulseTest : FunSpec({
             at(3_000, 500, epoch = 2, tun = Traffic(20, 500)),
         )
         p.view(tg, 3_000).vpn shouldBe Tally("sub1", Traffic(120, 9_500))
-        p.view(tg, 3_000).pairs[Telegram.id] shouldBe PairPulse.Seen(500, 0, 0)
+        p.view(tg, 3_000).pairs[Telegram.id] shouldBe PairPulse.Seen(500, 0, Since.Ago(0))
     }
 
     test("decreaseIsUnknown: счётчик убыл в той же эпохе — ⊥, не отрицательный темп; итог — нижняя граница") {
@@ -63,12 +63,12 @@ class PulseTest : FunSpec({
 
     test("newPairStartsFresh: сервис сменил сервер — темп новой пары с её отсчётов, не разность чужих") {
         val p = fold(at(0, 0), at(1_000, 5_000), at(2_000, 80_000, tag = "s002.tg"), at(3_000, 81_000, tag = "s002.tg"))
-        p.view(mapOf(Telegram.id to "s002.tg"), 3_000).pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, 0)
+        p.view(mapOf(Telegram.id to "s002.tg"), 3_000).pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, Since.Ago(0))
     }
 
     test("answeredAgoIsLastDownGrowth: «ответ N с назад» — от последнего роста ↓, рост ↑ его не двигает") {
         val p = fold(at(0, 0), at(1_000, 400), at(2_000, 400, up = 50), at(3_000, 400, up = 90))
-        p.view(tg, 4_000).pairs[Telegram.id] shouldBe PairPulse.Seen(400 * 1_000 / 3_000, 90 * 1_000 / 3_000, 3_000)
+        p.view(tg, 4_000).pairs[Telegram.id] shouldBe PairPulse.Seen(400 * 1_000 / 3_000, 90 * 1_000 / 3_000, Since.Ago(3_000))
     }
 
     test("tallyAcrossEpochsAndKinds: сеть — приложения + пробы по всем эпохам, VPN — только приложения") {

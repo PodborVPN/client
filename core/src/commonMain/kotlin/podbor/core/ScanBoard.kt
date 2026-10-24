@@ -54,7 +54,7 @@ fun scanBoard(services: Set<Service>, letters: List<Letter>): ScanBoard {
 class ScanFold private constructor(
     private val services: Set<Service>,
     private val state: ScanState,
-    private val scan: Letter.Scan?,
+    private val scan: Begun,
     /** Сервисы письма Scan, известные экрану, в порядке набора. */
     private val shown: List<Service>,
     private val byId: Map<ServerId, Server>,
@@ -63,14 +63,26 @@ class ScanFold private constructor(
     private val startedSet: Set<ServerId>,
     private val works: Set<Pair<ServerId, ServiceId>>,
 ) {
-    constructor(services: Set<Service>) : this(services, ScanState.Idle, null, emptyList(), emptyMap(), emptyList(), emptySet(), emptySet())
+    constructor(services: Set<Service>) : this(services, ScanState.Idle, Begun.No, emptyList(), emptyMap(), emptyList(), emptySet(), emptySet())
+
+    /** Письмо Scan прогона: ещё не пришло — доска пуста. */
+    private sealed interface Begun {
+        data object No : Begun
+        data class Yes(val scan: Letter.Scan) : Begun
+    }
+
+    /** Письмо Scan: прогон, его сервисы и серверы — с него; накопленное по шагам остаётся. */
+    private fun began(l: Letter.Scan): ScanFold = ScanFold(
+        services, state, Begun.Yes(l), l.services.mapNotNull { id -> services.find { it.id == id } }, l.servers.associateBy { it.id },
+        started, startedSet, works,
+    )
 
     /**
      * Буква [letter] и состояние машины [after] после шага по ней. Новые задачи шага машина дописывает в конец
      * inFlight в порядке выдачи дел — серверы, которых там раньше не было, и есть стартовавшие на этом шаге.
      */
     fun next(letter: Letter, after: ScanState): ScanFold {
-        val begun = letter as? Letter.Scan
+        val base = if (letter is Letter.Scan) began(letter) else this
         // При подтверждении ✓ — только второй успех: первый держит «…» (проба снова в очереди).
         val fits = letter is Letter.ProbeAnswered && state is ScanState.Running && letter.verdict.kind() == VerdictKind.Fits &&
             (!state.scan.confirmFits || state.confirming.any { it is ScanTask.Probe && it.server.id == letter.server && it.service == letter.service })
@@ -81,30 +93,47 @@ class ScanFold private constructor(
         return ScanFold(
             services = services,
             state = after,
-            scan = begun ?: scan,
-            shown = begun?.services?.mapNotNull { id -> services.find { it.id == id } } ?: shown,
-            byId = begun?.servers?.associateBy { it.id } ?: byId,
+            scan = base.scan,
+            shown = base.shown,
+            byId = base.byId,
             started = if (fresh.isEmpty()) started else started + fresh,
             startedSet = if (fresh.isEmpty()) startedSet else startedSet + fresh,
             works = if (fits) works + (letter.server to letter.service) else works,
         )
     }
 
-    fun board(): ScanBoard {
-        val begun = scan ?: return EMPTY_BOARD
-        val running = state as? ScanState.Running
-        val tasks = running?.let { it.queue + it.inFlight }.orEmpty()
+    fun board(): ScanBoard = when (scan) {
+        Begun.No -> EMPTY_BOARD
+        is Begun.Yes -> boardOf(scan.scan)
+    }
+
+    private fun boardOf(begun: Letter.Scan): ScanBoard {
+        val inFlight = when (val s = state) {
+            is ScanState.Running -> s.inFlight
+            ScanState.Idle, is ScanState.Done -> emptyList()
+        }
+        val tasks = when (val s = state) {
+            is ScanState.Running -> s.queue + s.inFlight
+            ScanState.Idle, is ScanState.Done -> emptyList()
+        }
+        // Выход: замер этого прогона, иначе — из паспорта законченного анализа.
+        val exits = when (val s = state) {
+            is ScanState.Running -> s.exits
+            ScanState.Idle, is ScanState.Done -> emptyMap()
+        }
+        val passportExits = when (val s = state) {
+            is ScanState.Done -> s.passport.servers.mapValues { it.value.exit }
+            ScanState.Idle, is ScanState.Running -> emptyMap()
+        }
         val pendingIds = tasks.mapTo(HashSet()) { it.server.id }
         val probing = tasks.filterIsInstance<ScanTask.Probe>().mapTo(HashSet()) { it.server.id to it.service }
-        val live = running?.inFlight.orEmpty().mapTo(HashSet()) { it.server.id }
-        val exits = running?.exits.orEmpty()
-        val passport = (state as? ScanState.Done)?.passport
+        val live = inFlight.mapTo(HashSet()) { it.server.id }
         val cards = started.asReversed().mapNotNull(byId::get).map { srv ->
             ServerCard(
                 key = srv.key,
                 entry = srv.entry,
-                exit = exits[srv.id] ?: passport?.servers?.get(srv.key)?.exit ?: Exit.Unknown,
-                whiteHint = begun.hints[srv.key] ?: WhiteHint.Unlikely,
+                exit = exits.getOrElse(srv.id) { passportExits.getOrElse(srv.key) { Exit.Unknown } },
+                whiteHint = begun.hints.getOrElse(srv.key) { WhiteHint.Unlikely },
                 sniWhite = srv.key in begun.sniWhite,
                 transport = srv.transport,
                 services = shown.map { svc ->
@@ -126,16 +155,8 @@ class ScanFold private constructor(
         }
         val finished = state is ScanState.Done
         val whiteLine = if (likelyWhite > 0) "Белые списки: вероятно ${serversCount(likelyWhite)}" else "Белые списки: в этой подписке нет подходящих серверов"
-        val verdict = when (diagnosis.scenario) {
-            // Подозрение анализ проверяет как белые списки (plan) — и говорит о нём так же.
-            Scenario.MobileWhitelist, Scenario.SuspectWhitelist ->
-                listOf("сейчас белые списки — проверил только вероятно-белые; обычную сеть проверю, когда она вернётся") +
-                    if (finished) listOf(whiteLine) else emptyList()
-            // Сети нет — серверы не проверялись: «✓ 0» было бы неправдой о них.
-            Scenario.Offline -> listOf("нет сети — проверю серверы, когда она появится")
-            Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear, null ->
-                if (finished) listOf("Обычная сеть: " + tallies.joinToString(" · ") { "${it.label} ✓ ${it.works}" }, whiteLine) else emptyList()
-        }
+        val open = if (finished) listOf("Обычная сеть: " + tallies.joinToString(" · ") { "${it.label} ✓ ${it.works}" }, whiteLine) else emptyList()
+        val verdict = diagnosis.scene.fold({ open }) { verdictOf(it, finished, whiteLine, open) }
         return ScanBoard(
             total = begun.servers.size,
             // Закончили — все разобраны: отсеянные сценарием и блоком тоже «сделаны», табло сходится total/total.
@@ -148,4 +169,15 @@ class ScanFold private constructor(
             finished = finished,
         )
     }
+}
+
+/** Итог анализа по сценарию; [open] — итог обычной сети (он же — пока сценария нет). */
+private fun verdictOf(scenario: Scenario, finished: Boolean, whiteLine: String, open: List<String>): List<String> = when (scenario) {
+    // Подозрение анализ проверяет как белые списки (plan) — и говорит о нём так же.
+    Scenario.MobileWhitelist, Scenario.SuspectWhitelist ->
+        listOf("сейчас белые списки — проверил только вероятно-белые; обычную сеть проверю, когда она вернётся") +
+            if (finished) listOf(whiteLine) else emptyList()
+    // Сети нет — серверы не проверялись: «✓ 0» было бы неправдой о них.
+    Scenario.Offline -> listOf("нет сети — проверю серверы, когда она появится")
+    Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear -> open
 }

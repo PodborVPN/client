@@ -52,18 +52,18 @@ class PressStepTest : FunSpec({
         val (s, d) = run(pressed(foreign + ru), Letter.LineObserved(10, whitelist))
         probes(d) shouldContainExactly listOf("s001", "s002", "s003", "s004", "s005")
         d shouldContain Deed.ProbeLine
-        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scenario shouldBe Scenario.SuspectWhitelist
+        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scene shouldBe Scene.Chosen(Scenario.SuspectWhitelist)
     }
 
     test("подтверждение белых списков посреди перебора: зарубежные так и не трогаем") {
         val (s, d) = run(pressed(foreign + ru), *confirmed)
         probes(d).shouldBeEmpty()
-        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scenario shouldBe Scenario.MobileWhitelist
+        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scene shouldBe Scene.Chosen(Scenario.MobileWhitelist)
     }
 
     test("подозрение, затем открыто: зарубежные встают в очередь") {
         val (s, d) = run(pressed(ru.take(1) + foreign), Letter.LineObserved(10, whitelist), Letter.LineObserved(20, open))
-        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scenario shouldBe Scenario.MobileOpen
+        s.shouldBeInstanceOf<PressState.Running>().diagnosis.scene shouldBe Scene.Chosen(Scenario.MobileOpen)
         probes(d) shouldContainAll listOf("s006", "s007", "s008")
     }
 

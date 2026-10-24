@@ -57,7 +57,19 @@ data class PulsePoint(val monoMs: Long, val traffic: Traffic)
  * История выхода внутри эпохи: точки окна (и одна до него — база темпа) и момент последнего роста ↓. Счётчик убыл в
  * той же эпохе — история с нуля: интервал не наблюдён (⊥), а не отрицательный трафик.
  */
-data class Lane(val epoch: Long, val points: List<PulsePoint>, val answeredAtMs: Long?)
+data class Lane(val epoch: Long, val points: List<PulsePoint>, val answered: Grew)
+
+/** Когда последний раз рос ↓ выхода: не рос в эпохе или в момент [At.monoMs]. */
+sealed interface Grew {
+    data object Never : Grew
+    data class At(val monoMs: Long) : Grew
+}
+
+/** Сколько назад рос ↓ пары: не рос в сессии или [Ago.ms] назад. */
+sealed interface Since {
+    data object Never : Since
+    data class Ago(val ms: Long) : Since
+}
 
 /** Последнее накопленное значение входа в его эпохе — база прироста. */
 data class Mark(val epoch: Long, val traffic: Traffic)
@@ -91,14 +103,14 @@ fun networkKey(os: OsNetwork): String? = when (os) {
 
 fun Pulse.after(s: PulseSample): Pulse {
     val point = { t: Traffic -> PulsePoint(s.monoMs, t) }
-    val lanes = s.outbound.mapValues { (tag, t) -> lanes[tag].next(s.epoch, point(t)) }
+    val lanes = s.outbound.mapValues { (tag, t) -> laneAfter(lanes[tag], s.epoch, point(t)) }
     // Выход, которого в отсчёте нет, ничего не сообщил: история остаётся до своего окна.
     val kept = this.lanes.filterKeys { it !in s.outbound }.filterValues { lane -> s.monoMs - lane.points.last().monoMs <= PULSE_WINDOW_MS }
     val apps = grown(s, TUN_INBOUND)
     val probeKeys = s.inbound.keys.filter { it.startsWith(PROBE_INBOUND_PREFIX) }
     val probes = probeKeys.fold(Traffic.Zero) { sum, k -> sum + grown(s, k) }
-    val marks = marks + (listOf(TUN_INBOUND) + probeKeys).mapNotNull { k -> s.inbound[k]?.let { k to Mark(s.epoch, it) } }
-    return Pulse(kept + lanes, marks, TrafficBook(network = book.network.add(s.network, apps + probes), vpn = book.vpn.add(s.subscription, apps)))
+    val marks = marks + (listOf(TUN_INBOUND) + probeKeys).filter { it in s.inbound }.map { k -> k to Mark(s.epoch, s.inbound.getValue(k)) }
+    return Pulse(kept + lanes, marks, TrafficBook(network = added(book.network, s.network, apps + probes), vpn = added(book.vpn, s.subscription, apps)))
 }
 
 /**
@@ -106,7 +118,8 @@ fun Pulse.after(s: PulseSample): Pulse {
  * счётчик сброшен, прирост — само значение (нижняя граница, а не минус). Входа нет в отсчёте — ноль.
  */
 private fun Pulse.grown(s: PulseSample, key: String): Traffic {
-    val now = s.inbound[key] ?: return Traffic.Zero
+    val now = s.inbound[key]
+    if (now == null) return Traffic.Zero
     val was = marks[key]
     return when {
         was == null || was.epoch != s.epoch || now.down < was.traffic.down || now.up < was.traffic.up -> now
@@ -119,24 +132,29 @@ private fun Pulse.grown(s: PulseSample, key: String): Traffic {
  * на отсчёте). Ключ пуст (сети нет или ещё не известна) — ключа не знаем, а не «другая сеть»: прирост копится в прежний
  * итог, прежнего нет — никуда.
  */
-private fun Tally?.add(key: String, t: Traffic): Tally? = when {
-    key.isEmpty() -> this?.copy(total = total + t)
-    this == null || this.key != key -> Tally(key, t)
-    else -> copy(total = total + t)
+private fun added(tally: Tally?, key: String, t: Traffic): Tally? = when {
+    tally == null -> if (key.isEmpty()) null else Tally(key, t)
+    key.isEmpty() || tally.key == key -> tally.copy(total = tally.total + t)
+    else -> Tally(key, t)
 }
 
-private fun Lane?.next(epoch: Long, p: PulsePoint): Lane {
-    val last = this?.points?.last()
+/** Отсчёт выхода в его историю; истории нет — с этой точки. */
+private fun laneAfter(lane: Lane?, epoch: Long, p: PulsePoint): Lane = when (lane) {
+    null -> Lane(epoch, listOf(p), Grew.Never)
+    else -> lane.next(epoch, p)
+}
+
+private fun Lane.next(epoch: Long, p: PulsePoint): Lane {
+    val last = points.last()
     return when {
-        this == null || last == null || this.epoch != epoch || p.traffic.down < last.traffic.down || p.traffic.up < last.traffic.up ->
-            Lane(epoch, listOf(p), answeredAtMs = null)
+        this.epoch != epoch || p.traffic.down < last.traffic.down || p.traffic.up < last.traffic.up -> Lane(epoch, listOf(p), Grew.Never)
         else -> {
             val points = (this.points + p).let { all ->
                 // База — последняя точка не позже начала окна; всё раньше неё окну не нужно.
                 val base = all.indexOfLast { it.monoMs <= p.monoMs - PULSE_WINDOW_MS }.coerceAtLeast(0)
                 all.drop(base)
             }
-            Lane(epoch, points, if (p.traffic.down > last.traffic.down) p.monoMs else answeredAtMs)
+            Lane(epoch, points, if (p.traffic.down > last.traffic.down) Grew.At(p.monoMs) else answered)
         }
     }
 }
@@ -144,7 +162,7 @@ private fun Lane?.next(epoch: Long, p: PulsePoint): Lane {
 /** Что известно о паре: ⊥ (не наблюдали) или темп вниз/вверх (Б/с) и сколько назад рос ↓ (null — не рос в сессии). */
 sealed interface PairPulse {
     data object Unseen : PairPulse
-    data class Seen(val downBps: Long, val upBps: Long, val answeredAgoMs: Long?) : PairPulse
+    data class Seen(val downBps: Long, val upBps: Long, val answered: Since) : PairPulse
 }
 
 /** Вид пульса: темп пар, итог «на этой сети» и «через VPN на этой подписке» — с ключами: экран сверит сеть сам. */
@@ -156,25 +174,30 @@ data class PulseView(val pairs: Map<ServiceId, PairPulse>, val network: Tally?, 
 
 /** Вид пульса для [effective] (сервис → тег выхода его пары) к моменту [nowMonoMs]; отсчёт старше двух окон — ⊥. */
 fun Pulse.view(effective: Map<ServiceId, String>, nowMonoMs: Long): PulseView =
-    PulseView(pairs = effective.mapValues { (_, tag) -> lanes[tag].seen(nowMonoMs) }, network = book.network, vpn = book.vpn)
+    PulseView(pairs = effective.mapValues { (_, tag) -> pulseOf(lanes[tag], nowMonoMs) }, network = book.network, vpn = book.vpn)
 
-private fun Lane?.seen(nowMonoMs: Long): PairPulse {
-    val base = this?.points?.firstOrNull()
-    val last = this?.points?.lastOrNull()
+private fun pulseOf(lane: Lane?, nowMonoMs: Long): PairPulse = when (lane) {
+    null -> PairPulse.Unseen
+    else -> lane.seen(nowMonoMs)
+}
+
+private fun Lane.seen(nowMonoMs: Long): PairPulse {
+    if (points.size < 2) return PairPulse.Unseen
+    val base = points.first()
+    val last = points.last()
+    val ms = last.monoMs - base.monoMs
     return when {
-        this == null || base == null || last == null || points.size < 2 -> PairPulse.Unseen
         nowMonoMs - last.monoMs > 2 * PULSE_WINDOW_MS -> PairPulse.Unseen
-        else -> {
-            val ms = last.monoMs - base.monoMs
-            if (ms <= 0) {
-                PairPulse.Unseen
-            } else {
-                PairPulse.Seen(
-                    downBps = (last.traffic.down - base.traffic.down) * 1_000 / ms,
-                    upBps = (last.traffic.up - base.traffic.up) * 1_000 / ms,
-                    answeredAgoMs = answeredAtMs?.let { (nowMonoMs - it).coerceAtLeast(0) },
-                )
-            }
-        }
+        ms <= 0 -> PairPulse.Unseen
+        else -> PairPulse.Seen(
+            downBps = (last.traffic.down - base.traffic.down) * 1_000 / ms,
+            upBps = (last.traffic.up - base.traffic.up) * 1_000 / ms,
+            answered = sinceOf(answered, nowMonoMs),
+        )
     }
+}
+
+private fun sinceOf(g: Grew, nowMonoMs: Long): Since = when (g) {
+    Grew.Never -> Since.Never
+    is Grew.At -> Since.Ago((nowMonoMs - g.monoMs).coerceAtLeast(0))
 }

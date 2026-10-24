@@ -15,6 +15,7 @@ import podbor.core.EpochKind
 import podbor.core.Instagram
 import podbor.core.PULSE_WINDOW_MS
 import podbor.core.PairPulse
+import podbor.core.Since
 import podbor.core.Pulse
 import podbor.core.PulseSample
 import podbor.core.PulseView
@@ -147,7 +148,7 @@ class PulseLoopTest : FunSpec({
             advanceTimeBy(30_000); runCurrent()
             // Рост за 20…25 с записан один раз (на 30 с); дальше счётчики стоят — строк нет.
             tape.size shouldBe 4
-            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(0, 0, 30_000)
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(0, 0, Since.Ago(30_000))
         }
     }
 
@@ -155,10 +156,10 @@ class PulseLoopTest : FunSpec({
         val stats = Counters()
         loopTest(stats, fast = true) { _, views ->
             runCurrent(); advanceTimeBy(1_000); runCurrent()
-            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, 0)
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, Since.Ago(0))
             stats.failing = true
             advanceTimeBy(3_000); runCurrent()
-            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, 3_000)
+            views.last().pairs[Telegram.id] shouldBe PairPulse.Seen(1_000, 0, Since.Ago(3_000))
             advanceTimeBy(2 * PULSE_WINDOW_MS); runCurrent()
             views.last().pairs[Telegram.id] shouldBe PairPulse.Unseen
             views.last().vpn shouldBe Tally("sub1", Traffic(0, 2_000))
@@ -188,7 +189,7 @@ class PulseLoopTest : FunSpec({
             val views = mutableListOf<PulseView>()
             val job = loop(Counters(), effective = mapOf(Instagram.id to "pair.insta.s001"), tape = TapeSink {}, views = views)
             runCurrent(); advanceTimeBy(1_000); runCurrent()
-            views.last().pairs[Instagram.id] shouldBe PairPulse.Seen(0, 0, null)
+            views.last().pairs[Instagram.id] shouldBe PairPulse.Seen(0, 0, Since.Never)
             job.cancel()
         }
     }

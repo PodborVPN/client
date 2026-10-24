@@ -117,7 +117,7 @@ class ScanTest : FunSpec({
         val p = t.passport()
         p.servers shouldNotContainKey "key-s002"
         p.servers.getValue("key-s003").whiteHint shouldBe WhiteHint.Likely
-        t.state.shouldBeInstanceOf<ScanState.Done>().diagnosis.scenario shouldBe Scenario.MobileWhitelist
+        t.state.shouldBeInstanceOf<ScanState.Done>().diagnosis.scene shouldBe Scene.Chosen(Scenario.MobileWhitelist)
     }
 
     test("выдуманный третий сервис получает пробы и свой ключ памяти") {
@@ -198,7 +198,7 @@ class ScanTest : FunSpec({
             server("s002", Entry.Foreign("NL")),
             server("s003", Entry.Foreign("NL"), host = "10.0.0.1"), // делит адрес с s001 — ждёт в очереди
         )
-        ScanState.Idle.partialPassport(0) shouldBe null
+        ScanState.Idle.partialPassport(0) shouldBe Passport(emptyMap(), 0)
         var s: ScanState = scanStep(ScanState.Idle, scan(servers, services = listOf(tg))).first
         listOf(
             Letter.LineObserved(10, open),

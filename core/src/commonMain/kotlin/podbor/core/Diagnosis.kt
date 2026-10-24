@@ -31,11 +31,26 @@ fun Diagnosis.observe(os: OsNetwork, line: LineObservation): Diagnosis = when (t
     is Diagnosis.Settled -> this
 }
 
-/** Единственное место, где «сценария ещё нет» — null: граница к экрану и памяти. Перепроверка держит прежний. */
-val Diagnosis.scenario: Scenario?
+/** Сценарий диагноза для экрана и памяти: ещё не выбран (ждём первый раунд) или выбран. */
+sealed interface Scene {
+    data object Pending : Scene
+    data class Chosen(val scenario: Scenario) : Scene
+}
+
+/** Сценарий диагноза: подозрение — уже белые списки, перепроверка держит прежний. */
+val Diagnosis.scene: Scene
     get() = when (this) {
-        Diagnosis.Pending -> null
-        is Diagnosis.Suspected -> Scenario.SuspectWhitelist
-        is Diagnosis.Settled -> scenario
-        is Diagnosis.Rechecking -> previous.scenario
+        Diagnosis.Pending -> Scene.Pending
+        is Diagnosis.Suspected -> Scene.Chosen(Scenario.SuspectWhitelist)
+        is Diagnosis.Settled -> Scene.Chosen(scenario)
+        is Diagnosis.Rechecking -> previous.scene
     }
+
+fun <T> Scene.fold(pending: () -> T, chosen: (Scenario) -> T): T = when (this) {
+    Scene.Pending -> pending()
+    is Scene.Chosen -> chosen(scenario)
+}
+
+/** Сценарий выбран и он — белые списки или подозрение на них: перебор входов РФ. */
+val Scene.whitelist: Boolean
+    get() = fold({ false }) { it == Scenario.MobileWhitelist || it == Scenario.SuspectWhitelist }

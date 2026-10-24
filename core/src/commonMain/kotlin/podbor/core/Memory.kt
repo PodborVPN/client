@@ -36,7 +36,7 @@ data class Memory(
 
 fun Memory.rememberSuccess(key: MemoryKey, server: Server, atMs: Long): Memory {
     val k = server.key
-    val rest = successes[key]?.toList().orEmpty().filter { it.serverKey != k }
+    val rest = successesOf(key).filter { it.serverKey != k }
     return copy(successes = successes + (key to nonEmptyListOf(Success(k, atMs), *rest.toTypedArray())))
 }
 
@@ -44,7 +44,10 @@ fun Memory.block(endpoint: Endpoint, atMs: Long): Memory =
     copy(blocks = blocks + (endpoint to atMs + BLOCK_TTL_MS))
 
 fun Memory.isBlocked(endpoint: Endpoint, nowMs: Long): Boolean =
-    blocks[endpoint]?.let { nowMs < it } ?: false
+    endpoint in blocks && nowMs < blocks.getValue(endpoint)
+
+/** Успехи ключа, свежие первыми; ключ не встречался — пусто. */
+fun Memory.successesOf(key: MemoryKey): List<Success> = successes.getOrElse(key) { emptyList() }
 
 /** Успехи ключей сервиса [service] — из [update], прочие — из this; блоки — объединение с бо́льшим сроком. */
 fun Memory.merged(update: Memory, service: ServiceId): Memory =

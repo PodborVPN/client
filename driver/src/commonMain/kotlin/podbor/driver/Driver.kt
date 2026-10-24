@@ -53,7 +53,10 @@ import podbor.core.observe
 import podbor.core.partialPassport
 import podbor.core.render
 import podbor.core.renderOpened
-import podbor.core.scenario
+import podbor.core.Deadline
+import podbor.core.Scene
+import podbor.core.scene
+import podbor.core.successesOf
 
 /** Страховка: нажатие не висит дольше минуты, даже если мир молчит. Срок — на каждый трубопровод. */
 private const val PRESS_TIMEOUT_MS = 60_000L
@@ -150,7 +153,7 @@ class Driver(
             val run = act(pressed, PressMachine(service.id), pressTimeoutMs, executor(service, servers, os, hub, lead), tape, { _, letters ->
                 boards.put(service.id, render(letters, service))
             }, inbox)
-            render(run.letters, service, closedAtMs = clock.nowMs().takeIf { run.closed })
+            render(run.letters, service, if (run.closed) Deadline.Passed(clock.nowMs()) else Deadline.Open)
         }
         return board(services, screens).also(onBoard)
     }
@@ -232,7 +235,8 @@ class Driver(
 
     /** Анализ прерван раньше паспорта: разобранные серверы — в хранилище слиянием; разобранных нет — паспорт прежний. */
     private fun savePartial(state: ScanState) {
-        val partial = state.partialPassport(clock.nowMs())?.takeIf { it.servers.isNotEmpty() } ?: return
+        val partial = state.partialPassport(clock.nowMs())
+        if (partial.servers.isEmpty()) return
         savePassport(partial)
         tape.write(noteLine("scan: прерван, частичный паспорт — серверов: ${partial.servers.size}"))
     }
@@ -286,14 +290,17 @@ class Driver(
      */
     suspend fun recall(warm: Warm, services: Set<Service>, os: OsNetwork, prior: Prior): Map<ServiceId, Server> {
         val rounds = freshRounds(prior, clock.nowMs()).ifEmpty { return emptyMap() }
-        val scenario = rounds.fold<Letter.LineObserved, Diagnosis>(Diagnosis.Pending) { d, l -> d.observe(os, l.line) }.scenario
-            ?: return emptyMap()
+        val scenario = when (val scene = rounds.fold<Letter.LineObserved, Diagnosis>(Diagnosis.Pending) { d, l -> d.observe(os, l.line) }.scene) {
+            Scene.Pending -> return emptyMap()
+            is Scene.Chosen -> scene.scenario
+        }
         val memory = store.loadMemory()
         val now = clock.nowMs()
         return services.sortedBy { it.id.id }.mapNotNull { service ->
-            val server = memory.successes[memoryKey(os, scenario, service.id)]?.firstNotNullOfOrNull { success ->
-                warm.servers.find { it.key == success.serverKey }?.takeUnless { memory.isBlocked(it.endpoint, now) }
-            } ?: return@mapNotNull null
+            val server = memory.successesOf(memoryKey(os, scenario, service.id))
+                .mapNotNull { success -> warm.servers.find { it.key == success.serverKey } }
+                .firstOrNull { !memory.isBlocked(it.endpoint, now) }
+            if (server == null) return@mapNotNull null
             exits.make(service.id, server.id, ChosenOn.Network(os)).fold(
                 { e -> tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: setExit $e")); null },
                 { tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: из памяти сети")); service.id to server },

@@ -101,7 +101,8 @@ private fun decide(s: ScanState.Running, atMs: Long): Pair<ScanState, List<Deed>
 }
 
 private fun onExit(s: ScanState.Running, l: Letter.ExitSeen): Pair<ScanState, List<Deed>> {
-    val task = s.inFlight.find { it is ScanTask.MeasureExit && it.server.id == l.server } ?: return s to emptyList()
+    val task = s.inFlight.find { it is ScanTask.MeasureExit && it.server.id == l.server }
+    if (task == null) return s to emptyList()
     val after = s.copy(inFlight = s.inFlight - task, exits = s.exits + (l.server to l.exit))
     return launch(
         when (l.exit) {
@@ -114,7 +115,7 @@ private fun onExit(s: ScanState.Running, l: Letter.ExitSeen): Pair<ScanState, Li
 
 private fun onProbe(s: ScanState.Running, a: Letter.ProbeAnswered): Pair<ScanState, List<Deed>> {
     val task = s.inFlight.filterIsInstance<ScanTask.Probe>().find { it.server.id == a.server && it.service == a.service }
-        ?: return s to emptyList()
+    if (task == null) return s to emptyList()
     val after = s.copy(inFlight = s.inFlight - task)
     val endpoint = task.server.endpoint
     val kind = a.verdict.kind()
@@ -127,8 +128,9 @@ private fun onProbe(s: ScanState.Running, a: Letter.ProbeAnswered): Pair<ScanSta
         VerdictKind.Fits if s.scan.confirmFits && task !in s.confirming ->
             launch(after.answeredBy(task.server, a.atMs).copy(confirming = after.confirming + task, queue = after.queue + task), a.atMs)
         VerdictKind.Fits -> {
-            val memory = s.diagnosis.scenario?.let { after.memory.rememberSuccess(memoryKey(s.scan.os, it, task.service), task.server, a.atMs) }
-                ?: after.memory
+            val memory = s.diagnosis.scene.fold({ after.memory }) {
+                after.memory.rememberSuccess(memoryKey(s.scan.os, it, task.service), task.server, a.atMs)
+            }
             remember(after.answeredBy(task.server, a.atMs).copy(memory = memory, confirming = after.confirming - task), a.atMs)
         }
         // Рукопожатие прошло — сервер жив, хоть сервис и молчит; повтор один раз.
@@ -181,13 +183,18 @@ private fun deedOf(task: ScanTask): Deed = when (task) {
  * Паспорт при прерывании анализа («ОК» раньше конца): только серверы, которые ответили или прошли все свои задачи.
  * Ждущие в очереди или в полёте не попадают (не Silent): следующий анализ проверит их как новые. Idle — паспорта нет.
  */
-fun ScanState.partialPassport(atMs: Long): Passport? = when (this) {
-    ScanState.Idle -> null
+fun ScanState.partialPassport(atMs: Long): Passport = when (this) {
+    ScanState.Idle -> Passport(emptyMap(), atMs)
     is ScanState.Done -> passport
     is ScanState.Running -> {
         val pending = (queue + inFlight).map { it.server.id }.toSet()
         passport(atMs, targets.filter { it.id in answered || it.id !in pending })
     }
+}
+
+private fun seenOf(answered: Map<ServerId, Long>, server: ServerId): Seen = when (val at = answered[server]) {
+    null -> Seen.Silent
+    else -> Seen.Answered(at)
 }
 
 /** Факты по [servers]; молчание — Silent «сейчас», не приговор: следующий анализ спросит снова. */
@@ -196,9 +203,9 @@ private fun ScanState.Running.passport(atMs: Long, servers: List<Server>): Passp
         srv.key to ServerFacts(
             transport = srv.transport,
             entry = srv.entry,
-            whiteHint = scan.hints[srv.key] ?: WhiteHint.Unlikely,
-            exit = exits[srv.id] ?: Exit.Unknown,
-            seen = answered[srv.id]?.let(Seen::Answered) ?: Seen.Silent,
+            whiteHint = scan.hints.getOrElse(srv.key) { WhiteHint.Unlikely },
+            exit = exits.getOrElse(srv.id) { Exit.Unknown },
+            seen = seenOf(answered, srv.id),
             sniWhite = srv.key in scan.sniWhite,
         )
     },

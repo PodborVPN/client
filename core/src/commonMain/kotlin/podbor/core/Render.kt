@@ -49,13 +49,13 @@ data class Screen(val network: NetworkCard, val button: Button, val result: Resu
  * [closedAtMs] — когда вышел срок трубопровода (край; не вышел — null): нажатие, не дошедшее до итога, — «не найдено»,
  * а не вечное «ищу», и секундомер замирает на сроке — письма в этот момент нет.
  */
-fun render(letters: List<Letter>, service: Service = Telegram, closedAtMs: Long? = null): Screen {
-    val closed = closedAtMs != null
+fun render(letters: List<Letter>, service: Service = Telegram, deadline: Deadline = Deadline.Open): Screen {
+    val closed = deadline is Deadline.Passed
     val last = letters.lastOrNull { it is Letter.Pressed || it is Letter.Opened }
     // История без края: срока у неё нет, замер не закрыт.
     if (last is Letter.Opened) return renderOpened(openStateFrom(letters, last), closed = false, service = service)
-    val pressed = last as? Letter.Pressed
-        ?: return Screen(NetworkCard.Measuring(OsNetwork.None), Button.Idle, ResultCard.Empty)
+    if (last !is Letter.Pressed) return Screen(NetworkCard.Measuring(OsNetwork.None), Button.Idle, ResultCard.Empty)
+    val pressed = last
     val press = letters.drop(letters.lastIndexOf(pressed))
     val e = explain(letters)
     // Кончившееся нажатие подтверждающего раунда уже не ждёт: подозрение на экране — без «проверяю».
@@ -64,11 +64,7 @@ fun render(letters: List<Letter>, service: Service = Telegram, closedAtMs: Long?
         is Outcome.Found, is Outcome.NotFound -> true
     }
     val card = networkCardOf(pressed.os, e.diagnosis, ended)
-    // Кончилось раньше срока — на письме итога; срок вышел посреди перебора — на сроке.
-    val stopwatch = when (val end = e.endedAtMs ?: closedAtMs) {
-        null -> Stopwatch.Running(pressed.atMs)
-        else -> Stopwatch.Stopped(pressed.atMs, end)
-    }
+    val stopwatch = stopwatchOf(pressed.atMs, e.finish, deadline)
     return when (val o = e.outcome) {
         Outcome.InProgress ->
             if (closed) {
@@ -79,23 +75,34 @@ fun render(letters: List<Letter>, service: Service = Telegram, closedAtMs: Long?
         is Outcome.Found -> {
             val server = pressed.servers.first { it.id == o.server }
             val at = press.filterIsInstance<Letter.ProbeAnswered>().first { it.server == o.server && it.verdict.kind() == VerdictKind.Fits }.atMs
-            val coverage = if (o.server == pressed.currentExit) "текущий выход работает" else coverageOf(e.diagnosis.scenario, o)
+            val coverage = if (o.server == pressed.currentExit) "текущий выход работает" else coverageOf(e.diagnosis.scene, o)
             Screen(card, Button.Green, ResultCard.Found(server.name, server.transport, at, coverage), stopwatch)
         }
         is Outcome.NotFound -> Screen(card, Button.Red, ResultCard.NotFound(words(e, pressed.servers, service)), stopwatch)
     }
 }
 
+/** Срок замера: ещё идёт или вышел в момент [Passed.atMs] — край закрыл замер, письма в этот момент нет. */
+sealed interface Deadline {
+    data object Open : Deadline
+    data class Passed(val atMs: Long) : Deadline
+}
+
+/** Кончилось раньше срока — на письме итога; срок вышел посреди перебора — на сроке; иначе идёт. */
+private fun stopwatchOf(startMs: Long, finish: Finish, deadline: Deadline): Stopwatch = when {
+    finish is Finish.At -> Stopwatch.Stopped(startMs, finish.atMs)
+    deadline is Deadline.Passed -> Stopwatch.Stopped(startMs, deadline.atMs)
+    else -> Stopwatch.Running(startMs)
+}
+
 private fun timedOutWords(service: Service): String = "${service.title}: за отведённое время рабочий сервер не нашёлся — нажми ещё раз."
 
 /** Слова тупика — свёртка объяснения: что за сеть, что пробовали и как упало, что не трогали, вывод, что осталось. */
 fun words(explanation: Explanation, servers: List<Server>, service: Service = Telegram): List<String> {
-    val scenario = explanation.diagnosis.scenario
+    val scene = explanation.diagnosis.scene
     // При подозрении перебор тот же, что при белых списках: входы в РФ, зарубежные ждут.
-    val whitelist = scenario == Scenario.MobileWhitelist || scenario == Scenario.SuspectWhitelist
-    val header = listOfNotNull(
-        scenario?.let { s -> titleOf(s) + (explanation.lineEvidence?.let { ": " + evidenceOf(it) } ?: "") + "." },
-    )
+    val whitelist = scene.whitelist
+    val header = scene.fold({ emptyList() }) { s -> listOf(titleOf(s) + evidenceWords(explanation.lineEvidence) + ".") }
     val triedTotal = explanation.tried.values.sumOf { it.values.sum() }
     val intro = when {
         triedTotal == 0 -> emptyList()
@@ -122,16 +129,25 @@ fun words(explanation: Explanation, servers: List<Server>, service: Service = Te
             }
         }
     }
-    val conclusion = (explanation.outcome as? Outcome.NotFound)?.conclusion
-    val verdict = listOfNotNull(conclusion?.let { conclusionOf(it, scenario) })
-    val tail = when (conclusion) {
-        null, Conclusion.NoNetwork -> emptyList()
-        Conclusion.NoAdmissibleInConfig, Conclusion.AllAdmissibleFailed, Conclusion.NothingWorksOpen -> listOf(
-            "Российские сайты работают напрямую." +
-                if (whitelist) " Нужен сервер с входом в РФ из белого списка — спроси у своего VPN-сервиса." else "",
-        )
+    val verdict = when (val o = explanation.outcome) {
+        Outcome.InProgress, is Outcome.Found -> emptyList()
+        is Outcome.NotFound -> listOf(conclusionOf(o.conclusion, scene)) + tailOf(o.conclusion, whitelist)
     }
-    return header + intro + triedLines + skippedLines + verdict + tail
+    return header + intro + triedLines + skippedLines + verdict
+}
+
+private fun evidenceWords(e: Evidence): String = when (e) {
+    Evidence.None -> ""
+    is Evidence.Round -> ": " + evidenceOf(e.observed.line)
+}
+
+/** Что осталось человеку после вывода: российское напрямую, при белых списках — где взять вход. */
+private fun tailOf(c: Conclusion, whitelist: Boolean): List<String> = when (c) {
+    Conclusion.NoNetwork -> emptyList()
+    Conclusion.NoAdmissibleInConfig, Conclusion.AllAdmissibleFailed, Conclusion.NothingWorksOpen -> listOf(
+        "Российские сайты работают напрямую." +
+            if (whitelist) " Нужен сервер с входом в РФ из белого списка — спроси у своего VPN-сервиса." else "",
+    )
 }
 
 fun operatorOf(os: OsNetwork): String? = when (os) {
@@ -272,20 +288,22 @@ private fun phraseOf(kind: VerdictKind, whitelist: Boolean, service: Service): S
     VerdictKind.Fits -> "${service.title} работает"
 }
 
-private fun conclusionOf(c: Conclusion, scenario: Scenario?): String = when (c) {
+private fun conclusionOf(c: Conclusion, scene: Scene): String = when (c) {
     Conclusion.AllAdmissibleFailed ->
-        if (scenario == Scenario.SuspectWhitelist) "Похоже на белые списки, и ни один вход в РФ сейчас не проходит." else "С этим конфигом белые списки не пробить."
+        if (scene == Scene.Chosen(Scenario.SuspectWhitelist))"Похоже на белые списки, и ни один вход в РФ сейчас не проходит." else "С этим конфигом белые списки не пробить."
     Conclusion.NoAdmissibleInConfig -> "В твоём конфиге нет ни одного входа в РФ."
     Conclusion.NoNetwork -> "Нет сети."
     Conclusion.NothingWorksOpen -> "У провайдера сейчас не работает ни один сервер."
 }
 
 /** «проверено K из N входов РФ» — родительный после «из»: 1 входа, 21 входа, остальные — входов. */
-private fun coverageOf(scenario: Scenario?, o: Outcome.Found): String {
+private fun coverageOf(scene: Scene, o: Outcome.Found): String =
+    // Повторное нажатие: текущий выход подтвердился раньше, чем пришла линия.
+    scene.fold({ "текущий выход работает" }) { coverageOn(it, o) }
+
+private fun coverageOn(scenario: Scenario, o: Outcome.Found): String {
     val genitiveOne = o.admissible % 10 == 1 && o.admissible % 100 != 11
     return when (scenario) {
-        // Повторное нажатие: текущий выход подтвердился раньше, чем пришла линия.
-        null -> "текущий выход работает"
         Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> "проверено ${o.position} из ${o.admissible} ${if (genitiveOne) "входа" else "входов"} РФ"
         Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear, Scenario.Offline ->
             "проверено ${o.position} из ${o.admissible} ${if (genitiveOne) "сервера" else "серверов"}"

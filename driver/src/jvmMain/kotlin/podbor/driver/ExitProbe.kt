@@ -85,4 +85,4 @@ internal fun exitIpOfResponse(raw: String): String? {
 }
 
 /** Тело ответа эталона → IP: обрезаем пробелы и перевод строки, не IP — null. */
-fun exitIpOf(body: String): String? = body.trim().takeIf { WhiteLists.ipBits(it) != null }
+fun exitIpOf(body: String): String? = body.trim().takeIf { WhiteLists.ipBits(it).isSome() }

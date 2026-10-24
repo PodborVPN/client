@@ -13,6 +13,7 @@ import podbor.core.exitHead
 import podbor.core.exitNotes
 import podbor.core.operatorOf
 import podbor.core.refWords
+import podbor.core.Deadline
 import podbor.core.render
 
 /**
@@ -45,7 +46,7 @@ private fun historyOf(rows: List<Row>, svc: Service, limit: Int): List<HistoryEv
 private fun eventOf(letters: List<Letter>, service: Service, closed: Boolean): HistoryEvent? {
     val first = letters.first()
     val net = netOf(first)
-    val screen = render(letters, service, closedAtMs = if (closed) letters.last().atMs else null)
+    val screen = render(letters, service, if (closed) Deadline.Passed(letters.last().atMs) else Deadline.Open)
     return when (val r = screen.result) {
         ResultCard.Empty -> null
         is ResultCard.Found -> HistoryEvent(first.atMs, Mood.Good, "$net · подобрал ${refWords(r.serverName, r.transport)} — ${r.coverage}")
