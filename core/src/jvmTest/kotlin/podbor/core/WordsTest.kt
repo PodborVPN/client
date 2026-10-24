@@ -27,6 +27,20 @@ class WordsTest : FunSpec({
         }
     }
 
+    context("выход подобран на другой сети — пояснение говорит, откуда и куда переехали") {
+        val moved = NetworkMove(OsNetwork.Wifi, OsNetwork.Cellular("MTS", "25001"))
+        withData(
+            nameFn = { "${it.first}" },
+            ExitState.Checking(nl, moved) to "сеть сменилась: Wi-Fi → MTS — проверяю Телегу…",
+            ExitState.Works(nl, moved) to "подобран на Wi-Fi, на MTS тоже работает",
+            ExitState.Dead(nl, Blame.Whitelist, moved) to
+                "подобран на Wi-Fi; на MTS — белые списки: сеть его не пропускает. Нажми — подберу под эту сеть",
+            ExitState.Dead(nl, Blame.Server, moved) to
+                "подобран на Wi-Fi; на MTS — сеть ни при чём — проблема у сервера. Нажми — подберу под эту сеть",
+        ) { (state, note) -> exitNote(state) shouldBe note }
+        moveWords(moved) shouldBe "сеть сменилась: Wi-Fi → MTS"
+    }
+
     context("транспорт не повторяется, если он уже в имени сервера (без учёта регистра, целым словом)") {
         withData(
             nameFn = { it.first },

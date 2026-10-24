@@ -3,10 +3,15 @@ package podbor.app.net
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import arrow.core.Either
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -58,6 +63,26 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
         @Suppress("DEPRECATION")
         return active ?: cm.allNetworks.firstOrNull { isUnderlying(it) }
     }
+
+    /**
+     * Сеть под VPN могла смениться: появилась, пропала или поменяла возможности не-VPN сеть с интернетом. Сразу при
+     * подписке — тоже, чтобы было от чего отсчитывать. Что за сеть — читает подписчик ([transport]): событие — только
+     * повод.
+     */
+    fun changes(): Flow<Unit> = callbackFlow {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { trySend(Unit) }
+            override fun onLost(network: Network) { trySend(Unit) }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { trySend(Unit) }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        trySend(Unit)
+        cm.registerNetworkCallback(request, callback)
+        awaitClose { cm.unregisterNetworkCallback(callback) }
+    }.conflate()
 
     fun transport(): Transport {
         val caps = network()?.let(cm::getNetworkCapabilities) ?: return Transport.None

@@ -18,12 +18,13 @@ enum class Blame { Whitelist, SuspectedWhitelist, NoNetwork, Server, Unexplained
 /** Откуда выход, на котором сидит человек, и что с ним. Экран при открытии. */
 data class ExitRef(val name: String, val transport: Transport)
 
+/** [moved] — выход подобран на другой сети: обстоятельство рядом с причиной ([Blame]), не сама причина. */
 sealed interface ExitState {
     data object Off : ExitState
     data class Unlisted(val tag: ServerId) : ExitState
-    data class Checking(val ref: ExitRef) : ExitState
-    data class Works(val ref: ExitRef) : ExitState
-    data class Dead(val ref: ExitRef, val blame: Blame) : ExitState
+    data class Checking(val ref: ExitRef, val moved: NetworkMove? = null) : ExitState
+    data class Works(val ref: ExitRef, val moved: NetworkMove? = null) : ExitState
+    data class Dead(val ref: ExitRef, val blame: Blame, val moved: NetworkMove? = null) : ExitState
 }
 
 sealed interface ResultCard {
@@ -179,17 +180,31 @@ fun exitHead(e: ExitState): String = when (e) {
 /** Пояснение к выходу второй строкой экрана; `null` — пояснять нечего (выход работает). */
 fun exitNote(e: ExitState, service: Service = Telegram): String? = when (e) {
     ExitState.Off -> "Xray выбирает сам — нажми «Подобрать»"
-    is ExitState.Works -> null
+    is ExitState.Works -> worksNote(e)
     is ExitState.Unlisted -> "такого сервера нет в подписке, проверить нечем"
-    is ExitState.Checking -> "проверяю ${service.titleAcc}…"
-    is ExitState.Dead -> when (e.blame) {
-        Blame.Whitelist -> "белые списки: сеть его не пропускает"
-        Blame.SuspectedWhitelist -> "похоже на белые списки, подтверждаю"
-        Blame.NoNetwork -> "нет сети"
-        Blame.Server -> "сеть ни при чём — проблема у сервера"
-        Blame.Unexplained -> "сеть непонятная, причину не называю"
+    is ExitState.Checking -> "проверяю ${service.titleAcc}…".let { checking -> e.moved?.let { m -> "${moveWords(m)} — $checking" } ?: checking }
+    is ExitState.Dead -> blameWords(e.blame).let { blame ->
+        e.moved?.let { m -> "подобран на ${networkWords(m.from)}; на ${networkWords(m.to)} — $blame. Нажми — подберу под эту сеть" } ?: blame
     }
 }
+
+/** Пояснение к живому выходу: молчим, пока сеть та же; после переезда — что выход пережил его. */
+private fun worksNote(e: ExitState.Works): String? =
+    e.moved?.let { m -> "подобран на ${networkWords(m.from)}, на ${networkWords(m.to)} тоже работает" }
+
+private fun blameWords(blame: Blame): String = when (blame) {
+    Blame.Whitelist -> "белые списки: сеть его не пропускает"
+    Blame.SuspectedWhitelist -> "похоже на белые списки, подтверждаю"
+    Blame.NoNetwork -> "нет сети"
+    Blame.Server -> "сеть ни при чём — проблема у сервера"
+    Blame.Unexplained -> "сеть непонятная, причину не называю"
+}
+
+/** Переезд словами — для карточки и уведомления: «сеть сменилась: Wi-Fi → МТС». */
+fun moveWords(m: NetworkMove): String = "сеть сменилась: ${networkWords(m.from)} → ${networkWords(m.to)}"
+
+/** Сеть словом: «Wi-Fi», оператор симки данных; нет сети — «без сети» (переезд из неё не строится, слово — для тотальности). */
+private fun networkWords(os: OsNetwork): String = operatorOf(os) ?: "без сети"
 
 /** Выход по имени и транспорту: «NL-7» (gRPC); транспорт, уже названный в имени целым словом, не повторяется. */
 fun refWords(name: String, transport: Transport): String {

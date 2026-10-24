@@ -27,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -91,9 +92,11 @@ import podbor.app.sub.subscriptionKey
 import podbor.core.EpochKind
 import podbor.core.Pulse
 import podbor.core.PulseView
+import podbor.core.moveWords
 import podbor.core.networkKey
 import podbor.core.view
 import podbor.driver.PulseContext
+import podbor.driver.networkMoves
 import podbor.screen.ExitOrigin
 
 private const val TAG = "Podbor"
@@ -248,6 +251,21 @@ class PodborVpnService : VpnService(), ServicePort {
                     }
                     SessionState.Starting -> nm.notify(NOTIFICATION_ID, notification(name))
                     SessionState.Down, is SessionState.Failed -> Unit
+                }
+            }
+        }
+        // Сеть сменилась на поднятой сессии — перемер под новую сеть, туннель не рвётся ([Desk.open]). Новый переезд
+        // посреди перемера отменяет устаревший. Пока идёт — строка переезда в уведомлении.
+        scope.launch {
+            val networks = underlying.changes().map { telephony.osNetworkLight(underlying.transport()) }
+            networkMoves(networks, host.state.map { it is SessionState.Up }).collectLatest { move ->
+                log("сеть сменилась: ${networkKey(move.from)} → ${networkKey(move.to)}, перемеряю")
+                val name = { exitName(host.state.value, (host.state.value as? SessionState.Up)?.live?.driver?.exits?.state?.value?.general) }
+                nm.notify(NOTIFICATION_ID, notification(name(), "${moveWords(move)} — проверяю выходы"))
+                try {
+                    desk.open()
+                } finally {
+                    if (host.state.value is SessionState.Up) nm.notify(NOTIFICATION_ID, notification(name()))
                 }
             }
         }
@@ -448,9 +466,11 @@ class PodborVpnService : VpnService(), ServicePort {
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> "выход не выбран"
     }
 
-    private fun notification(exitName: String): Notification =
+    /** [text] — что сессия делает сейчас (перемер после переезда сети); нет — только выход. */
+    private fun notification(exitName: String, text: String? = null): Notification =
         Notification.Builder(this, CHANNEL)
             .setContentTitle("Podbor · $exitName")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             // Тап по уведомлению — экран A (singleTask: тот же экран, не второй).

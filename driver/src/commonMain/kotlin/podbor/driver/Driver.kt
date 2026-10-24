@@ -146,7 +146,7 @@ class Driver(
         }
         val boards = Boards(services, onBoard, services.associate { it.id to render(listOf(letters.getValue(it.id)), it) })
         val screens = pipes(services, letters::getValue) { service, pressed, hub, inbox, lead ->
-            val run = act(pressed, PressMachine(service.id), pressTimeoutMs, executor(service, servers, hub, lead), tape, { _, letters ->
+            val run = act(pressed, PressMachine(service.id), pressTimeoutMs, executor(service, servers, os, hub, lead), tape, { _, letters ->
                 boards.put(service.id, render(letters, service))
             }, inbox)
             render(run.letters, service, closedAtMs = clock.nowMs().takeIf { run.closed })
@@ -174,11 +174,11 @@ class Driver(
         val runs = pipes(services, { exits.effective(it) }) { service, exit, hub, inbox, lead ->
             val vpn = when (exit) {
                 null -> Vpn.Off
-                else -> servers.find { it.id == exit }?.let(Vpn::On) ?: Vpn.Unlisted(exit)
+                else -> servers.find { it.id == exit }?.let { Vpn.On(it, chosenOn = exits.chosenOn(service.id)) } ?: Vpn.Unlisted(exit)
             }
             val opened = Letter.Opened(clock.nowMs(), os, vpn)
             // Раунды до Xray машина получает на старте — они в шапке прогона (Head.Open), а не нотой.
-            act(opened, OpenMachine(opened, known, service.id), OPEN_TIMEOUT_MS, executor(service, servers, hub, lead), tape, { s, _ ->
+            act(opened, OpenMachine(opened, known, service.id), OPEN_TIMEOUT_MS, executor(service, servers, os, hub, lead), tape, { s, _ ->
                 boards.put(service.id, renderOpened(s, closed = false, service = service))
             }, inbox)
         }
@@ -291,7 +291,7 @@ class Driver(
             val server = memory.successes[memoryKey(os, scenario, service.id)]?.firstNotNullOfOrNull { success ->
                 warm.servers.find { it.key == success.serverKey }?.takeUnless { memory.isBlocked(it.endpoint, now) }
             } ?: return@mapNotNull null
-            exits.make(service.id, server.id).fold(
+            exits.make(service.id, server.id, on = os).fold(
                 { e -> tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: setExit $e")); null },
                 { tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: из памяти сети")); service.id to server },
             )
@@ -315,10 +315,10 @@ class Driver(
 
     /**
      * Закрепить за [service] выход [server], прошедший пробу сервиса (Exits.make): так он переживает снятие общего,
-     * за которым сервис шёл. Память не трогается; на Ленте — только тег.
+     * за которым сервис шёл; сеть подбора — та же, что у общего. Память не трогается; на Ленте — только тег.
      */
     suspend fun pinExit(service: ServiceId, server: ServerId): Either<EngineError, Unit> =
-        exits.make(service, server)
+        exits.make(service, server, on = exits.chosenOn(service))
             .onRight { tape.write(noteLine("pinExit ${service.id} ${server.tag}: прошёл пробу сервиса, закреплён")) }
             .onLeft { tape.write(noteLine("pinExit ${service.id} ${server.tag}: $it")) }
 
@@ -369,6 +369,7 @@ class Driver(
     private fun executor(
         service: Service,
         servers: List<Server>,
+        os: OsNetwork,
         hub: LineHub,
         lead: CompletableDeferred<Unit>,
     ): suspend CoroutineScope.(Deed, SendChannel<Letter>) -> Unit {
@@ -388,7 +389,7 @@ class Driver(
                     }
                     if (general) lead.complete(Unit)
                 }
-                is Deed.MakeExit -> exits.make(service.id, deed.server).onLeft { tape.write(noteLine("setExit ${service.id.id}: $it")) }
+                is Deed.MakeExit -> exits.make(service.id, deed.server, on = os).onLeft { tape.write(noteLine("setExit ${service.id.id}: $it")) }
                 is Deed.MeasureSpeed -> tape.write(noteLine("MeasureSpeed ${deed.server.tag}: скорость пока не меряется"))
                 is Deed.Remember -> memoryLock.withLock { store.saveMemory(store.loadMemory().merged(deed.memory, service.id)) }
                 // Дела анализа подписки: нажатие их не выдаёт, у анализа свой scanExecutor.

@@ -10,9 +10,10 @@ sealed interface CardStatus {
     /** Балансер сервиса указывает на сервер не из подписки: проверить нечем (слова прежнего экрана — тег и почему). */
     data class Unlisted(val tag: ServerId) : CardStatus
     data object Searching : CardStatus
-    data class Checking(val ref: ExitRef) : CardStatus
-    data class Works(val ref: ExitRef) : CardStatus
-    data class Dead(val ref: ExitRef, val blame: Blame) : CardStatus
+    /** [moved] — как у [ExitState]: выход подобран на другой сети. */
+    data class Checking(val ref: ExitRef, val moved: NetworkMove? = null) : CardStatus
+    data class Works(val ref: ExitRef, val moved: NetworkMove? = null) : CardStatus
+    data class Dead(val ref: ExitRef, val blame: Blame, val moved: NetworkMove? = null) : CardStatus
     data class Found(val ref: ExitRef, val probedAtMs: Long, val coverage: String) : CardStatus
     data class NotFound(val lines: List<String>) : CardStatus
 }
@@ -49,8 +50,8 @@ private fun statusOf(screen: Screen?): CardStatus = when (val r = screen?.result
     is ResultCard.Exit -> when (val e = r.state) {
         ExitState.Off -> CardStatus.Unknown
         is ExitState.Unlisted -> CardStatus.Unlisted(e.tag)
-        is ExitState.Checking -> CardStatus.Checking(e.ref)
-        is ExitState.Works -> CardStatus.Works(e.ref)
-        is ExitState.Dead -> CardStatus.Dead(e.ref, e.blame)
+        is ExitState.Checking -> CardStatus.Checking(e.ref, e.moved)
+        is ExitState.Works -> CardStatus.Works(e.ref, e.moved)
+        is ExitState.Dead -> CardStatus.Dead(e.ref, e.blame, e.moved)
     }
 }

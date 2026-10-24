@@ -28,6 +28,14 @@ class BoardTest : FunSpec({
         b.cards.map { it.status } shouldBe listOf(CardStatus.NotFound(listOf("Нет сети.")), CardStatus.Found(ref, 100, "проверено 2 из 11 входов РФ"))
     }
 
+    test("переезд сети доходит до карточки: проверяю, работает, мёртв") {
+        val moved = NetworkMove(OsNetwork.Wifi, os)
+        fun card(e: ExitState) = board(setOf(Telegram), mapOf(Telegram.id to screen(Button.Ready, ResultCard.Exit(e)))).cards.single().status
+        card(ExitState.Checking(ref, moved)) shouldBe CardStatus.Checking(ref, moved)
+        card(ExitState.Works(ref, moved)) shouldBe CardStatus.Works(ref, moved)
+        card(ExitState.Dead(ref, Blame.Server, moved)) shouldBe CardStatus.Dead(ref, Blame.Server, moved)
+    }
+
     test("кнопка: Searching сильнее всего; Red только если все Red") {
         val s = { b: Button -> screen(b) }
         board(setOf(Telegram, Instagram), mapOf(Telegram.id to s(Button.Searching), Instagram.id to screen(Button.Red, notFound))).button shouldBe Button.Searching

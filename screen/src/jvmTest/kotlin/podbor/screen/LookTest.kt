@@ -10,6 +10,7 @@ import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.Instagram
 import podbor.core.NetworkCard
+import podbor.core.NetworkMove
 import podbor.core.OsNetwork
 import podbor.core.PairPulse
 import podbor.core.PulseView
@@ -125,6 +126,15 @@ class LookTest : FunSpec({
             .single { it.label == "IG" }.notes shouldBe listOf(Note("проверяю Инсту…", Tone.Warn))
         tg(CardStatus.Works(nl), origin = recalledTg) shouldBe tg(CardStatus.Works(nl))
         tg(CardStatus.Dead(nl, Blame.Server), origin = recalledTg).notes shouldBe listOf(Note("сеть ни при чём — проблема у сервера", Tone.Fail))
+    }
+
+    test("выход подобран на другой сети — строка говорит о переезде: проверяю, жив (зелёным), мёртв") {
+        val moved = NetworkMove(OsNetwork.Wifi, mts)
+        tg(CardStatus.Checking(nl, moved)).notes shouldBe listOf(Note("сеть сменилась: Wi-Fi → ${mts.operator} — проверяю Телегу…", Tone.Warn))
+        tg(CardStatus.Works(nl, moved)).notes shouldBe listOf(Note("подобран на Wi-Fi, на ${mts.operator} тоже работает", Tone.Ok))
+        tg(CardStatus.Dead(nl, Blame.Server, moved)).notes shouldBe
+            listOf(Note("подобран на Wi-Fi; на ${mts.operator} — сеть ни при чём — проблема у сервера. Нажми — подберу под эту сеть", Tone.Fail))
+        tg(CardStatus.Works(nl)).notes shouldBe emptyList()
     }
 
     test("не нашли оба — общая строка сети один раз, у первого; свои строки — у каждого") {

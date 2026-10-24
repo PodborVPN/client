@@ -274,6 +274,23 @@ class DriverTest : FunSpec({
         screen.network.shouldBeInstanceOf<NetworkCard.Measured>().scenario shouldBe Scenario.MobileWhitelist
     }
 
+    test("подобрал на Wi-Fi, открыл на МТС: в Ленте сеть подбора без вышки, на карточке — жив и после переезда") {
+        val w = World(ips = listOf("10.0.0.1"), ruIps = emptySet(), line = line(Reach.Up, Reach.Up), fitsPorts = setOf(20000))
+        val onTower = mts.copy(tower = podbor.core.Tower.Known(cellId = 1, earfcn = 1575, rsrpDbm = -103))
+        val opening = runBlocking {
+            resourceScope {
+                val d = w.driver()
+                val warm = with(d) { warmUp("подписка") }.shouldBeInstanceOf<Either.Right<Warm>>().value
+                d.press(warm, w.services, OsNetwork.Wifi).button shouldBe Button.Green
+                d.open(warm, w.services, onTower)
+            }
+        }
+        val ref = ExitRef("Сервер 0", podbor.core.Transport.Other("tcp"))
+        opening.board.card() shouldBe CardStatus.Works(ref, podbor.core.NetworkMove(OsNetwork.Wifi, onTower))
+        w.tape.map(::rowOf).filterIsInstance<Row.Step>().map { it.letter }.filterIsInstance<Letter.Opened>().single()
+            .vpn.shouldBeInstanceOf<podbor.core.Vpn.On>().chosenOn shouldBe OsNetwork.Wifi
+    }
+
     test("Лента открытия: шапка Run(Open) без раундов, затем Opened с выходом целиком") {
         val w = World(ips = listOf("10.0.0.1"), ruIps = emptySet(), line = whitelist, fitsPorts = emptySet())
         w.openNow("подписка", mts, currentExit = ServerId("s001"))

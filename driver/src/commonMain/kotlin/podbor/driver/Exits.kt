@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import podbor.core.GENERAL_FOLLOWS
+import podbor.core.OsNetwork
 import podbor.core.ServerId
 import podbor.core.Service
 import podbor.core.ServiceId
+import podbor.core.Tower
 
 /** Куда указывают балансеры: общий выход (за GENERAL_FOLLOWS) и выходы, закреплённые находками сервисов. */
 data class ExitsState(val general: ServerId?, val pinned: Map<ServiceId, ServerId>)
@@ -31,11 +33,18 @@ class Exits(
     private val current = MutableStateFlow(ExitsState(general = null, pinned = emptyMap()))
     val state: StateFlow<ExitsState> = current.asStateFlow()
 
-    /** Закрепить [server] за [service]; находка GENERAL_FOLLOWS ведёт и общий балансер, и все незакреплённые. */
-    suspend fun make(service: ServiceId, server: ServerId): Either<EngineError, Unit> = lock.withLock {
+    /** На какой сети подобран закреплённый выход сервиса; вышки нет — она не нужна сравнению и не трек. */
+    private val chosen = MutableStateFlow<Map<ServiceId, OsNetwork>>(emptyMap())
+
+    /**
+     * Закрепить [server] за [service]; находка GENERAL_FOLLOWS ведёт и общий балансер, и все незакреплённые.
+     * [on] — сеть, на которой выход подобран; `null` — неизвестно.
+     */
+    suspend fun make(service: ServiceId, server: ServerId, on: OsNetwork? = null): Either<EngineError, Unit> = lock.withLock {
         either {
             api.setExit(balancerOf(service), tagOf(server, service)).bind()
             current.update { it.copy(pinned = it.pinned + (service to server)) }
+            chosen.update { if (on == null) it - service else it + (service to on.withoutTower()) }
             if (service == GENERAL_FOLLOWS) {
                 api.setExit(EXIT_BALANCER, server.tag).bind()
                 current.update { it.copy(general = server) }
@@ -49,6 +58,13 @@ class Exits(
 
     fun pinned(service: ServiceId): Boolean = service in state.value.pinned
 
+    /** На какой сети подобран выход, куда сейчас указывает балансер сервиса; `null` — неизвестно или выхода нет. */
+    fun chosenOn(service: ServiceId): OsNetwork? = when {
+        pinned(service) -> chosen.value[service]
+        state.value.general != null -> chosen.value[GENERAL_FOLLOWS]
+        else -> null
+    }
+
     /**
      * Снять закрепление [service]: его балансер снова повторяет общий выход. Снятие GENERAL_FOLLOWS снимает и общий —
      * тогда все незакреплённые (и он сам) возвращаются к выбору балансировщика Xray.
@@ -56,6 +72,7 @@ class Exits(
     suspend fun clear(service: ServiceId): Either<EngineError, Unit> = lock.withLock {
         either {
             current.update { it.copy(pinned = it.pinned - service) }
+            chosen.update { it - service }
             val moved = if (service == GENERAL_FOLLOWS) {
                 api.clearExit(EXIT_BALANCER).bind()
                 current.update { it.copy(general = null) }
@@ -74,4 +91,9 @@ class Exits(
     /** Сервисы набора без своего выхода, по ServiceId. */
     private fun unpinned(): List<ServiceId> =
         services.map { it.id }.filter { it !in state.value.pinned }.sortedBy { it.id }
+}
+
+private fun OsNetwork.withoutTower(): OsNetwork = when (this) {
+    is OsNetwork.Cellular -> copy(tower = Tower.Unknown)
+    OsNetwork.Wifi, OsNetwork.None -> this
 }

@@ -82,7 +82,11 @@ sealed interface Letter {
 @Serializable
 sealed interface Vpn {
     @Serializable data object Off : Vpn
-    @Serializable data class On(val exit: Server) : Vpn
+    /** [chosenOn] — сеть, на которой выход подобран; `null` — неизвестно (Ленты до поля), без значения не пишется. */
+    @Serializable data class On(
+        val exit: Server,
+        @EncodeDefault(EncodeDefault.Mode.NEVER) val chosenOn: OsNetwork? = null,
+    ) : Vpn
     /** Выход не из подписки (другой конфиг, подписка сменилась): пробовать нечем, name и транспорт неизвестны. */
     @Serializable data class Unlisted(val tag: ServerId) : Vpn
 }

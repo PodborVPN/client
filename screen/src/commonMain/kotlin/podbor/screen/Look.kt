@@ -134,14 +134,16 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
         is CardStatus.Unlisted -> ExitState.Unlisted(st.tag).let { bare(exitHead(it), exitNote(it)) }
         CardStatus.Searching -> ServiceRow(card.label, null, "подбираю выход…", null, emptyList(), searching = true)
         is CardStatus.Checking -> {
-            val note = when (origin) {
-                ExitOrigin.Recalled -> "последний рабочий: ${st.ref.name} — проверяю"
-                ExitOrigin.Chosen -> service?.let { exitNote(ExitState.Checking(st.ref), it) } ?: "проверяю…"
+            // Переезд сети сильнее происхождения: восстановленный из памяти выход подобран на этой же сети.
+            val note = when {
+                st.moved != null || origin == ExitOrigin.Chosen ->
+                    service?.let { exitNote(ExitState.Checking(st.ref, st.moved), it) } ?: "проверяю…"
+                else -> "последний рабочий: ${st.ref.name} — проверяю"
             }
             server(Mark.Checking, st.ref, Note(note, Tone.Warn))
         }
-        is CardStatus.Works -> server(Mark.Works, st.ref)
-        is CardStatus.Dead -> server(Mark.Dead, st.ref, exitNote(ExitState.Dead(st.ref, st.blame))?.let { Note(it, Tone.Fail) })
+        is CardStatus.Works -> server(Mark.Works, st.ref, exitNote(ExitState.Works(st.ref, st.moved))?.let { Note(it, Tone.Ok) })
+        is CardStatus.Dead -> server(Mark.Dead, st.ref, exitNote(ExitState.Dead(st.ref, st.blame, st.moved))?.let { Note(it, Tone.Fail) })
         is CardStatus.Found -> server(Mark.Works, st.ref, Note(st.coverage, Tone.Ok))
         // Тупик — словами explain: первая строка (что за сеть) ярче, остальное — серым.
         is CardStatus.NotFound -> ServiceRow(

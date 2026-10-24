@@ -11,6 +11,9 @@ sealed interface OsNetwork {
     @Serializable data object None : OsNetwork
 }
 
+/** Сеть сменилась по ключу памяти ([networkKey]): выход, подобранный на [from], на [to] проверяется заново. */
+data class NetworkMove(val from: OsNetwork, val to: OsNetwork)
+
 /** Достижимость сервера кандидата по TCP (край, TcpReach). */
 @Serializable
 enum class Reach { Up, Down }

@@ -7,8 +7,10 @@ import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.Instagram
+import podbor.core.OsNetwork
 import podbor.core.ServerId
 import podbor.core.Telegram
+import podbor.core.Tower
 
 /** XrayApi, записывающий каждый OverrideBalancerTarget как «балансер=цель» (снятие — пустая цель). */
 private class Overrides : XrayApi {
@@ -43,6 +45,21 @@ class ExitsTest : FunSpec({
         api.calls shouldContainExactly listOf("svc.tg=s1", "exit=s1", "svc.insta=s1", "svc.insta=s2", "svc.tg=s3", "exit=s3")
         exits.effective(Instagram.id) shouldBe s2
         exits.effective(Telegram.id) shouldBe s3
+    }
+
+    test("сеть подбора: свой выход — своя сеть, незакреплённый — сеть общего; вышка не хранится") {
+        val mts = OsNetwork.Cellular("MTS", "25001")
+        val exits = Exits(Overrides(), HARDCODED_SERVICES)
+        exits.chosenOn(Telegram.id) shouldBe null
+        runBlocking { exits.make(Telegram.id, s1, on = OsNetwork.Wifi) }
+        exits.chosenOn(Instagram.id) shouldBe OsNetwork.Wifi
+        runBlocking { exits.make(Instagram.id, s2, on = mts.copy(tower = Tower.Known(cellId = 1, earfcn = 1575, rsrpDbm = -103))) }
+        exits.chosenOn(Instagram.id) shouldBe mts
+        exits.chosenOn(Telegram.id) shouldBe OsNetwork.Wifi
+        runBlocking { exits.clear(Instagram.id) }
+        exits.chosenOn(Instagram.id) shouldBe OsNetwork.Wifi
+        runBlocking { exits.clear(Telegram.id) }
+        exits.chosenOn(Instagram.id) shouldBe null
     }
 
     test("до своей находки сервис идёт общим выходом и не закреплён; после make — закреплён") {
