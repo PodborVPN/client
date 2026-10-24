@@ -59,6 +59,8 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.noteOf
 import podbor.app.vpn.PodborVpnService
+import podbor.app.net.DnsFixes
+import podbor.core.networkKey
 import podbor.core.Board
 import podbor.core.CardStatus
 import podbor.core.NetworkCard
@@ -188,6 +190,11 @@ class MainActivity : FragmentActivity() {
                     when (ask) {
                         Ask.Disclosure -> PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
                         Ask.AlwaysOn -> PodborTheme { AlwaysOnSheet(onOpen = { hinted(open = true) }, onLater = { hinted(open = false) }) }
+                        Ask.DnsRepair -> {
+                            val fixedNow by dnsFixes.all.collectAsStateWithLifecycle()
+                            val here = networkKey(vm.board.value.network.os)
+                            PodborTheme { DnsSheet(fixed = here != null && here in fixedNow, onYes = { repairDns(here) }, onNo = { vm.answered() }) }
+                        }
                         Ask.Permissions, Ask.VpnConsent, Ask.Chooser, Ask.Qr, null -> Unit
                     }
                 }
@@ -407,6 +414,30 @@ class MainActivity : FragmentActivity() {
     internal fun press() {
         log("экран: нажатие")
         vm.press()
+    }
+
+    /** Ремонт DNS по сетям: что починено — плашке «Сеть» и шторке. */
+    internal val dnsFixes by lazy { DnsFixes(this) }
+
+    /** 🔧 на плашке «Сеть»: шторка ремонта DNS. */
+    internal fun askDns() {
+        log("экран: ремонт DNS — шторка")
+        vm.asked(Ask.DnsRepair)
+    }
+
+    /**
+     * Ответ «Починить» / «Вернуть DNS сети» в шторке: ремонт этой сети переключается, VPN переподнимается тем же путём,
+     * что «выключить» и «включить» — Xray стартует с новым DNS для российских доменов. Сети нет — чинить нечего.
+     */
+    private fun repairDns(network: String?) {
+        if (vm.ask.value != Ask.DnsRepair) return
+        vm.answered()
+        if (network == null) return
+        val on = !dnsFixes.fixed(network)
+        log("ремонт DNS: " + if (on) "Яндекс DNS на этой сети" else "вернул DNS сети")
+        dnsFixes.set(network, on)
+        turnOff()
+        turnOn()
     }
 
     /** История строки [label] для шторки сервиса. */

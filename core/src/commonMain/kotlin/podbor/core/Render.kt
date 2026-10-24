@@ -9,7 +9,13 @@ sealed interface NetworkCard {
     val os: OsNetwork
 
     data class Measuring(override val os: OsNetwork) : NetworkCard
-    data class Measured(override val os: OsNetwork, val scenario: Scenario, val evidence: String) : NetworkCard
+    /** [dns] — DNS сети по последнему раунду ([dnsOf]): отдельная ось рядом со сценарием. */
+    data class Measured(
+        override val os: OsNetwork,
+        val scenario: Scenario,
+        val evidence: String,
+        val dns: DnsHealth = DnsHealth.Unknown,
+    ) : NetworkCard
 }
 
 /** Кто виноват, что текущий выход мёртв, — по диагнозу линии. Unexplained: сеть непонятная или линия не ответила к сроку. */
@@ -242,9 +248,9 @@ internal fun networkCardOf(os: OsNetwork, diagnosis: Diagnosis, closed: Boolean)
     Diagnosis.Pending -> NetworkCard.Measuring(os)
     is Diagnosis.Suspected -> {
         val words = evidenceOf(diagnosis.first)
-        NetworkCard.Measured(os, Scenario.SuspectWhitelist, if (closed) words else "$words — проверяю ещё раз")
+        NetworkCard.Measured(os, Scenario.SuspectWhitelist, if (closed) words else "$words — проверяю ещё раз", dnsOf(diagnosis))
     }
-    is Diagnosis.Settled -> NetworkCard.Measured(os, diagnosis.scenario, evidenceOf(diagnosis.rounds.last()))
+    is Diagnosis.Settled -> NetworkCard.Measured(os, diagnosis.scenario, evidenceOf(diagnosis.rounds.last()), dnsOf(diagnosis))
     is Diagnosis.Rechecking -> networkCardOf(os, diagnosis.previous, closed)
 }
 

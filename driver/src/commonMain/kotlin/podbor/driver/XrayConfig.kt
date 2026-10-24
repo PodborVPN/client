@@ -40,7 +40,18 @@ data class ConfigOpts(
     val socksAuth: SocksAuth? = null,
     /** Журнал соединений Xray ([connLoop]): только у сессии с TUN — там ходят приложения. */
     val accessLog: AccessLog = AccessLog.Off,
+    /** Чем резолвить российские домены: DNS сети или, после ремонта, Яндекс DNS по IP. */
+    val ruDns: RuDns = RuDns.System,
 )
+
+/** DNS для российских доменов: системный (DNS сети) или Яндекс по IP — когда DNS сети сломан и человек починил. */
+sealed interface RuDns {
+    data object System : RuDns
+    data object Yandex : RuDns
+}
+
+/** Яндекс DNS по IP — тот же, что российский эталон линии: в белых списках есть. */
+const val YANDEX_DNS_IP = "77.88.8.8"
 
 /** Access-лог Xray: выключен или в файл [File.path] — его читает край ([connLoop]). */
 sealed interface AccessLog {
@@ -117,7 +128,13 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
         putJsonObject("dns") {
             putJsonArray("servers") {
                 addJsonObject {
-                    put("address", "localhost")
+                    put(
+                        "address",
+                        when (opts.ruDns) {
+                            RuDns.System -> "localhost"
+                            RuDns.Yandex -> YANDEX_DNS_IP
+                        },
+                    )
                     putJsonArray("domains") { add("geosite:category-ru") }
                 }
                 add("1.1.1.1")

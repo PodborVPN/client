@@ -24,7 +24,7 @@ private fun russian(host: String) = Reference(host, host, 443, host, Trust.Syste
  * Российский эталон по IP — DNS ему не нужен: имена не резолвятся, а он отвечает — значит, сломан DNS сети, а не связь
  * ([podbor.core.dnsOf]). Сертификат Яндекса выписан и на IP, и на имя DoT.
  */
-private val YANDEX_DNS = Reference("dns.yandex", "77.88.8.8", 443, "common.dot.dns.yandex.net", Trust.System)
+private val YANDEX_DNS = Reference("dns.yandex", YANDEX_DNS_IP, 443, "common.dot.dns.yandex.net", Trust.System)
 
 val RUSSIA_REFS: Nel<Reference> = nonEmptyListOf(russian("ya.ru"), russian("vk.com"), russian("gosuslugi.ru"), YANDEX_DNS)
 

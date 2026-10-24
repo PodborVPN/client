@@ -189,6 +189,15 @@ class XrayConfigTest : FunSpec({
         buildConfig(servers, outbounds, opts.copy(logLevel = "info"))["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("info")
     }
 
+    test("российские домены: по умолчанию — DNS сети (localhost); ремонт — Яндекс DNS по IP, остальное как было") {
+        fun servers(o: ConfigOpts) = buildConfig(servers, outbounds, o)["dns"]!!.jsonObject["servers"]!!.jsonArray
+        servers(opts)[0].jsonObject["address"] shouldBe JsonPrimitive("localhost")
+        val fixed = servers(opts.copy(ruDns = RuDns.Yandex))
+        fixed[0].jsonObject["address"] shouldBe JsonPrimitive("77.88.8.8")
+        fixed[0].jsonObject["domains"] shouldBe servers(opts)[0].jsonObject["domains"]
+        fixed.drop(1) shouldBe servers(opts).drop(1)
+    }
+
     test("журнал соединений: по умолчанию выключен; включён — access-лог Xray в файл") {
         ("access" in cfg["log"]!!.jsonObject) shouldBe false
         buildConfig(servers, outbounds, opts.copy(accessLog = AccessLog.File("/data/x/access.log")))["log"]!!.jsonObject["access"] shouldBe

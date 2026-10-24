@@ -33,6 +33,13 @@ class DnsTest : FunSpec({
         dnsOf(round(dns, ok, ok, ok, ok)) shouldBe DnsHealth.Unknown
     }
 
+    test("карточка сети несёт DNS по диагнозу — экран скажет и предложит ремонт") {
+        val opened = Letter.Opened(0, OsNetwork.Wifi, Vpn.Off)
+        val card = render(listOf(opened, Letter.LineObserved(100, round(dns, dns, dns, ok, ok)))).network
+        (card as NetworkCard.Measured).dns shouldBe DnsHealth.Broken
+        (render(listOf(opened, Letter.LineObserved(100, round(ok, ok, ok, ok, ok)))).network as NetworkCard.Measured).dns shouldBe DnsHealth.Works
+    }
+
     test("диагноз: DNS — по последнему раунду; раундов нет — не знаем") {
         val broken = round(dns, dns, dns, ok, ok)
         dnsOf(Diagnosis.Pending) shouldBe DnsHealth.Unknown

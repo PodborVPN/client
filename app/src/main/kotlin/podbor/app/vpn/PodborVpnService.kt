@@ -99,6 +99,10 @@ import podbor.core.view
 import podbor.driver.PulseContext
 import podbor.driver.networkMoves
 import podbor.driver.AccessLog
+import podbor.driver.RuDns
+import podbor.driver.Row
+import podbor.driver.rowLine
+import podbor.app.net.DnsFixes
 import podbor.driver.connLoop
 import podbor.driver.tailAccess
 import podbor.core.ConnSample
@@ -439,6 +443,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 null -> AccessLog.Off
                 else -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
             },
+            ruDns = ruDnsHere(tunFd),
         )
         // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
         val geo = GeoHolder.await(GEO_WAIT_MS)
@@ -524,6 +529,21 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     private val telephony by lazy { Telephony(this) }
+
+    /**
+     * DNS российских доменов для запуска Xray: у сессии на сети, где человек починил DNS, — Яндекс по IP, иначе DNS сети.
+     * Решение читается свежим (экран мог переключить его перед перезапуском) и пишется в Ленту.
+     */
+    private fun ruDnsHere(tunFd: Int?): RuDns {
+        val here = networkKey(telephony.osNetworkLight(underlying.transport()))
+        val fixed = tunFd != null && here != null && DnsFixes(this).fixed(here)
+        return if (fixed) {
+            Either.catch { tape.write(rowLine(Row.Note("dns: российские домены — через Яндекс DNS (ремонт на этой сети)"))) }
+            RuDns.Yandex
+        } else {
+            RuDns.System
+        }
+    }
 
     private fun nextEpoch(): Long {
         val prefs = getSharedPreferences(PULSE_PREFS, MODE_PRIVATE)

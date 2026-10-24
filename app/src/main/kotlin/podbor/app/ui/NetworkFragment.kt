@@ -52,6 +52,18 @@ import podbor.core.networkTitle
 import podbor.core.operatorOf
 import podbor.core.towerLine
 import podbor.screen.toneOf
+import podbor.screen.DnsLine
+import podbor.screen.dnsLineOf
+import podbor.core.networkKey
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 /** Сеть — всегда сверху, над любой страницей: плашка из сводного экрана сервиса (и до VPN — замер линии мимо туннеля). */
 class NetworkFragment : Fragment() {
@@ -65,8 +77,17 @@ class NetworkFragment : Fragment() {
                 val board by screen.vm.board.collectAsStateWithLifecycle()
                 val update by screen.vm.update.collectAsStateWithLifecycle()
                 val pulse by screen.vm.pulse.collectAsStateWithLifecycle()
+                val fixes by screen.dnsFixes.all.collectAsStateWithLifecycle()
+                // Починено ли на этой сети: сети нет — ремонт не про неё.
+                val fixed = when (val here = networkKey(board.network.os)) {
+                    null -> false
+                    else -> here in fixes
+                }
                 PodborTheme {
-                    NetworkScreen(board.network, BuildConfig.VERSION_NAME, update, screen::openLink, networkTraffic(pulse, board.network))
+                    NetworkScreen(
+                        board.network, BuildConfig.VERSION_NAME, update, screen::openLink, networkTraffic(pulse, board.network),
+                        dns = dnsLineOf(board.network, fixed), onDns = screen::askDns,
+                    )
                 }
             }
         }
@@ -79,7 +100,16 @@ class NetworkFragment : Fragment() {
  * сверху — под строку состояния.
  */
 @Composable
-fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onUpdate: (String) -> Unit = {}, traffic: String? = null) {
+fun NetworkScreen(
+    card: NetworkCard,
+    version: String,
+    update: Offer? = null,
+    onUpdate: (String) -> Unit = {},
+    traffic: String? = null,
+    /** DNS сети в строке улики ([dnsLineOf]); [onDns] — 🔧: шторка ремонта. */
+    dns: DnsLine = DnsLine.Quiet,
+    onDns: () -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -107,26 +137,46 @@ fun NetworkScreen(card: NetworkCard, version: String, update: Offer? = null, onU
                 )
             }
         }
-        NetworkTier(card)
+        NetworkTier(card, dns, onDns)
     }
 }
 
-/** Строка прибора со значком слева и разделителем снизу. */
+/**
+ * Строка прибора со значком слева и разделителем снизу. Высота постоянная — с действием справа ([action]) и без: кнопка
+ * появляется, а плашка не прыгает.
+ */
 @Composable
-private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false) {
+private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false, color: Color = Muted, action: (@Composable () -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp).alpha(if (dim) 0.4f else 1f),
+        Modifier.fillMaxWidth().height(40.dp).alpha(if (dim) 0.4f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(12.dp))
-        Text(text, color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, color = color, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        action?.invoke()
     }
     HorizontalDivider(thickness = 1.dp, color = Rule)
 }
 
+/** 🔧 в строке улики: круг 32 dp в строке 40 dp — попасть пальцем можно, строка не растёт. */
 @Composable
-private fun NetworkTier(card: NetworkCard) {
+private fun Wrench(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .border(1.dp, Rule, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "DNS сети" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painterResource(R.drawable.ic_wrench), contentDescription = null, tint = PodborColors.Accent, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
     val os = card.os
     val evidence = when (card) {
         is NetworkCard.Measuring -> null
@@ -148,5 +198,10 @@ private fun NetworkTier(card: NetworkCard) {
     // Строка улики держит место и во время замера (прошлая улика приглушена): страница под сетью не прыгает.
     val last = remember { mutableStateOf<String?>(null) }
     SideEffect { if (evidence != null) last.value = evidence }
-    IconRow(R.drawable.ic_globe, evidence ?: last.value ?: "", dim = evidence == null)
+    // DNS сети — в той же строке: сломан — словами янтарём и 🔧 «починить», починен — как обошли и 🔧 «вернуть».
+    when (dns) {
+        DnsLine.Quiet -> IconRow(R.drawable.ic_globe, evidence ?: last.value ?: "", dim = evidence == null)
+        is DnsLine.Broken -> IconRow(R.drawable.ic_globe, dns.text, color = PodborColors.Accent) { Wrench(onDns) }
+        is DnsLine.Fixed -> IconRow(R.drawable.ic_globe, dns.text) { Wrench(onDns) }
+    }
 }
