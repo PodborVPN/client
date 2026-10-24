@@ -45,16 +45,19 @@ private val RESET_MARKS = listOf("reset", "broken pipe", "terminated the handsha
  * Чистая карта исключения фазы в исход линии. waitedMs — сколько прождали на этой фазе;
  * allowedMs и beforeMs — факты фазы для Silent (см. Handshake.Silent).
  */
+/** Connect не прошёл: RST — кто-то ответил; нет маршрута; иначе — не знаем. */
+private fun connectFailure(error: ConnectException, message: String): Handshake = when {
+    message.contains("refused", ignoreCase = true) -> Handshake.Refused
+    message.contains("unreachable", ignoreCase = true) -> Handshake.NoRoute
+    else -> Handshake.Unknown(error.javaClass.simpleName)
+}
+
 fun handshakeOf(stage: Stage, error: Throwable, waitedMs: Long, allowedMs: Long? = null, beforeMs: Long? = null): Handshake {
     val message = error.message.orEmpty()
     return when {
         error is SocketTimeoutException -> Handshake.Silent(stage, waitedMs, allowedMs, beforeMs)
         error is NoRouteToHostException -> Handshake.NoRoute
-        error is ConnectException -> when {
-            message.contains("refused", ignoreCase = true) -> Handshake.Refused
-            message.contains("unreachable", ignoreCase = true) -> Handshake.NoRoute
-            else -> Handshake.Unknown(error.javaClass.simpleName)
-        }
+        error is ConnectException -> connectFailure(error, message)
         // Сертификат не тот (подмена или чужой отпечаток) — причина лежит в цепочке, а не в самом SSLException.
         error is SSLException && generateSequence<Throwable>(error) { it.cause }.any { it is CertificateException } -> Handshake.Mirage
         (error is SSLException || error is SocketException) && RESET_MARKS.any { message.contains(it, ignoreCase = true) } ->

@@ -103,8 +103,10 @@ class Exits(
 
 private fun ChosenOn.withoutTower(): ChosenOn = when (this) {
     ChosenOn.Unknown -> this
-    is ChosenOn.Network -> when (val os = os) {
-        is OsNetwork.Cellular -> ChosenOn.Network(os.copy(tower = Tower.Unknown))
-        OsNetwork.Wifi, OsNetwork.None -> this
-    }
+    is ChosenOn.Network -> ChosenOn.Network(os.withoutTower())
+}
+
+private fun OsNetwork.withoutTower(): OsNetwork = when (this) {
+    is OsNetwork.Cellular -> copy(tower = Tower.Unknown)
+    OsNetwork.Wifi, OsNetwork.None -> this
 }

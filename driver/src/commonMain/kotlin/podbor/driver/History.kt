@@ -50,12 +50,15 @@ private fun eventOf(letters: List<Letter>, service: Service, closed: Boolean): H
         ResultCard.Empty -> null
         is ResultCard.Found -> HistoryEvent(first.atMs, Mood.Good, "$net · подобрал ${refWords(r.serverName, r.transport)} — ${r.coverage}")
         is ResultCard.NotFound -> HistoryEvent(first.atMs, Mood.Bad, "$net · не нашёл: ${r.lines.firstOrNull().orEmpty()}")
-        is ResultCard.Exit -> when (val e = r.state) {
-            is ExitState.Works -> HistoryEvent(first.atMs, Mood.Good, "$net · ${exitHead(e)} работает")
-            is ExitState.Dead -> HistoryEvent(first.atMs, Mood.Bad, "$net · ${exitHead(e)}: ${exitNotes(e, service).first()}")
-            ExitState.Off, is ExitState.Unlisted, is ExitState.Checking -> null
-        }
+        is ResultCard.Exit -> exitEventOf(r.state, first.atMs, net, service)
     }
+}
+
+/** Открытие проверило выход: работает или мёртв — событие; выхода нет или проверка не кончилась — нет. */
+private fun exitEventOf(e: ExitState, atMs: Long, net: String, service: Service): HistoryEvent? = when (e) {
+    is ExitState.Works -> HistoryEvent(atMs, Mood.Good, "$net · ${exitHead(e)} работает")
+    is ExitState.Dead -> HistoryEvent(atMs, Mood.Bad, "$net · ${exitHead(e)}: ${exitNotes(e, service).first()}")
+    ExitState.Off, is ExitState.Unlisted, is ExitState.Checking -> null
 }
 
 /** Сеть прогона словом: Wi-Fi или оператор; без сети — «нет сети». */

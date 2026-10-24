@@ -50,12 +50,14 @@ private class Aliases {
     fun walk(e: JsonElement): JsonElement = when (e) {
         is JsonArray -> JsonArray(e.map(::walk))
         // Ключ сервера — и значением в списке (`sniWhite` анализа — набор ключей), не только полем.
-        is JsonPrimitive -> when {
-            !e.isString -> e
-            HEX_KEY.matches(e.content) -> JsonPrimitive(key(e.content))
-            else -> JsonPrimitive(scrub(e.content))
-        }
+        is JsonPrimitive -> primitive(e)
         is JsonObject -> obj(e)
+    }
+
+    private fun primitive(e: JsonPrimitive): JsonPrimitive = when {
+        !e.isString -> e
+        HEX_KEY.matches(e.content) -> JsonPrimitive(key(e.content))
+        else -> JsonPrimitive(scrub(e.content))
     }
 
     private fun obj(o: JsonObject): JsonObject {

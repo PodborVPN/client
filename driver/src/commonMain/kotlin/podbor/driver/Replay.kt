@@ -94,14 +94,18 @@ private fun judge(run: Numbered<Row.Run>, rows: List<Numbered<Row>>): Replayed =
     val first = steps.firstOrNull() ?: raise(Replayed.Unplayable(run.line, "прогон без букв"))
     when (val head = run.value.head) {
         is Head.Press -> play(PressMachine(head.service), steps, closed)
-        is Head.Open -> when (val opened = first.value.letter) {
-            is Letter.Opened -> play(OpenMachine(opened, head.known, head.service), steps, closed)
-            is Letter.Pressed, is Letter.LineObserved, is Letter.ProbeAnswered, is Letter.Scan, is Letter.ExitSeen ->
-                raise(Replayed.Unplayable(first.line, "шапка открытия, а первая буква не Opened"))
-        }
+        is Head.Open -> playOpen(head, first, steps, closed)
         Head.Scan -> play(ScanMachine, steps, closed)
     }
 }.merge()
+
+/** Открытие проигрывается от своей первой буквы — она обязана быть Opened. */
+private fun playOpen(head: Head.Open, first: Numbered<Row.Step>, steps: List<Numbered<Row.Step>>, closed: Boolean): Replayed =
+    when (val opened = first.value.letter) {
+        is Letter.Opened -> play(OpenMachine(opened, head.known, head.service), steps, closed)
+        is Letter.Pressed, is Letter.LineObserved, is Letter.ProbeAnswered, is Letter.Scan, is Letter.ExitSeen ->
+            Replayed.Unplayable(first.line, "шапка открытия, а первая буква не Opened")
+    }
 
 /** Машина по буквам прогона: первое несовпадение дел — Diverged, дальше прогон не судится. */
 private fun <S> play(machine: Machine<S>, steps: List<Numbered<Row.Step>>, closed: Boolean): Replayed {
