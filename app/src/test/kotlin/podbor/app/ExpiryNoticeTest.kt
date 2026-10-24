@@ -29,7 +29,7 @@ class ExpiryNoticeTest {
         val now = System.currentTimeMillis()
         val store = SubscriptionStore(Files.createTempDirectory("expiry").toFile())
         val expireS = now / 1000 + 2 * 86_400 + 3_600
-        store.save(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(title = "Мой VPN", expireS = expireS, supportUrl = "https://t.me/help")))
+        store.save(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(title = "Мой VPN", expireS = expireS, support = podbor.screen.Support.Link("https://t.me/help"))))
         val notice = ExpiryNotice(app, store) { now }
         notice.check()
         val posted = shadowOf(nm).allNotifications

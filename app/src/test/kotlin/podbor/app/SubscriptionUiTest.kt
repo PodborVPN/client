@@ -12,7 +12,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import podbor.screen.Announce
 import podbor.screen.InputError
+import podbor.screen.Support
 import podbor.screen.SubscriptionNote
 import podbor.app.sub.wordsOf
 import podbor.app.ui.MainScreen
@@ -74,7 +76,7 @@ class SubscriptionUiTest {
 
     @Test
     fun deviceLimitLeadsToProviderSupport() {
-        show(InputError.DeviceLimit("Отвяжи устройство в боте", "https://t.me/help"))
+        show(InputError.DeviceLimit(Announce.Text("Отвяжи устройство в боте"), Support.Link("https://t.me/help")))
         compose.onNodeWithText("лимит устройств подписки: Отвяжи устройство в боте").assertExists()
         compose.onNodeWithText("Поддержка провайдера").performClick()
         assertEquals(listOf("support https://t.me/help"), calls)
@@ -82,7 +84,7 @@ class SubscriptionUiTest {
 
     @Test
     fun deviceLimitWithoutSupportUrlHasNoButton() {
-        show(InputError.DeviceLimit(null, null))
+        show(InputError.DeviceLimit(Announce.None, Support.None))
         compose.onNodeWithText("Поддержка провайдера").assertDoesNotExist()
     }
 
@@ -106,7 +108,9 @@ class SubscriptionUiTest {
     /** Сведения провайдера: в «⋮» — имя и строки; поддержка — ссылкой провайдера; объявление — на экране. */
     @Test
     fun menuShowsProviderNoteAndSupport() {
-        val note = SubscriptionNote("Мой VPN", listOf("обновлена 2 ч назад", "оплачена до конца года"), "https://t.me/s", "Оплата до пятницы")
+        val note = SubscriptionNote(
+            "Мой VPN", listOf("обновлена 2 ч назад", "оплачена до конца года"), Support.Link("https://t.me/s"), Announce.Text("Оплата до пятницы"),
+        )
         compose.setContent {
             PodborTheme {
                 MainScreen(
@@ -131,7 +135,7 @@ class SubscriptionUiTest {
         compose.setContent {
             PodborTheme {
                 MainScreen(
-                    board(HARDCODED_SERVICES, emptyMap()), Link.Off, emptyMap(), null, SubscriptionNote(null, listOf("добавлена текстом — сама не обновляется"), null, null),
+                    board(HARDCODED_SERVICES, emptyMap()), Link.Off, emptyMap(), null, SubscriptionNote(null, listOf("добавлена текстом — сама не обновляется"), Support.None, Announce.None),
                     onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = {}, onChangeSubscription = {},
                 )
             }

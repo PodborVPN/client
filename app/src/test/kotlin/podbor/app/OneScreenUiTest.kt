@@ -18,6 +18,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import podbor.screen.Announce
+import podbor.screen.Support
 import podbor.screen.SubscriptionNote
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PRESS_TAG
@@ -43,12 +45,12 @@ class OneScreenUiTest {
     val compose = createComposeRule()
 
     private var board by mutableStateOf(board(CardStatus.Unknown, CardStatus.Unknown))
-    private var announce by mutableStateOf<String?>(null)
+    private var announce by mutableStateOf<Announce>(Announce.None)
 
     private fun show() = compose.setContent {
         PodborTheme {
             MainScreen(
-                board, Link.Up, emptyMap(), null, SubscriptionNote(null, emptyList(), null, announce),
+                board, Link.Up, emptyMap(), null, SubscriptionNote(null, emptyList(), Support.None, announce),
                 onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = {}, onChangeSubscription = {}, onDonate = {},
             )
         }
@@ -64,7 +66,7 @@ class OneScreenUiTest {
         val press = compose.onNodeWithTag(PRESS_TAG).getBoundsInRoot()
         val lines = (1..12).map { "строка объяснения номер $it, достаточно длинная, чтобы переноситься" }
         board = board(CardStatus.NotFound(lines), CardStatus.NotFound(lines))
-        announce = (1..10).joinToString(" ") { "объявление провайдера" }
+        announce = Announce.Text((1..10).joinToString(" ") { "объявление провайдера" })
         compose.waitForIdle()
         // Длинное — прокручивается середина, а не страница: кнопка подбора и нижняя линия на тех же местах и видны.
         assertEquals(short, compose.onNodeWithTag(SHARE_TAG).getBoundsInRoot())
@@ -76,7 +78,7 @@ class OneScreenUiTest {
 
     @Test
     fun longAnnounceIsTwoLinesAtMost() {
-        announce = (1..30).joinToString(" ") { "слово" }
+        announce = Announce.Text((1..30).joinToString(" ") { "слово" })
         show()
         val one = compose.onNodeWithText("слово", substring = true).fetchSemanticsNode()
             .config[SemanticsProperties.Text].size

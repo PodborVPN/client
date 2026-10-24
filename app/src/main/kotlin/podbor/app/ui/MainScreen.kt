@@ -61,7 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import podbor.app.R
+import podbor.screen.Announce
 import podbor.screen.SubscriptionNote
+import podbor.screen.Support
+import podbor.screen.supportWhenStuck
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.PulseView
@@ -129,7 +132,14 @@ fun MainScreen(
             TierWithTraffic("ТЕКУЩИЙ VPN", vpnTraffic(pulse))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry)
-                subscription?.announce?.let { Announce(it) }
+                when (val s = supportWhenStuck(board.button, supportOf(subscription))) {
+                    is Support.Link -> StuckSupport { onSupport(s.url) }
+                    Support.None -> Unit
+                }
+                when (val a = announceOf(subscription)) {
+                    is Announce.Text -> AnnounceLine(a.text)
+                    Announce.None -> Unit
+                }
             }
             ShareLink(shareNote, onShare, onDonate)
         }
@@ -137,9 +147,35 @@ fun MainScreen(
     }
 }
 
+/** Подписка ещё не прочитана — ни поддержки, ни объявления. */
+private fun supportOf(note: SubscriptionNote?): Support = when (note) {
+    null -> Support.None
+    else -> note.support
+}
+
+private fun announceOf(note: SubscriptionNote?): Announce = when (note) {
+    null -> Announce.None
+    else -> note.announce
+}
+
+/**
+ * Ничего не работает — путь к провайдеру прямо под словами тупика: «спроси у своего VPN-сервиса» — одной кнопкой, а не
+ * через «⋮». Рамкой, не заливкой: это совет, а не главное действие экрана.
+ */
+@Composable
+private fun StuckSupport(onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, Rule),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = PodborColors.Accent),
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+    ) { Text("Написать в поддержку провайдера", style = MaterialTheme.typography.labelLarge) }
+}
+
 /** Объявление провайдера (`announce`): серым под карточкой — его слова, не наши; длинное — две строки и многоточие. */
 @Composable
-private fun Announce(text: String) {
+private fun AnnounceLine(text: String) {
     Text(
         text,
         color = Muted,
@@ -174,14 +210,15 @@ private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, o
                     note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
                 }
             }
-            subscription?.supportUrl?.let { url ->
-                DropdownMenuItem(
+            when (val s = supportOf(subscription)) {
+                is Support.Link -> DropdownMenuItem(
                     text = { Text("Поддержка провайдера", color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         open = false
-                        onSupport(url)
+                        onSupport(s.url)
                     },
                 )
+                Support.None -> Unit
             }
             DropdownMenuItem(
                 text = { Text("Сменить подписку", color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) },

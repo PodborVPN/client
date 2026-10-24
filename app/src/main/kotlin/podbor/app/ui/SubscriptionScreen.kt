@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import podbor.screen.InputError
+import podbor.screen.Support
 import podbor.app.sub.wordsOf
 
 /**
@@ -69,12 +70,20 @@ fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                (error as? InputError.DeviceLimit)?.supportUrl?.let { url ->
-                    Choice("Поддержка провайдера", Modifier.fillMaxWidth().padding(top = 12.dp)) { onSupport(url) }
+                when (val s = supportOf(error)) {
+                    is Support.Link -> Choice("Поддержка провайдера", Modifier.fillMaxWidth().padding(top = 12.dp)) { onSupport(s.url) }
+                    Support.None -> Unit
                 }
             }
         }
     }
+}
+
+/** Поддержка под ошибкой — только у отказа по лимиту устройств: там к провайдеру и идут. */
+private fun supportOf(error: InputError?): Support = when (error) {
+    is InputError.DeviceLimit -> error.support
+    null, InputError.Empty, InputError.Unreadable, InputError.HappOnly, is InputError.Download, is InputError.NoServers,
+    InputError.ScanFailed -> Support.None
 }
 
 /** Кнопка страницы: рамка, скругление как у карточек, слово по центру. */

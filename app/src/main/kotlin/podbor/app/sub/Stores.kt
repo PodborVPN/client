@@ -28,7 +28,7 @@ data class Subscription(
     val text: String,
     val fetchedAtMs: Long? = null,
     val updateHours: Int? = null,
-    val provider: ProviderInfo? = null,
+    val provider: ProviderInfo = ProviderInfo(),
     val fallbackUrl: String? = null,
 )
 

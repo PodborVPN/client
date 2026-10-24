@@ -6,6 +6,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import podbor.screen.Announce
+import podbor.screen.Support
 import podbor.screen.SubscriptionNote
 
 /**
@@ -20,29 +22,47 @@ data class ProviderInfo(
     val totalBytes: Long? = null,
     /** До какого момента оплачено, секунды Unix; 0 — бессрочно. */
     val expireS: Long? = null,
-    val supportUrl: String? = null,
-    val announce: String? = null,
-)
+    val support: Support = Support.None,
+    val announce: Announce = Announce.None,
+) {
+    /** Провайдер не сказал ничего — ответ без заголовков (прокси Яндекса) или панель молчит. */
+    val silent: Boolean get() = this == ProviderInfo()
+
+    /** Сведения нового ответа; промолчал — прежние [old]. */
+    fun orElse(old: ProviderInfo): ProviderInfo = if (silent) old else this
+}
 
 private const val TITLE = "profile-title"
 private const val USERINFO = "subscription-userinfo"
 private const val SUPPORT = "support-url"
 private const val ANNOUNCE = "announce"
 
-/** Сведения провайдера из ответа [f]; не сказал ничего — null. */
-fun providerOf(f: Fetched): ProviderInfo? {
+/** Сведения провайдера из ответа [f]; не сказал ничего — пустые ([ProviderInfo.silent]). */
+fun providerOf(f: Fetched): ProviderInfo {
     fun value(key: String): String? = (f.headers[key] ?: bodyHeader(f.body, key))?.trim()?.let(::decoded)?.takeIf(String::isNotEmpty)
     val usage = value(USERINFO)?.let(::userinfoOf).orEmpty()
     val used = listOfNotNull(usage["upload"], usage["download"]).takeIf { it.isNotEmpty() }?.sum()
-    val info = ProviderInfo(
+    return ProviderInfo(
         title = value(TITLE)?.take(25),
         usedBytes = used,
         totalBytes = usage["total"],
         expireS = usage["expire"],
-        supportUrl = value(SUPPORT)?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
-        announce = value(ANNOUNCE)?.take(200),
+        support = supportOf(value(SUPPORT)),
+        announce = announceOf(value(ANNOUNCE)),
     )
-    return info.takeIf { it != ProviderInfo() }
+}
+
+/** Поддержка — только ссылкой http/https: другие схемы (`javascript:`, `intent:`) экран не открывает. */
+private fun supportOf(raw: String?): Support = when {
+    raw == null -> Support.None
+    raw.startsWith("https://") || raw.startsWith("http://") -> Support.Link(raw)
+    else -> Support.None
+}
+
+/** Объявление — до 200 знаков: длиннее на экране всё равно две строки. */
+private fun announceOf(raw: String?): Announce = when (raw) {
+    null -> Announce.None
+    else -> Announce.Text(raw.take(200))
 }
 
 /** `base64:…` — значение в base64 (так шлют имена с эмодзи и кириллицей в заголовке); иначе как есть. */
@@ -67,15 +87,15 @@ fun noteOf(s: Subscription, nowMs: Long, zone: ZoneId = ZoneId.systemDefault()):
         s.fetchedAtMs == null -> null
         else -> "обновлена ${ago(nowMs - s.fetchedAtMs)}"
     }
-    val expire = p?.expireS?.takeIf { it > 0 }?.let { at ->
+    val expire = p.expireS?.takeIf { it > 0 }?.let { at ->
         val day = DAY.format(Instant.ofEpochSecond(at).atZone(zone))
         if (at * 1000 <= nowMs) "оплачена до $day — срок вышел" else "оплачена до $day"
     }
-    val traffic = p?.usedBytes?.let { used ->
+    val traffic = p.usedBytes?.let { used ->
         val total = p.totalBytes?.takeIf { it > 0 }
         if (total == null) "потрачено ${gb(used)}" else "потрачено ${gb(used)} из ${gb(total)}"
     }
-    return SubscriptionNote(p?.title, listOfNotNull(fresh, expire, traffic), p?.supportUrl, p?.announce)
+    return SubscriptionNote(p.title, listOfNotNull(fresh, expire, traffic), p.support, p.announce)
 }
 
 private fun ago(ms: Long): String {

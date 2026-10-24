@@ -7,6 +7,7 @@ import java.net.URI
 import java.net.URLEncoder
 import org.jsoup.Jsoup
 import podbor.core.plural
+import podbor.screen.Announce
 import podbor.screen.InputError
 import podbor.screen.Skipped
 import podbor.screen.SubscriptionInput
@@ -66,7 +67,7 @@ suspend fun fetchText(
             around ?: return InputError.Download(white).left()
         }
         when {
-            got.headers["x-hwid-limit"] == "true" -> providerOf(got).let { InputError.DeviceLimit(it?.announce, it?.supportUrl) }.left()
+            got.headers["x-hwid-limit"] == "true" -> providerOf(got).let { InputError.DeviceLimit(it.announce, it.support) }.left()
             got.body.isBlank() -> InputError.Unreadable.left()
             else -> got.right()
         }
@@ -91,8 +92,10 @@ fun wordsOf(e: InputError): String = when (e) {
         if (e.whitelist) "не могу скачать подписку: похоже, белые списки. Попроси прислать её текстом или QR в VK или Max — или добавь через Wi-Fi"
         else "не могу скачать подписку: сеть не отвечает"
     is InputError.NoServers -> if (e.skipped.recognized) "не нашёл поддерживаемых серверов" else "не узнал формат подписки"
-    is InputError.DeviceLimit ->
-        e.announce?.let { "лимит устройств подписки: $it" } ?: "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
+    is InputError.DeviceLimit -> when (val a = e.announce) {
+        is Announce.Text -> "лимит устройств подписки: ${a.text}"
+        Announce.None -> "лимит устройств подписки исчерпан — отвяжи старое устройство у провайдера"
+    }
     InputError.ScanFailed -> "не смог проверить подписку — попробуй ещё раз"
     InputError.Empty, InputError.Unreadable -> "в буфере нет подписки"
     InputError.HappOnly ->

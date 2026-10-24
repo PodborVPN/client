@@ -5,6 +5,8 @@ import io.kotest.matchers.shouldBe
 import podbor.app.sub.Fetched
 import podbor.app.sub.ProviderInfo
 import podbor.app.sub.Subscription
+import podbor.screen.Announce
+import podbor.screen.Support
 import podbor.screen.SubscriptionNote
 import podbor.app.sub.fetched
 import podbor.app.sub.noteOf
@@ -29,27 +31,35 @@ class ProviderTest : FunSpec({
                 "announce" to "Оплата до пятницы",
             ),
         )
-        providerOf(f) shouldBe ProviderInfo("🇳🇱 Мой VPN", 3 * GB, 100 * GB, 1764460800, "https://t.me/support", "Оплата до пятницы")
+        providerOf(f) shouldBe ProviderInfo(
+            "🇳🇱 Мой VPN", 3 * GB, 100 * GB, 1764460800, Support.Link("https://t.me/support"), Announce.Text("Оплата до пятницы"),
+        )
     }
-    test("шапка тела: имя; ничего не сказал — null; поддержка не ссылкой — нет") {
+    test("шапка тела: имя; ничего не сказал — пусто; поддержка не ссылкой — нет") {
         providerOf(Fetched("# profile-title: БЕЛЫЕ СПИСКИ\n# profile-update-interval: 1\nvless://a")) shouldBe ProviderInfo(title = "БЕЛЫЕ СПИСКИ")
-        providerOf(Fetched("vless://a")) shouldBe null
-        providerOf(Fetched("vless://a", mapOf("support-url" to "javascript:alert(1)"))) shouldBe null
-        providerOf(Fetched("vless://a", mapOf("subscription-userinfo" to "мусор"))) shouldBe null
+        providerOf(Fetched("vless://a")) shouldBe ProviderInfo()
+        providerOf(Fetched("vless://a", mapOf("support-url" to "javascript:alert(1)"))) shouldBe ProviderInfo()
+        providerOf(Fetched("vless://a", mapOf("subscription-userinfo" to "мусор"))) shouldBe ProviderInfo()
     }
-    test("скачали через прокси (без заголовков) — сведения прежние") {
+    test("скачали через прокси (без заголовков) — сведения прежние; сказал новое — новые") {
         val old = Subscription("https://a.b", "t", provider = ProviderInfo(title = "X"))
         old.fetched(Fetched("новый"), 5).provider shouldBe ProviderInfo(title = "X")
+        old.fetched(Fetched("новый", mapOf("announce" to "Привет")), 5).provider shouldBe ProviderInfo(announce = Announce.Text("Привет"))
     }
     test("слова: свежесть, срок, трафик") {
         val now = 1764460800_000L - 24 * HOUR
         val s = Subscription(
             "https://a.b", "t", fetchedAtMs = now - 2 * HOUR,
-            provider = ProviderInfo("Мой VPN", usedBytes = 3 * GB / 2, totalBytes = 100 * GB, expireS = 1764460800, supportUrl = "https://t.me/s", announce = "Привет"),
+            provider = ProviderInfo(
+                "Мой VPN", usedBytes = 3 * GB / 2, totalBytes = 100 * GB, expireS = 1764460800,
+                support = Support.Link("https://t.me/s"), announce = Announce.Text("Привет"),
+            ),
         )
         val day = LocalDate.of(2025, 11, 30).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-        noteOf(s, now, ZoneOffset.UTC) shouldBe
-            SubscriptionNote("Мой VPN", listOf("обновлена 2 ч назад", "оплачена до $day", "потрачено 1,5 ГБ из 100 ГБ"), "https://t.me/s", "Привет")
+        noteOf(s, now, ZoneOffset.UTC) shouldBe SubscriptionNote(
+            "Мой VPN", listOf("обновлена 2 ч назад", "оплачена до $day", "потрачено 1,5 ГБ из 100 ГБ"),
+            Support.Link("https://t.me/s"), Announce.Text("Привет"),
+        )
     }
     test("слова: текстом — не обновляется; срок вышел; без лимита; давно и только что") {
         noteOf(Subscription(null, "t"), 0).lines shouldBe listOf("добавлена текстом — сама не обновляется")

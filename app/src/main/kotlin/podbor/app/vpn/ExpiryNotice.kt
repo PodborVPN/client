@@ -14,6 +14,7 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.expiryWords
 import podbor.app.sub.reminderDay
 import podbor.app.ui.MainActivity
+import podbor.screen.Support
 import java.time.ZoneId
 
 private const val CHANNEL = "subscription"
@@ -41,7 +42,11 @@ class ExpiryNotice(
         val (title, text) = expiryWords(day, p.title)
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Подписка", NotificationManager.IMPORTANCE_DEFAULT))
-        val target = p.supportUrl?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)) } ?: Intent(context, MainActivity::class.java)
+        // Тап — к поддержке провайдера (там продлевают); ссылки нет — в Podbor.
+        val target = when (val s = p.support) {
+            is Support.Link -> Intent(Intent.ACTION_VIEW, Uri.parse(s.url))
+            Support.None -> Intent(context, MainActivity::class.java)
+        }
         val tap = PendingIntent.getActivity(context, 1, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(
             NOTIFICATION_ID,

@@ -42,7 +42,7 @@ fun Subscription.fetched(f: Fetched, nowMs: Long): Subscription =
         text = f.body,
         fetchedAtMs = nowMs,
         updateHours = updateHoursOf(f) ?: updateHours,
-        provider = providerOf(f) ?: provider,
+        provider = providerOf(f).orElse(provider),
         fallbackUrl = valueOf(f, FALLBACK_URL)?.let(::httpUrlOf) ?: fallbackUrl,
     )
 

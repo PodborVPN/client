@@ -69,7 +69,7 @@ internal class FakePort : ServicePort {
 
 internal val SCAN = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(), finished = true)
 internal val MIXED = Skipped(servers = 4, unsupported = mapOf("hysteria2" to 2, "tuic" to 1), broken = 1)
-internal val NOTE = SubscriptionNote("подписка", emptyList(), null, null)
+internal val NOTE = SubscriptionNote("подписка", emptyList(), Support.None, Announce.None)
 
 /** Полка подписки: [note] — есть подписка, null — нет. */
 internal class FakeShelf(var note: SubscriptionNote? = NOTE) : SubscriptionShelf {
