@@ -1,6 +1,9 @@
 package podbor.app
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
@@ -68,12 +71,14 @@ class ScanUiTest {
         compose.onNodeWithText("35 серверов").assertExists()
         compose.onNodeWithText("4 входа в РФ").assertExists()
         compose.onNodeWithText("2 вероятно для белых списков").assertExists()
-        compose.onNodeWithText("TG ✓ 5").assertExists()
+        // У Телеги — знак (подписан меткой), у сервисов без знака — метка словом.
+        compose.onNode(hasContentDescription("TG") and hasText("✓ 5")).assertExists()
         compose.onNodeWithText("IG ✓ 2").assertExists()
         compose.onNodeWithText("YT ✓ 1").assertExists()
-        compose.onNodeWithText("TG ✓").assertExists()
-        compose.onNodeWithText("IG ✗").assertExists()
-        compose.onNodeWithText("YT …").assertExists()
+        // Отметки на карточке — точкой и знаком; для озвучки — словами.
+        compose.onNodeWithContentDescription("TG ✓").assertExists()
+        compose.onNodeWithContentDescription("IG ✗").assertExists()
+        compose.onNodeWithContentDescription("YT …").assertExists()
     }
 
     @Test

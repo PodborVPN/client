@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.unit.DpRect
@@ -53,6 +54,9 @@ class ScanSteadyUiTest {
 
     private fun bounds(text: String): DpRect = compose.onNodeWithText(text, substring = true).getBoundsInRoot()
 
+    /** Отметка сервиса на карточке — по её подписи для озвучки. */
+    private fun marked(words: String): DpRect = compose.onNodeWithContentDescription(words).getBoundsInRoot()
+
     @Test
     fun growingTalliesKeepChipsAndFeedInPlace() {
         var b by mutableStateOf(board(0, 0, card(Mark3.Pending, Mark3.Pending)))
@@ -72,12 +76,12 @@ class ScanSteadyUiTest {
         var b by mutableStateOf(board(0, 0, card(Mark3.Pending, Mark3.Pending)))
         compose.setContent { PodborTheme { ScanScreen(b, onOk = {}) } }
         settle()
-        val ig = bounds("IG …")
+        val ig = marked("IG …")
         b = board(1, 0, card(Mark3.Works, Mark3.Pending))
         settle()
-        assertEquals(ig.left, bounds("IG …").left)
+        assertEquals(ig.left, marked("IG …").left)
         b = board(1, 0, card(Mark3.Dead, Mark3.Pending))
         settle()
-        assertEquals(ig.left, bounds("IG …").left)
+        assertEquals(ig.left, marked("IG …").left)
     }
 }

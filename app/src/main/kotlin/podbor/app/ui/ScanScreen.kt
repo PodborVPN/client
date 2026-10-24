@@ -65,7 +65,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import podbor.core.Entry
 import podbor.core.Exit
@@ -116,7 +121,10 @@ fun routeOf(card: ServerCard): String {
     return "$entry → $exit"
 }
 
-/** Отметка сервиса на карточке: «TG ✓», «IG ✗», «YT …». */
+/** Ширина знака сервиса в фишке — по строке мелкого текста. */
+private val CHIP_SIGN = 14.dp
+
+/** Отметка сервиса на карточке словами — для озвучки: «TG ✓», «IG ✗», «YT …». */
 fun markOf(label: String, mark: Mark3): String = when (mark) {
     Mark3.Pending -> "$label …"
     Mark3.Works -> "$label ✓"
@@ -140,7 +148,8 @@ fun ScanScreen(board: ScanBoard?, onOk: () -> Unit) {
             Spacer(Modifier.weight(1f))
         } else {
             Summary(board)
-            Feed(board.cards, Modifier.weight(1f))
+            // Знак сервиса по метке карточки — из фишек итога: в них и сервис, и метка.
+            Feed(board.cards, board.tallies.associate { it.label to glyphOf(it.service) }, Modifier.weight(1f))
             Verdict(board.verdict)
         }
         Ok(board, onOk)
@@ -182,26 +191,46 @@ private fun Summary(board: ScanBoard) {
         Chip("", board.total, " " + plural(board.total, "сервер", "сервера", "серверов"), PodborColors.Accent, board.total)
         Chip("", board.ruEntries, " " + plural(board.ruEntries, "вход", "входа", "входов") + " в РФ", PodborColors.Accent, board.total)
         Chip("", board.likelyWhite, " вероятно для белых списков", PodborColors.Accent, board.total)
-        board.tallies.forEach { t -> Chip("${t.label} ✓ ", t.works, "", PodborColors.Ok, board.total) }
+        // Сервис — знаком (нет знака — меткой словом), подписанным меткой для озвучки.
+        board.tallies.forEach { t ->
+            when (val glyph = glyphOf(t.service)) {
+                null -> Chip("${t.label} ✓ ", t.works, "", PodborColors.Ok, board.total)
+                else -> Chip("✓ ", t.works, "", PodborColors.Ok, board.total, ServiceSign(glyph, t.label))
+            }
+        }
     }
 }
 
-/** Фишка держит ширину под число из стольких же цифр, сколько в [cap]: растущее число не переносит соседей в FlowRow. */
+/** Знак сервиса и его метка — для озвучки и поиска. */
+private data class ServiceSign(@DrawableRes val glyph: Int, val label: String)
+
+/**
+ * Фишка держит ширину под число из стольких же цифр, сколько в [cap]: растущее число не переносит соседей в FlowRow.
+ * [sign] — знак сервиса перед словами.
+ */
 @Composable
-private fun Chip(before: String, n: Int, after: String, accent: Color, cap: Int) {
+private fun Chip(before: String, n: Int, after: String, accent: Color, cap: Int, sign: ServiceSign? = null) {
     val shown by animateIntAsState(n, tween(400), label = "фишка")
     fun text(number: String) = buildAnnotatedString {
         append(before)
         withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) { append(number) }
         append(after)
     }
-    Box(
+    Row(
         Modifier
             .border(Space.hairline, Rule, Corner)
-            .padding(horizontal = Space.s, vertical = Space.xs),
+            .padding(horizontal = Space.s, vertical = Space.xs)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Placeholders(listOf(text("8".repeat(cap.toString().length))), MaterialTheme.typography.labelSmall)
-        Text(text(shown.toString()), color = PodborColors.Text, style = MaterialTheme.typography.labelSmall)
+        if (sign != null) {
+            Icon(painterResource(sign.glyph), contentDescription = sign.label, tint = PodborColors.Text, modifier = Modifier.size(CHIP_SIGN))
+            Spacer(Modifier.width(Space.xs))
+        }
+        Box {
+            Placeholders(listOf(text("8".repeat(cap.toString().length))), MaterialTheme.typography.labelSmall)
+            Text(text(shown.toString()), color = PodborColors.Text, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -219,7 +248,7 @@ private fun Placeholders(variants: List<AnnotatedString>, style: TextStyle) {
  * сдвиг соседей и уход — анимации размещения (фаза отрисовки), без перекладки всей ленты на каждом кадре.
  */
 @Composable
-private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
+private fun Feed(cards: List<ServerCard>, glyphs: Map<String, Int?>, modifier: Modifier) {
     val list = rememberLazyListState()
     val shown = cards.take(FEED_CARDS)
     // LazyColumn держит якорь на прежней первой карточке: новая сверху ушла бы за край. Пока смотрят в начало — вернуть.
@@ -235,13 +264,13 @@ private fun Feed(cards: List<ServerCard>, modifier: Modifier) {
         contentPadding = PaddingValues(bottom = Space.s),
     ) {
         items(shown, key = { it.key }) { card ->
-            Box(Modifier.animateItem(fadeInSpec = tween(450), placementSpec = tween(450), fadeOutSpec = tween(300))) { Card(card) }
+            Box(Modifier.animateItem(fadeInSpec = tween(450), placementSpec = tween(450), fadeOutSpec = tween(300))) { Card(card, glyphs) }
         }
     }
 }
 
 @Composable
-private fun Card(card: ServerCard) {
+private fun Card(card: ServerCard, glyphs: Map<String, Int?>) {
     val edge by animateColorAsState(if (card.live) PodborColors.Accent.copy(alpha = DIM) else Rule, tween(400), label = "рамка")
     Surface(
         shape = Corner,
@@ -261,18 +290,31 @@ private fun Card(card: ServerCard) {
                 WhiteHint.Likely -> Line("белые списки: вероятно$sni", PodborColors.Accent)
                 WhiteHint.Unlikely -> Line("белые списки: нет$sni", Muted)
             }
-            Row(Modifier.padding(top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
-                card.services.forEachIndexed { i, (label, mark) ->
-                    if (i > 0) Text(" · ", color = Muted, style = MaterialTheme.typography.bodyMedium)
-                    // «…», «✓» и «✗» разной ширины: место — под самую широкую, иначе соседняя отметка ездит.
-                    Box {
-                        Placeholders(Mark3.entries.map { AnnotatedString(markOf(label, it)) }, MaterialTheme.typography.bodyMedium)
-                        AnimatedContent(mark, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) using null }, label = label) { m ->
-                            Text(markOf(label, m), color = colorOf(m), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
+            // Сервис — точкой состояния и знаком, как в карточке текущего VPN: ширина одна при любой отметке.
+            Row(
+                Modifier.padding(top = Space.s),
+                horizontalArrangement = Arrangement.spacedBy(Space.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                card.services.forEach { (label, mark) -> ServiceMark(label, mark, glyphs[label]) }
             }
+        }
+    }
+}
+
+/** Отметка сервиса на карточке: точка цвета отметки и знак сервиса (нет знака — метка); озвучка — «TG ✓». */
+@Composable
+private fun ServiceMark(label: String, mark: Mark3, @DrawableRes glyph: Int?) {
+    val color by animateColorAsState(colorOf(mark), tween(300), label = label)
+    Row(
+        Modifier.clearAndSetSemantics { contentDescription = markOf(label, mark) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Dot(color)
+        Spacer(Modifier.width(Space.xs))
+        when (glyph) {
+            null -> Text(label, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            else -> Icon(painterResource(glyph), contentDescription = null, tint = PodborColors.Text, modifier = Modifier.size(Space.icon))
         }
     }
 }
