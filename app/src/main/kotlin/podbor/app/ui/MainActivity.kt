@@ -3,6 +3,7 @@ package podbor.app.ui
 import android.content.ClipData
 import android.content.ComponentName
 import android.content.Intent
+import android.provider.Settings
 import android.content.ServiceConnection
 import android.graphics.Color
 import android.net.VpnService
@@ -71,6 +72,7 @@ import podbor.screen.ScanPhase
 private const val TAG = "Podbor"
 private const val PREFS = "podbor"
 private const val ASKED = "permissions_asked"
+private const val ALWAYS_ON_HINTED = "always_on_hinted"
 private const val PHASE = "scan_phase"
 
 private fun log(msg: String) {
@@ -178,12 +180,16 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         openedAt = SystemClock.elapsedRealtime()
         setContentView(R.layout.activity_main)
-        // Хозяин шторки геолокации: сама шторка — своё окно поверх страниц, месту в разметке не нужна.
+        // Хозяин шторок-вопросов (геолокация, постоянный VPN): шторка — своё окно поверх страниц, месту в разметке не нужна.
         addContentView(
             ComposeView(this).apply {
                 setContent {
                     val ask by vm.ask.collectAsStateWithLifecycle()
-                    if (ask == Ask.Disclosure) PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
+                    when (ask) {
+                        Ask.Disclosure -> PodborTheme { LocationSheet(onAllow = { disclosed(true) }, onDecline = { disclosed(false) }) }
+                        Ask.AlwaysOn -> PodborTheme { AlwaysOnSheet(onOpen = { hinted(open = true) }, onLater = { hinted(open = false) }) }
+                        Ask.Permissions, Ask.VpnConsent, Ask.Chooser, Ask.Qr, null -> Unit
+                    }
                 }
             },
             ViewGroup.LayoutParams(0, 0),
@@ -249,6 +255,16 @@ class MainActivity : FragmentActivity() {
         openedAt = SystemClock.elapsedRealtime()
         log("экран: открыт ($why); от старта процесса ${openedAt - Process.getStartElapsedRealtime()} мс")
         vm.opened(askPermissions = !getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ASKED, false))
+        vm.hintAlwaysOn(seen = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ALWAYS_ON_HINTED, false))
+    }
+
+    /** Ответ в шторке постоянного VPN — больше не спрашиваем; «Открыть настройки» — системный экран VPN. */
+    private fun hinted(open: Boolean) {
+        if (vm.ask.value != Ask.AlwaysOn) return
+        log("шторка постоянного VPN: " + if (open) "открыть настройки" else "не сейчас")
+        vm.answered()
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ALWAYS_ON_HINTED, true).apply()
+        if (open) Either.catch { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
     }
 
     /** Ответ в шторке геолокации → системный запрос (отказ — без геолокации; уведомления спрашиваются всё равно). */

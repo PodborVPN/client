@@ -49,6 +49,9 @@ internal class FakePort : ServicePort {
         presses++
     }
 
+    var always = AlwaysOn.Unknown
+    override fun alwaysOn(): AlwaysOn = always
+
     var analyses = 0
     /** Что анализ сообщит о пропущенных ссылках до досок; null — пропусков нет. */
     var skipped: Skipped? = null

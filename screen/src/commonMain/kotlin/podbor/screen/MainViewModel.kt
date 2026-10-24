@@ -7,6 +7,7 @@ import arrow.core.Either
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -307,6 +308,24 @@ class MainViewModel(
         if (a == Ask.VpnConsent) {
             startedFor()
             fact { it.askingConsent() }
+        }
+    }
+
+    /** Ждём момента для подсказки Always-on; одно ожидание на ViewModel — повторное открытие его не множит. */
+    private var hint: Job? = null
+
+    /**
+     * Подсказка постоянного VPN — раз за установку ([seen] — уже показывали): шторка, как только VPN заработал и
+     * момент подходит ([alwaysOnHintDue]). Сервис ушёл и вернулся — ждём на новом; спросили — ожидание кончено.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun hintAlwaysOn(seen: Boolean) {
+        if (seen || hint != null) return
+        hint = viewModelScope.launch {
+            service.filterNotNull()
+                .flatMapLatest { s -> combine(s.session, s.board, ask) { session, b, a -> alwaysOnHintDue(s.alwaysOn(), session, b.button, a) } }
+                .first { it }
+            asked(Ask.AlwaysOn)
         }
     }
 

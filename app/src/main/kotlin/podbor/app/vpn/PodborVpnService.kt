@@ -99,6 +99,7 @@ import podbor.core.networkKey
 import podbor.core.view
 import podbor.driver.PulseContext
 import podbor.driver.networkMoves
+import podbor.screen.AlwaysOn
 import podbor.screen.ExitOrigin
 import podbor.screen.trayOf
 
@@ -343,6 +344,13 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Нажатие: см. [Desk.press]. */
     override suspend fun press() = desk.press()
+
+    /** Постоянный VPN считается включённым только с блокировкой: без неё трафик всё равно идёт мимо, пока VPN нет. */
+    override fun alwaysOn(): AlwaysOn = when {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> AlwaysOn.Unknown
+        isAlwaysOn && isLockdownEnabled -> AlwaysOn.On
+        else -> AlwaysOn.Off
+    }
 
     /** Анализ подписки: см. [Desk.analyze] — VPN гаснет на время анализа, Xray анализа без TUN. */
     override suspend fun analyze(

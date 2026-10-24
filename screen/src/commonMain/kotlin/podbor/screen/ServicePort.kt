@@ -40,6 +40,9 @@ interface ServicePort {
 
     suspend fun press()
 
+    /** Включён ли системный постоянный VPN с блокировкой — для подсказки ([alwaysOnHintDue]). */
+    fun alwaysOn(): AlwaysOn
+
     /**
      * Анализ подписки: VPN гаснет на его время; часть ссылок не стала серверами — [onSkipped] до первой доски; доски по
      * ходу — в [onBoard].
