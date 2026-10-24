@@ -148,7 +148,13 @@ sealed interface PairPulse {
 }
 
 /** Вид пульса: темп пар, итог «на этой сети» и «через VPN на этой подписке» — с ключами: экран сверит сеть сам. */
-data class PulseView(val pairs: Map<ServiceId, PairPulse>, val network: Tally?, val vpn: Tally?) {
+/** [hammers] — долбит ли сервис через свою текущую пару ([hammerOf]); сервиса нет — спокоен. */
+data class PulseView(
+    val pairs: Map<ServiceId, PairPulse>,
+    val network: Tally?,
+    val vpn: Tally?,
+    val hammers: Map<ServiceId, Hammer> = emptyMap(),
+) {
     companion object {
         val Empty = PulseView(emptyMap(), null, null)
     }

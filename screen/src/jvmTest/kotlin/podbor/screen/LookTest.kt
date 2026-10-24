@@ -9,6 +9,8 @@ import podbor.core.Button
 import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.Instagram
+import podbor.core.Dest
+import podbor.core.Hammer
 import podbor.core.NetworkCard
 import podbor.core.NetworkMove
 import podbor.core.OsNetwork
@@ -138,6 +140,16 @@ class LookTest : FunSpec({
             Note("подобран на Wi-Fi — нажми, подберу под ${mts.operator}", Tone.Warn),
         )
         tg(CardStatus.Works(nl, Relocation.Stayed)).notes shouldBe emptyList()
+    }
+
+    test("долбит — у строки с сервером янтарная строка: проба прошла, а Телега через этот сервер не держится") {
+        val loud = PulseView.Empty.copy(hammers = mapOf(Telegram.id to Hammer.Hammering(Dest("tcp", "149.154.167.51", 443), 45, 10_000)))
+        val row = rowsOf(board(Button.Green, CardStatus.Works(nl)), Link.Up, emptyMap(), pulse = loud).single { it.label == "TG" }
+        row.notes shouldBe listOf(Note("Телега 45 раз за 10 с переподключается к одному адресу — через этот сервер не тянет", Tone.Warn))
+        rowsOf(board(Button.Green, CardStatus.Works(nl)), Link.Up, emptyMap()).single { it.label == "TG" }.notes shouldBe emptyList()
+        // Без сервера (ищу, не найдено) долбить некому — строки нет.
+        rowsOf(board(Button.Searching, CardStatus.Searching), Link.Up, emptyMap(), pulse = loud).single { it.label == "TG" }.notes shouldBe
+            emptyList()
     }
 
     test("не нашли оба — общая строка сети один раз, у первого; свои строки — у каждого") {
