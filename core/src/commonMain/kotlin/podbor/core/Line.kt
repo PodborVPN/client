@@ -112,6 +112,41 @@ fun roundOf(line: LineObservation): RoundKind {
     }
 }
 
+/** DNS нижней сети: не знаем, работает или сломан (имена не резолвятся, а связь по IP есть). */
+enum class DnsHealth { Unknown, Works, Broken }
+
+/**
+ * DNS сети по раунду. «Не резолвится» бывает только у проб по имени — пробам по IP DNS не нужен, и их рукопожатие
+ * доказывает, что связь есть. Сломан — от [QUORUM] сбоев DNS при чьём-то рукопожатии; работает — сбоев DNS нет;
+ * иначе не знаем: один сбой — случайность, а без рукопожатий не отличить от «нет сети».
+ */
+fun dnsOf(line: LineObservation): DnsHealth {
+    val all = line.russia + line.abroad
+    val failed = all.count { s ->
+        when (val h = s.handshake) {
+            is Handshake.Unknown -> h.what == DNS_FAILURE
+            is Handshake.Ok, is Handshake.Silent, is Handshake.Reset, Handshake.Mirage, Handshake.Refused, Handshake.NoRoute -> false
+        }
+    }
+    val linked = all.any { it.handshake is Handshake.Ok }
+    return when {
+        failed == 0 -> DnsHealth.Works
+        failed >= QUORUM && linked -> DnsHealth.Broken
+        else -> DnsHealth.Unknown
+    }
+}
+
+/** DNS сети по последнему раунду диагноза; раундов нет — не знаем. */
+fun dnsOf(d: Diagnosis): DnsHealth = when (d) {
+    Diagnosis.Pending -> DnsHealth.Unknown
+    is Diagnosis.Suspected -> dnsOf(d.first)
+    is Diagnosis.Settled -> dnsOf(d.rounds.last())
+    is Diagnosis.Rechecking -> dnsOf(d.previous.rounds.last())
+}
+
+/** Что пишет край в [Handshake.Unknown], когда имя эталона не резолвится. */
+const val DNS_FAILURE = "dns"
+
 /** Кто-то ответил хоть чем-то: рукопожатие, сброс, подмена, отказ, или TCP есть, а ServerHello нет. */
 private fun answered(h: Handshake): Boolean = when (h) {
     is Handshake.Ok, is Handshake.Reset, Handshake.Mirage, Handshake.Refused -> true

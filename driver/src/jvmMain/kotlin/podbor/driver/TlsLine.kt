@@ -13,6 +13,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withTimeoutOrNull
+import podbor.core.DNS_FAILURE
 import podbor.core.Handshake
 import podbor.core.LineObservation
 import podbor.core.Nel
@@ -58,7 +59,7 @@ fun handshakeOf(stage: Stage, error: Throwable, waitedMs: Long, allowedMs: Long?
         error is SSLException && generateSequence<Throwable>(error) { it.cause }.any { it is CertificateException } -> Handshake.Mirage
         (error is SSLException || error is SocketException) && RESET_MARKS.any { message.contains(it, ignoreCase = true) } ->
             Handshake.Reset(stage)
-        error is UnknownHostException -> Handshake.Unknown("dns")
+        error is UnknownHostException -> Handshake.Unknown(DNS_FAILURE)
         error is SecurityException -> Handshake.Unknown("protect")
         else -> Handshake.Unknown(error.javaClass.simpleName)
     }

@@ -68,7 +68,7 @@ class LineProbeTest : FunSpec({
     test("раунд несёт исход каждого эталона под его меткой") {
         val line = runBlocking { probe().observe() }
         line.abroad.map { it.target } shouldBe nonEmptyListOf("one.one.one.one", "dns.google", "podbor-ref")
-        line.russia.map { it.target } shouldBe nonEmptyListOf("ya.ru", "vk.com", "gosuslugi.ru")
+        line.russia.map { it.target } shouldBe nonEmptyListOf("ya.ru", "vk.com", "gosuslugi.ru", "dns.yandex")
         line.abroad.map { it.handshake } shouldBe nonEmptyListOf(Handshake.Ok(15), Handshake.Ok(10), Handshake.Ok(10))
     }
 
@@ -259,7 +259,7 @@ class LineProbeTest : FunSpec({
     test("свой эталон podbor-ref несёт роль Own, CDN — Public") {
         val line = runBlocking { probe().observe() }
         line.abroad.map { it.role } shouldBe nonEmptyListOf(Role.Public, Role.Public, Role.Own)
-        line.russia.map { it.role } shouldBe nonEmptyListOf(Role.Public, Role.Public, Role.Public)
+        line.russia.map { it.role } shouldBe nonEmptyListOf(Role.Public, Role.Public, Role.Public, Role.Public)
     }
 
     test("прикол сертификата: отпечаток сверяется без учёта регистра и двоеточий") {
