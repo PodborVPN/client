@@ -78,5 +78,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn" />
         </service>
+        <!-- Плитка шторки: вкл/выкл и статус. Активная — система будит её по сигналу службы, а не опросом. -->
+        <service
+            android:name="podbor.app.vpn.PodborTile"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_monochrome"
+            android:label="${appLabel}"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
     </application>
 </manifest>

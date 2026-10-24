@@ -21,6 +21,24 @@ class ManifestTest : FunSpec({
         }
     }
 
+    test("плитка шторки: биндит только система, активная (обновляется по сигналу службы), с иконкой и именем сборки") {
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val doc = factory.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+        val android = "http://schemas.android.com/apk/res/android"
+        val services = doc.getElementsByTagName("service")
+        val tile = (0 until services.length).map { services.item(it) as Element }
+            .single { it.getAttributeNS(android, "name") == "podbor.app.vpn.PodborTile" }
+        tile.getAttributeNS(android, "permission") shouldBe "android.permission.BIND_QUICK_SETTINGS_TILE"
+        tile.getAttributeNS(android, "exported") shouldBe "true"
+        tile.getAttributeNS(android, "icon") shouldBe "@drawable/ic_launcher_monochrome"
+        tile.getAttributeNS(android, "label") shouldBe "\${appLabel}"
+        val action = tile.getElementsByTagName("action").item(0) as Element
+        action.getAttributeNS(android, "name") shouldBe "android.service.quicksettings.action.QS_TILE"
+        val meta = tile.getElementsByTagName("meta-data").item(0) as Element
+        meta.getAttributeNS(android, "name") shouldBe "android.service.quicksettings.ACTIVE_TILE"
+        meta.getAttributeNS(android, "value") shouldBe "true"
+    }
+
     test("главная Activity — только портрет") {
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val doc = factory.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
