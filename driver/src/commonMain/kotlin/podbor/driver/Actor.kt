@@ -53,7 +53,7 @@ suspend fun <S> act(
     val id = Random.nextLong()
 
     suspend fun record(letter: Letter, deeds: List<Deed>) {
-        tape.write(rowLine(Row.Step(id, letter, deeds)))
+        tape.write(rowLine(stepOf(id, letter, deeds)))
         deeds.forEach { scope.execute(it, inbox) }
     }
 

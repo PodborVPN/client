@@ -45,12 +45,13 @@ class ReplayTest : FunSpec({
         val tape = pressTape().toMutableList()
         val third = tape.indices.filter { rowOf(tape[it]) is Row.Step }[2]
         val step = rowOf(tape[third]).shouldBeInstanceOf<Row.Step>()
-        tape[third] = rowLine(step.copy(deeds = step.deeds + Deed.ProbeLine))
+        val tampered = step.copy(deeds = step.deeds + Deed.ProbeLine)
+        tape[third] = rowLine(tampered)
         val diverged = replay(tape.joinToString("\n")).single().outcome.shouldBeInstanceOf<Replayed.Diverged>()
         diverged.step shouldBe 2
         diverged.line shouldBe third + 1
-        diverged.recorded shouldBe step.deeds + Deed.ProbeLine
-        diverged.replayed shouldBe step.deeds
+        diverged.recorded shouldBe tampered.recorded()
+        diverged.replayed shouldBe step.recorded()
     }
 
     test("срок вышел → Converged(ending = Closed)") {

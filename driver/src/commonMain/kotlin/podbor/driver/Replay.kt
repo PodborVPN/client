@@ -20,7 +20,7 @@ enum class Ending { Done, Closed, Torn }
 sealed interface Replayed {
     data class Converged(val steps: Int, val ending: Ending) : Replayed
     /** step — номер буквы в прогоне с нуля; line — строка файла с единицы. */
-    data class Diverged(val step: Int, val line: Int, val recorded: List<Deed>, val replayed: List<Deed>) : Replayed
+    data class Diverged(val step: Int, val line: Int, val recorded: Recorded, val replayed: Recorded) : Replayed
     data class Unplayable(val line: Int, val why: String) : Replayed
 }
 
@@ -105,8 +105,14 @@ private fun judge(run: Numbered<Row.Run>, rows: List<Numbered<Row>>): Replayed =
 
 /** Машина по буквам прогона: первое несовпадение дел — Diverged, дальше прогон не судится. */
 private fun <S> play(machine: Machine<S>, steps: List<Numbered<Row.Step>>, closed: Boolean): Replayed {
-    fun diverged(i: Int, replayed: List<Deed>): Replayed.Diverged? =
-        steps[i].takeIf { it.value.deeds != replayed }?.let { Replayed.Diverged(i, it.line, it.value.deeds, replayed) }
+    fun diverged(i: Int, deeds: List<Deed>): Replayed.Diverged? {
+        val recorded = steps[i].value.recorded()
+        val replayed = recordedOf(deeds)
+        return when (recorded.matches(replayed)) {
+            true -> null
+            false -> Replayed.Diverged(i, steps[i].line, recorded, replayed)
+        }
+    }
 
     tailrec fun go(state: S, i: Int): Replayed =
         if (i == steps.size) {

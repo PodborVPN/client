@@ -60,12 +60,15 @@ private class Aliases {
 
     private fun obj(o: JsonObject): JsonObject {
         val server = "endpoint" in o && "key" in o
+        // Хеш тяжёлого дела (Digest): по хешу памяти с адресами перебором узнали бы адреса — стираем.
+        val digest = "at" in o && "kind" in o && "sha256" in o
         val tower = (o["type"] as? JsonPrimitive)?.contentOrNull == TOWER_KNOWN
         return JsonObject(
             o.entries.associate { (k, v) ->
                 val name = if (HEX_KEY.matches(k)) key(k) else k
                 name to when {
                     tower && k == "cellId" -> JsonPrimitive(0)
+                    digest && k == "sha256" -> JsonPrimitive("")
                     v !is JsonPrimitive || !v.isString -> walk(v)
                     k == "host" || k == "ip" -> JsonPrimitive(host(v.content))
                     k == "key" || k == "serverKey" -> JsonPrimitive(key(v.content))
