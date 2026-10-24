@@ -1,0 +1,85 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "env": {
+        "xray.location.asset": "/assets"
+    },
+    "api": {
+        "tag": "api",
+        "services": [
+            "RoutingService",
+            "StatsService"
+        ]
+    },
+    "stats": {},
+    "policy": {
+        "system": {
+            "statsInboundUplink": true,
+            "statsInboundDownlink": true,
+            "statsOutboundUplink": true,
+            "statsOutboundDownlink": true
+        }
+    },
+    "dns": {
+        "servers": [
+            {
+                "address": "localhost",
+                "domains": [
+                    "geosite:category-ru"
+                ]
+            },
+            {
+                "address": "1.1.1.1"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "tag": "api",
+            "protocol": "dokodemo-door",
+            "listen": "127.0.0.1",
+            "port": 10085,
+            "settings": {
+                "address": "127.0.0.1"
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "protocol": "freedom"
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole"
+        }
+    ],
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "inboundTag": [
+                    "api"
+                ],
+                "outboundTag": "api"
+            },
+            {
+                "domain": [
+                    "geosite:category-ru"
+                ],
+                "outboundTag": "direct"
+            },
+            {
+                "ip": [
+                    "geoip:ru"
+                ],
+                "outboundTag": "direct"
+            },
+            {
+                "network": "tcp,udp",
+                "outboundTag": "block"
+            }
+        ]
+    }
+}

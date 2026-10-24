@@ -1,0 +1,218 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "env": {
+        "xray.location.asset": "/assets"
+    },
+    "api": {
+        "tag": "api",
+        "services": [
+            "RoutingService",
+            "StatsService"
+        ]
+    },
+    "stats": {},
+    "policy": {
+        "system": {
+            "statsInboundUplink": true,
+            "statsInboundDownlink": true,
+            "statsOutboundUplink": true,
+            "statsOutboundDownlink": true
+        }
+    },
+    "dns": {
+        "servers": [
+            {
+                "address": "localhost",
+                "domains": [
+                    "geosite:category-ru"
+                ]
+            },
+            {
+                "address": "1.1.1.1"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "tag": "api",
+            "protocol": "dokodemo-door",
+            "listen": "127.0.0.1",
+            "port": 10085,
+            "settings": {
+                "address": "127.0.0.1"
+            }
+        },
+        {
+            "tag": "in.s001",
+            "protocol": "socks",
+            "listen": "127.0.0.1",
+            "port": 20000,
+            "settings": {
+                "udp": false,
+                "auth": "password",
+                "accounts": [
+                    {
+                        "user": "u",
+                        "pass": "p"
+                    }
+                ]
+            }
+        },
+        {
+            "tag": "in.s002",
+            "protocol": "socks",
+            "listen": "127.0.0.1",
+            "port": 20001,
+            "settings": {
+                "udp": false,
+                "auth": "password",
+                "accounts": [
+                    {
+                        "user": "u",
+                        "pass": "p"
+                    }
+                ]
+            }
+        },
+        {
+            "tag": "in.s003",
+            "protocol": "socks",
+            "listen": "127.0.0.1",
+            "port": 20002,
+            "settings": {
+                "udp": false,
+                "auth": "password",
+                "accounts": [
+                    {
+                        "user": "u",
+                        "pass": "p"
+                    }
+                ]
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "vless",
+            "tag": "s001"
+        },
+        {
+            "protocol": "vless",
+            "tag": "s002"
+        },
+        {
+            "protocol": "vless",
+            "tag": "s003"
+        },
+        {
+            "tag": "direct",
+            "protocol": "freedom"
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole"
+        }
+    ],
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "inboundTag": [
+                    "api"
+                ],
+                "outboundTag": "api"
+            },
+            {
+                "inboundTag": [
+                    "in.s001"
+                ],
+                "outboundTag": "s001"
+            },
+            {
+                "inboundTag": [
+                    "in.s002"
+                ],
+                "outboundTag": "s002"
+            },
+            {
+                "inboundTag": [
+                    "in.s003"
+                ],
+                "outboundTag": "s003"
+            },
+            {
+                "domain": [
+                    "geosite:category-ru"
+                ],
+                "outboundTag": "direct"
+            },
+            {
+                "ip": [
+                    "geoip:ru"
+                ],
+                "outboundTag": "direct"
+            },
+            {
+                "ruleTag": "svc.insta.domain",
+                "domain": [
+                    "geosite:facebook",
+                    "geosite:instagram"
+                ],
+                "balancerTag": "svc.insta"
+            },
+            {
+                "ruleTag": "svc.tg.domain",
+                "domain": [
+                    "geosite:telegram"
+                ],
+                "balancerTag": "svc.tg"
+            },
+            {
+                "ruleTag": "svc.insta.ip",
+                "ip": [
+                    "geoip:facebook"
+                ],
+                "balancerTag": "svc.insta"
+            },
+            {
+                "ruleTag": "svc.tg.ip",
+                "ip": [
+                    "geoip:telegram"
+                ],
+                "balancerTag": "svc.tg"
+            },
+            {
+                "network": "tcp,udp",
+                "balancerTag": "exit"
+            }
+        ],
+        "balancers": [
+            {
+                "tag": "exit",
+                "selector": [
+                    "s001",
+                    "s002",
+                    "s003"
+                ]
+            },
+            {
+                "tag": "svc.insta",
+                "selector": [
+                    "s001",
+                    "s002",
+                    "s003"
+                ]
+            },
+            {
+                "tag": "svc.tg",
+                "selector": [
+                    "s001",
+                    "s002",
+                    "s003"
+                ]
+            }
+        ]
+    }
+}

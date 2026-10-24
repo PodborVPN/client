@@ -100,6 +100,8 @@ import podbor.driver.PulseContext
 import podbor.driver.networkMoves
 import podbor.driver.AccessLog
 import podbor.driver.RuDns
+import podbor.driver.SocksIn
+import podbor.driver.Tun
 import podbor.driver.Row
 import podbor.driver.rowLine
 import podbor.app.net.DnsFixes
@@ -207,7 +209,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 proxy = { url -> underlying.download(url) },
                 location = underlying::location,
                 servers = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ 0 }, { draftsOf(it).size }) },
-                warm = { text -> live(tunFd = null, text) },
+                warm = { text -> live(Tun.Off, text) },
                 lists = { WhiteHolder.await(WHITE_WAIT_MS) },
                 subscriptions = subscriptions,
                 passports = passports,
@@ -423,27 +425,27 @@ class PodborVpnService : VpnService(), ServicePort {
     private suspend fun ResourceScope.warmUp(fd: Int): Either<EngineError, Live> {
         // Подписку человека кладёт экран входа; её текст секретен и в лог не идёт.
         val subscription = subscriptions.load() ?: return Either.Left(EngineError.Failed("нет подписки"))
-        return live(fd, subscription.text)
+        return live(Tun.On(fd), subscription.text)
     }
 
-    /** Xray в этой области ресурсов: на fd туннеля (сессия) или без TUN ([tunFd] = null — анализ, пробы через SOCKS). */
-    private suspend fun ResourceScope.live(tunFd: Int?, subscription: String): Either<EngineError, Live> {
+    /** Xray в этой области ресурсов: на fd туннеля (сессия) или без TUN ([Tun.Off] — анализ, пробы через SOCKS). */
+    private suspend fun ResourceScope.live(tun: Tun, subscription: String): Either<EngineError, Live> {
         // API Xray — Unix-сокет в личной папке: порт на 127.0.0.1 открыт любому приложению на телефоне, каталог — нет.
         // Сокет от убитого процесса Xray не снимает сам («address already in use») — убираем до старта.
         val apiSocket = File(noBackupFilesDir, API_SOCKET).apply { delete() }
         val opts = ConfigOpts(
             assetDir = geoDir(this@PodborVpnService).absolutePath,
-            tunFd = tunFd,
+            tun = tun,
             services = HARDCODED_SERVICES,
             uids = HARDCODED_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
-            socksAuth = LOCAL_SOCKS,
+            socks = SocksIn.Locked(LOCAL_SOCKS),
             api = ApiListen.Unix(apiSocket.path),
             // Журнал соединений — только у сессии с TUN: там ходят приложения; лог прошлой сессии свёрнут — с нуля.
-            accessLog = when (tunFd) {
-                null -> AccessLog.Off
-                else -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
+            accessLog = when (tun) {
+                Tun.Off -> AccessLog.Off
+                is Tun.On -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
             },
-            ruDns = ruDnsHere(tunFd),
+            ruDns = ruDnsHere(tun),
         )
         // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
         val geo = GeoHolder.await(GEO_WAIT_MS)
@@ -465,7 +467,7 @@ class PodborVpnService : VpnService(), ServicePort {
             countryOf = { ip -> geo?.of(ip) },
         )
         return with(driver) { warmUp(subscription) }.map { warm ->
-            meter(driver, opts, xrayStatsOn(channel), if (tunFd != null) EpochKind.Session else EpochKind.Scan)
+            meter(driver, opts, xrayStatsOn(channel), epochOf(tun))
             Live(driver, warm)
         }
     }
@@ -477,6 +479,12 @@ class PodborVpnService : VpnService(), ServicePort {
      * «СЕТЬ»), подписка — сохранённая: анализ чужой подписки итог «через VPN» не сбрасывает, новая сессия на новой — да.
      * Частый опрос — пока экран подписан на [pulse].
      */
+    /** Эпоха счётчиков: сессия с TUN или анализ без него. */
+    private fun epochOf(tun: Tun): EpochKind = when (tun) {
+        Tun.Off -> EpochKind.Scan
+        is Tun.On -> EpochKind.Session
+    }
+
     private suspend fun ResourceScope.meter(driver: Driver, opts: ConfigOpts, stats: XrayStats, kind: EpochKind) {
         booksLoaded.await()
         val epoch = nextEpoch()
@@ -534,9 +542,9 @@ class PodborVpnService : VpnService(), ServicePort {
      * DNS российских доменов для запуска Xray: у сессии на сети, где человек починил DNS, — Яндекс по IP, иначе DNS сети.
      * Решение читается свежим (экран мог переключить его перед перезапуском) и пишется в Ленту.
      */
-    private fun ruDnsHere(tunFd: Int?): RuDns {
+    private fun ruDnsHere(tun: Tun): RuDns {
         val here = networkKey(telephony.osNetworkLight(underlying.transport()))
-        val fixed = tunFd != null && here != null && DnsFixes(this).fixed(here)
+        val fixed = tun is Tun.On && here != null && DnsFixes(this).fixed(here)
         return if (fixed) {
             Either.catch { tape.write(rowLine(Row.Note("dns: российские домены — через Яндекс DNS (ремонт на этой сети)"))) }
             RuDns.Yandex

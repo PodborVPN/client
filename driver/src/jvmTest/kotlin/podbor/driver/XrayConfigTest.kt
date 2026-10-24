@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.shuffle
 import io.kotest.property.checkAll
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -59,12 +60,28 @@ class XrayConfigTest : FunSpec({
         val dns = cfg["dns"]!!.jsonObject["servers"]!!.jsonArray
         dns[0].jsonObject.strs("domains") shouldBe listOf("geosite:category-ru")
         dns[0].jsonObject["address"] shouldBe JsonPrimitive("localhost")
-        dns[1] shouldBe JsonPrimitive("1.1.1.1")
+        dns[1] shouldBe buildJsonObject { put("address", "1.1.1.1") }
+    }
+
+    test("конфиг совпадает с эталоном, который принимает Xray (`xray run -test`): анализ, сессия, без кандидатов") {
+        fun golden(name: String) = Json.parseToJsonElement(
+            checkNotNull(javaClass.getResource("/fixtures/xray-config/$name.json")).readText(),
+        ).jsonObject
+        buildConfig(emptyList(), emptyMap(), opts) shouldBe golden("empty")
+        val both = setOf(Telegram, Instagram)
+        buildConfig(servers, outbounds, opts.copy(services = both, socks = SocksIn.Locked(SocksAuth("u", "p")))) shouldBe golden("scan")
+        buildConfig(
+            servers, outbounds,
+            opts.copy(
+                api = ApiListen.Unix("/tmp/xray-api.sock"), tun = Tun.On(42), services = both, uids = mapOf("org.telegram.messenger" to 10304), logLevel = "info",
+                socks = SocksIn.Locked(SocksAuth("u", "p")), accessLog = AccessLog.File("/tmp/access.log"), ruDns = RuDns.Yandex,
+            ),
+        ) shouldBe golden("session")
     }
 
     test("SOCKS-входы кандидатов — с паролем процесса, если он задан; без него — как было") {
         val auth = SocksAuth("u", "p")
-        val socks = buildConfig(servers, outbounds, opts.copy(socksAuth = auth))["inbounds"]!!.jsonArray.map { it.jsonObject }
+        val socks = buildConfig(servers, outbounds, opts.copy(socks = SocksIn.Locked(auth)))["inbounds"]!!.jsonArray.map { it.jsonObject }
             .filter { it["protocol"]!!.jsonPrimitive.content == "socks" }
         socks.size shouldBe 3
         socks.forEach { inb ->
@@ -102,7 +119,7 @@ class XrayConfigTest : FunSpec({
     }
 
     test("tunFd → один tun-inbound: env xray.tun.fd, MTU = TUN_MTU (как у VpnService.Builder), имя и sniffing только для маршрута") {
-        val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
+        val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
         tun["env"]!!.jsonObject["xray.tun.fd"] shouldBe JsonPrimitive("42")
         val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.filter { it["protocol"] == JsonPrimitive("tun") }.single()
         inbound["tag"] shouldBe JsonPrimitive("tun")
@@ -117,7 +134,7 @@ class XrayConfigTest : FunSpec({
     }
 
     test("tunFd → DNS телефона (порт 53 из tun) уходит в dns-outbound раньше geo-правил и балансера") {
-        val tun = buildConfig(servers, outbounds, opts.copy(tunFd = 42))
+        val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
         val dnsOut = tun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(DNS_OUT) }
         dnsOut["protocol"] shouldBe JsonPrimitive("dns")
         val tunRules = tun["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
@@ -218,7 +235,7 @@ class XrayConfigTest : FunSpec({
         empty["routing"]!!.jsonObject["rules"]!!.jsonArray.last().jsonObject["outboundTag"] shouldBe JsonPrimitive("block")
     }
 
-    val pairsOpts = opts.copy(tunFd = 42, services = setOf(Telegram, Instagram))
+    val pairsOpts = opts.copy(tun = Tun.On(42), services = setOf(Telegram, Instagram))
     val withTun = buildConfig(servers, outbounds, pairsOpts)
     fun JsonObject.tags() = this["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }
     fun JsonObject.balancer(tag: String) =
