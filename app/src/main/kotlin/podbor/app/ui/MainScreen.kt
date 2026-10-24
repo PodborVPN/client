@@ -203,15 +203,17 @@ private fun AnnounceLine(text: String) {
 @Composable
 private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, onChangeSubscription: () -> Unit, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Text(
-            "⋮",
-            color = Muted,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .clickable(role = Role.Button) { open = true }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+    Box(modifier.padding(end = 12.dp)) {
+        // Как тихие кнопки нижней линии: контур, цветной — сам знак; круг 40 dp — попасть пальцем легко.
+        OutlinedButton(
+            onClick = { open = true },
+            shape = CircleShape,
+            border = BorderStroke(1.dp, Rule),
+            contentPadding = PaddingValues(0.dp),
+            modifier = Modifier.size(40.dp),
+        ) {
+            Text("⋮", color = PodborColors.Accent, style = MaterialTheme.typography.titleLarge)
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = MaterialTheme.colorScheme.surface) {
             subscription?.takeIf { it.title != null || it.lines.isNotEmpty() }?.let { note ->
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
