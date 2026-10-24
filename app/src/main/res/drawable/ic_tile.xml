@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок кнопки в пункте управления: знак иконки (П-рупор с лучами) вплотную к краям поля 24dp — без полей адаптивной
+     иконки. Лучи на концах шире, бледный ярче: на мелком размере иначе пропадают. Цвет задаёт система, яркость — прозрачностью. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group android:translateX="-20.5" android:translateY="-15.5">
+        <path android:fillColor="#FFFFFF" android:pathData="M56,48 L83,27 L89,37 Z" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.75" android:pathData="M57,54 L89,48 L89,58 Z" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.55" android:pathData="M55,42 L72,19 L80,23 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M24,50 H56 V57 H24 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M24,84 V60 H56 V84 H48 V67 H32 V84 Z" />
+    </group>
+</vector>

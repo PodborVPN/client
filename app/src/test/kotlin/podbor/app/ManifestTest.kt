@@ -30,7 +30,10 @@ class ManifestTest : FunSpec({
             .single { it.getAttributeNS(android, "name") == "podbor.app.vpn.PodborTile" }
         tile.getAttributeNS(android, "permission") shouldBe "android.permission.BIND_QUICK_SETTINGS_TILE"
         tile.getAttributeNS(android, "exported") shouldBe "true"
-        tile.getAttributeNS(android, "icon") shouldBe "@drawable/ic_launcher_monochrome"
+        tile.getAttributeNS(android, "icon") shouldBe "@drawable/ic_tile"
+        // Знак вплотную к полю 24dp — не монохромный слой адаптивной иконки (108dp с полями: в пункте управления мелко).
+        val icon = factory.newDocumentBuilder().parse(File("src/main/res/drawable/ic_tile.xml")).documentElement
+        icon.getAttributeNS(android, "width") shouldBe "24dp"
         tile.getAttributeNS(android, "label") shouldBe "\${appLabel}"
         val action = tile.getElementsByTagName("action").item(0) as Element
         action.getAttributeNS(android, "name") shouldBe "android.service.quicksettings.action.QS_TILE"
