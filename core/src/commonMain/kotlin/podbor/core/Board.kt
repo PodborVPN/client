@@ -50,11 +50,13 @@ private fun statusOf(screen: Screen?): CardStatus = when (val r = screen?.result
     ResultCard.Empty -> if (screen.button == Button.Searching) CardStatus.Searching else CardStatus.Unknown
     is ResultCard.Found -> CardStatus.Found(ExitRef(r.serverName, r.transport), r.probedAtMs, r.coverage)
     is ResultCard.NotFound -> CardStatus.NotFound(r.lines)
-    is ResultCard.Exit -> when (val e = r.state) {
-        ExitState.Off -> CardStatus.Unknown
-        is ExitState.Unlisted -> CardStatus.Unlisted(e.tag)
-        is ExitState.Checking -> CardStatus.Checking(e.ref, e.relocation)
-        is ExitState.Works -> CardStatus.Works(e.ref, e.relocation)
-        is ExitState.Dead -> CardStatus.Dead(e.ref, e.blame, e.relocation)
-    }
+    is ResultCard.Exit -> statusOf(r.state)
+}
+
+private fun statusOf(e: ExitState): CardStatus = when (e) {
+    ExitState.Off -> CardStatus.Unknown
+    is ExitState.Unlisted -> CardStatus.Unlisted(e.tag)
+    is ExitState.Checking -> CardStatus.Checking(e.ref, e.relocation)
+    is ExitState.Works -> CardStatus.Works(e.ref, e.relocation)
+    is ExitState.Dead -> CardStatus.Dead(e.ref, e.blame, e.relocation)
 }

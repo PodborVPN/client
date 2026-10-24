@@ -34,17 +34,23 @@ fun step(state: PressState, letter: Letter): Pair<PressState, List<Deed>> =
         is Letter.Opened -> state to emptyList()
         // Анализ подписки — своя машина (scanStep).
         is Letter.Scan, is Letter.ExitSeen -> state to emptyList()
-        is Letter.LineObserved -> when (state) {
-            is PressState.Running -> onLine(state.copy(letters = state.letters + letter), letter)
-            is PressState.Done -> state.copy(letters = state.letters + letter) to emptyList()
-            PressState.Idle -> state to emptyList()
-        }
-        is Letter.ProbeAnswered -> when (state) {
-            is PressState.Running -> onAnswer(state.copy(letters = state.letters + letter), letter)
-            is PressState.Done -> state.copy(letters = state.letters + letter) to emptyList()
-            PressState.Idle -> state to emptyList()
-        }
+        is Letter.LineObserved -> fed(state, letter, ::onLine)
+        is Letter.ProbeAnswered -> fed(state, letter, ::onAnswer)
     }
+
+/**
+ * Письмо в машину нажатия: идущее нажатие — в историю и в шаг [run]; кончившееся — только в историю (поздние ответы
+ * объясняют, но не меняют итог); до нажатия — мимо.
+ */
+private fun <L : Letter> fed(
+    state: PressState,
+    letter: L,
+    run: (PressState.Running, L) -> Pair<PressState, List<Deed>>,
+): Pair<PressState, List<Deed>> = when (state) {
+    is PressState.Running -> run(state.copy(letters = state.letters + letter), letter)
+    is PressState.Done -> state.copy(letters = state.letters + letter) to emptyList()
+    PressState.Idle -> state to emptyList()
+}
 
 private fun press(p: Letter.Pressed): Pair<PressState, List<Deed>> {
     val exit = p.currentExit?.let { id -> p.servers.find { it.id == id } }

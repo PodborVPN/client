@@ -45,20 +45,21 @@ sealed interface ScanState {
  */
 fun scanStep(s: ScanState, l: Letter): Pair<ScanState, List<Deed>> = when (l) {
     is Letter.Scan -> scanStart(l)
-    is Letter.LineObserved -> when (s) {
-        is ScanState.Running -> onLine(s, l)
-        ScanState.Idle, is ScanState.Done -> s to emptyList()
-    }
-    is Letter.ExitSeen -> when (s) {
-        is ScanState.Running -> onExit(s, l)
-        ScanState.Idle, is ScanState.Done -> s to emptyList()
-    }
-    is Letter.ProbeAnswered -> when (s) {
-        is ScanState.Running -> onProbe(s, l)
-        ScanState.Idle, is ScanState.Done -> s to emptyList()
-    }
+    is Letter.LineObserved -> running(s, l, ::onLine)
+    is Letter.ExitSeen -> running(s, l, ::onExit)
+    is Letter.ProbeAnswered -> running(s, l, ::onProbe)
     // Экран и нажатие — свои машины.
     is Letter.Opened, is Letter.Pressed -> s to emptyList()
+}
+
+/** Письмо анализу: идущему — в шаг [run]; до старта и после итога — мимо. */
+private fun <L : Letter> running(
+    s: ScanState,
+    l: L,
+    run: (ScanState.Running, L) -> Pair<ScanState, List<Deed>>,
+): Pair<ScanState, List<Deed>> = when (s) {
+    is ScanState.Running -> run(s, l)
+    ScanState.Idle, is ScanState.Done -> s to emptyList()
 }
 
 private fun scanStart(l: Letter.Scan): Pair<ScanState, List<Deed>> {

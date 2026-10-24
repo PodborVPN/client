@@ -163,21 +163,21 @@ const val DNS_FAILURE = "dns"
 /** Кто-то ответил хоть чем-то: рукопожатие, сброс, подмена, отказ, или TCP есть, а ServerHello нет. */
 private fun answered(h: Handshake): Boolean = when (h) {
     is Handshake.Ok, is Handshake.Reset, Handshake.Mirage, Handshake.Refused -> true
-    is Handshake.Silent -> when (h.stage) {
-        Stage.Tls -> true
-        Stage.Connect -> false
-    }
+    is Handshake.Silent -> pastTcp(h.stage)
     Handshake.NoRoute, is Handshake.Unknown -> false
 }
 
 /** Проба показала, что связи нет: SYN без ответа или нет маршрута. */
 private fun silentLink(h: Handshake): Boolean = when (h) {
-    is Handshake.Silent -> when (h.stage) {
-        Stage.Connect -> true
-        Stage.Tls -> false
-    }
+    is Handshake.Silent -> !pastTcp(h.stage)
     Handshake.NoRoute -> true
     is Handshake.Ok, is Handshake.Reset, Handshake.Mirage, Handshake.Refused, is Handshake.Unknown -> false
+}
+
+/** Молчание после TCP (ждали ServerHello) — кто-то ответил; на SYN — связи нет. */
+private fun pastTcp(stage: Stage): Boolean = when (stage) {
+    Stage.Tls -> true
+    Stage.Connect -> false
 }
 
 /**
@@ -187,15 +187,18 @@ private fun silentLink(h: Handshake): Boolean = when (h) {
 fun scenarioOf(os: OsNetwork, rounds: Nel<LineObservation>): Scenario {
     val kinds = rounds.map(::roundOf)
     return when (kinds.last()) {
-        RoundKind.Open -> when (os) {
-            OsNetwork.Wifi -> Scenario.Wifi
-            is OsNetwork.Cellular, OsNetwork.None -> Scenario.MobileOpen
-        }
+        RoundKind.Open -> openOn(os)
         RoundKind.WhitelistLike ->
             if (kinds.dropLast(1).lastOrNull() == RoundKind.WhitelistLike) Scenario.MobileWhitelist else Scenario.SuspectWhitelist
         RoundKind.Offline -> Scenario.Offline
         RoundKind.Unclear -> if (RoundKind.WhitelistLike in kinds) Scenario.SuspectWhitelist else Scenario.Unclear
     }
+}
+
+/** Открытая сеть — Wi-Fi или открытая мобильная: сценарии у них свои. */
+private fun openOn(os: OsNetwork): Scenario = when (os) {
+    OsNetwork.Wifi -> Scenario.Wifi
+    is OsNetwork.Cellular, OsNetwork.None -> Scenario.MobileOpen
 }
 
 /** Нужен ли ещё раунд: первый раунд диагноза похож на белые списки. */

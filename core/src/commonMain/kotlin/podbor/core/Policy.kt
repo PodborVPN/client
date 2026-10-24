@@ -63,20 +63,28 @@ private const val NOT_LIKELY_SHIFT = 10
 
 /** Номер ступени: меньше — раньше. */
 private fun tierOf(scenario: Scenario, s: Server): Int = when (scenario) {
-    Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> when (classOf(s)) {
-        CandidateClass.RuEntry -> 0
-        CandidateClass.UnknownEntry -> 1
-        CandidateClass.Foreign -> 2
-    }
+    Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> whitelistTier(classOf(s))
     // Wi-Fi в итерации 1 — как мобильная чистая [в]; Unclear — не гадаем, как Open.
-    Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear, Scenario.Offline -> when (s.entry) {
-        is Entry.Ru -> 3 // белосписочная ёмкость редкая — последними
-        is Entry.Foreign, Entry.Unknown -> when (s.transport) {
-            Transport.Xhttp, Transport.Grpc -> 0
-            Transport.Ws, is Transport.Other -> 1
-            Transport.RealityVision -> 2
-        }
-    }
+    Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear, Scenario.Offline -> openTier(s.entry, s.transport)
+}
+
+/** При белых списках — входы в РФ первыми, неизвестные следом, зарубежные последними. */
+private fun whitelistTier(c: CandidateClass): Int = when (c) {
+    CandidateClass.RuEntry -> 0
+    CandidateClass.UnknownEntry -> 1
+    CandidateClass.Foreign -> 2
+}
+
+/** В открытой сети — входы в РФ последними (белосписочная ёмкость редкая), прочие — по транспорту. */
+private fun openTier(entry: Entry, transport: Transport): Int = when (entry) {
+    is Entry.Ru -> 3
+    is Entry.Foreign, Entry.Unknown -> transportTier(transport)
+}
+
+private fun transportTier(t: Transport): Int = when (t) {
+    Transport.Xhttp, Transport.Grpc -> 0
+    Transport.Ws, is Transport.Other -> 1
+    Transport.RealityVision -> 2
 }
 
 /** Чередование хостов внутри ступени: не упираться в бюджет одного IP. */

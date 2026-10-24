@@ -28,17 +28,25 @@ sealed interface Relocation {
     data class Moved(val move: NetworkMove) : Relocation
 }
 
+/** Свёртка: выход на той же сети или неизвестно где — [here]; сеть сменилась — [moved] от переезда. */
+fun <T> Relocation.fold(here: T, moved: (NetworkMove) -> T): T = when (this) {
+    Relocation.Unknown, Relocation.Stayed -> here
+    is Relocation.Moved -> moved(move)
+}
+
 /** Переезд — обе сети с ключом памяти и ключи разные; у какой-то нет ключа (нет сети) — сравнивать не с чем. */
 fun relocationOf(chosenOn: ChosenOn, now: OsNetwork): Relocation = when (chosenOn) {
     ChosenOn.Unknown -> Relocation.Unknown
-    is ChosenOn.Network -> {
-        val from = networkKey(chosenOn.os)
-        val to = networkKey(now)
-        when {
-            from == null || to == null -> Relocation.Unknown
-            from == to -> Relocation.Stayed
-            else -> Relocation.Moved(NetworkMove(chosenOn.os, now))
-        }
+    is ChosenOn.Network -> movedFrom(chosenOn.os, now)
+}
+
+private fun movedFrom(from: OsNetwork, now: OsNetwork): Relocation {
+    val was = networkKey(from)
+    val is_ = networkKey(now)
+    return when {
+        was == null || is_ == null -> Relocation.Unknown
+        was == is_ -> Relocation.Stayed
+        else -> Relocation.Moved(NetworkMove(from, now))
     }
 }
 

@@ -24,21 +24,24 @@ fun openStep(s: OpenState, letter: Letter): Pair<OpenState, List<Deed>> = when (
         val next = s.diagnosis.observe(s.opened.os, letter.line)
         s.copy(diagnosis = next) to if (s.diagnosis !is Diagnosis.Suspected && next is Diagnosis.Suspected) listOf(Deed.ProbeLine) else emptyList()
     }
-    is Letter.ProbeAnswered -> when (val vpn = s.opened.vpn) {
-        is Vpn.On -> if (letter.server == vpn.exit.id) {
-            // Одна тишина или мёртвая Телега — ещё не приговор: повтор один раз. Unreachable не повторяем.
-            val ambiguous = letter.verdict.kind() == VerdictKind.TlsSilence || letter.verdict.kind() == VerdictKind.ServiceDead
-            s.copy(exitAnswers = s.exitAnswers + letter.verdict) to
-                if (ambiguous && s.exitAnswers.isEmpty()) listOf(Deed.Probe(vpn.exit.id)) else emptyList()
-        } else {
-            s to emptyList()
-        }
-        Vpn.Off, is Vpn.Unlisted -> s to emptyList()
-    }
+    is Letter.ProbeAnswered -> exitAnswered(s, letter)
     // Открытие начинается openStart; нажатие — другая машина.
     is Letter.Opened, is Letter.Pressed -> s to emptyList()
     // Анализ подписки — своя машина (scanStep).
     is Letter.Scan, is Letter.ExitSeen -> s to emptyList()
+}
+
+/** Ответ пробы при открытии: в счёт — только ответ текущего выхода; выхода в подписке нет — пробовать было нечего. */
+private fun exitAnswered(s: OpenState, letter: Letter.ProbeAnswered): Pair<OpenState, List<Deed>> = when (val vpn = s.opened.vpn) {
+    is Vpn.On -> if (letter.server == vpn.exit.id) {
+        // Одна тишина или мёртвая Телега — ещё не приговор: повтор один раз. Unreachable не повторяем.
+        val ambiguous = letter.verdict.kind() == VerdictKind.TlsSilence || letter.verdict.kind() == VerdictKind.ServiceDead
+        s.copy(exitAnswers = s.exitAnswers + letter.verdict) to
+            if (ambiguous && s.exitAnswers.isEmpty()) listOf(Deed.Probe(vpn.exit.id)) else emptyList()
+    } else {
+        s to emptyList()
+    }
+    Vpn.Off, is Vpn.Unlisted -> s to emptyList()
 }
 
 /** Раунды детектора, ещё годные для нажатия (по последнему); иначе None — нажатие меряет само. */
@@ -96,19 +99,22 @@ fun renderOpened(s: OpenState, closed: Boolean, service: Service = Telegram): Sc
 private fun exitStateOf(s: OpenState, closed: Boolean): ExitState = when (val vpn = s.opened.vpn) {
     Vpn.Off -> ExitState.Off
     is Vpn.Unlisted -> ExitState.Unlisted(vpn.tag)
-    is Vpn.On -> {
-        val ref = ExitRef(vpn.exit.name, vpn.exit.transport)
-        val relocation = relocationOf(vpn.chosenOn, s.opened.os)
-        when (lifeOf(s.exitAnswers)) {
-            Life.Checking -> ExitState.Checking(ref, relocation)
-            Life.Works -> ExitState.Works(ref, relocation)
-            // Линия ещё молчит — причину не назвать: до срока ждём, по сроку — «не объяснено».
-            Life.Dead -> when (val sc = s.diagnosis.scenario) {
-                null -> if (closed) ExitState.Dead(ref, Blame.Unexplained, relocation) else ExitState.Checking(ref, relocation)
-                else -> ExitState.Dead(ref, blameOf(sc), relocation)
-            }
-        }
-    }
+    is Vpn.On -> exitOf(
+        ExitRef(vpn.exit.name, vpn.exit.transport), relocationOf(vpn.chosenOn, s.opened.os),
+        lifeOf(s.exitAnswers), s.diagnosis.scenario, closed,
+    )
+}
+
+private fun exitOf(ref: ExitRef, relocation: Relocation, life: Life, scenario: Scenario?, closed: Boolean): ExitState = when (life) {
+    Life.Checking -> ExitState.Checking(ref, relocation)
+    Life.Works -> ExitState.Works(ref, relocation)
+    Life.Dead -> deadOf(ref, relocation, scenario, closed)
+}
+
+/** Мёртв, а линия ещё молчит — причину не назвать: до срока ждём, по сроку — «не объяснено». */
+private fun deadOf(ref: ExitRef, relocation: Relocation, scenario: Scenario?, closed: Boolean): ExitState = when (scenario) {
+    null -> if (closed) ExitState.Dead(ref, Blame.Unexplained, relocation) else ExitState.Checking(ref, relocation)
+    else -> ExitState.Dead(ref, blameOf(scenario), relocation)
 }
 
 private fun blameOf(s: Scenario): Blame = when (s) {

@@ -57,16 +57,19 @@ fun explain(letters: List<Letter>): Explanation {
         PressState.Idle, is PressState.Running -> Outcome.InProgress
         is PressState.Done -> trace.found?.let { f ->
             Outcome.Found(f.server, position = trace.accepted.map { it.server }.distinct().indexOf(f.server) + 1, admissible = admissible.size)
-        } ?: when (st.diagnosis.scenario) {
-            null -> Outcome.InProgress
-            Scenario.Offline -> Outcome.NotFound(Conclusion.NoNetwork)
-            Scenario.MobileWhitelist, Scenario.SuspectWhitelist ->
-                Outcome.NotFound(if (admissible.isEmpty()) Conclusion.NoAdmissibleInConfig else Conclusion.AllAdmissibleFailed)
-            Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear ->
-                Outcome.NotFound(if (admissible.isEmpty()) Conclusion.NoAdmissibleInConfig else Conclusion.NothingWorksOpen)
-        }
+        } ?: notFoundOf(st.diagnosis.scenario, noneAdmissible = admissible.isEmpty())
     }
     return Explanation(diagnosis, trace.line?.line, tried, skipped, outcome, trace.endedAtMs)
+}
+
+/** Нажатие кончилось без выхода: вывод — по сценарию и тому, было ли вообще что пробовать. */
+private fun notFoundOf(scenario: Scenario?, noneAdmissible: Boolean): Outcome = when (scenario) {
+    null -> Outcome.InProgress
+    Scenario.Offline -> Outcome.NotFound(Conclusion.NoNetwork)
+    Scenario.MobileWhitelist, Scenario.SuspectWhitelist ->
+        Outcome.NotFound(if (noneAdmissible) Conclusion.NoAdmissibleInConfig else Conclusion.AllAdmissibleFailed)
+    Scenario.MobileOpen, Scenario.Wifi, Scenario.Unclear ->
+        Outcome.NotFound(if (noneAdmissible) Conclusion.NoAdmissibleInConfig else Conclusion.NothingWorksOpen)
 }
 
 /** След прогона машины по буквам одного нажатия. */
@@ -93,16 +96,19 @@ private fun replay(press: List<Letter>): Trace =
             launched = t.launched + deeds.filterIsInstance<Deed.Probe>().map { it.server },
             line = when {
                 letter is Letter.LineObserved && running != null && running.diagnosis !is Diagnosis.Settled -> letter
-                letter is Letter.Pressed -> when (val prior = letter.freshPrior()) {
-                    Prior.None -> null
-                    is Prior.Detected -> prior.rounds.last()
-                }
+                letter is Letter.Pressed -> lastFreshRound(letter)
                 else -> t.line
             },
             found = if (accepted && next is PressState.Done && letter.verdict.kind() == VerdictKind.Fits) letter else t.found,
             endedAtMs = t.endedAtMs ?: letter.atMs.takeIf { next is PressState.Done },
         )
     }
+
+/** Свежий раунд детектора, с которым пришло нажатие; нет свежих — нет. */
+private fun lastFreshRound(p: Letter.Pressed): Letter.LineObserved? = when (val prior = p.freshPrior()) {
+    Prior.None -> null
+    is Prior.Detected -> prior.rounds.last()
+}
 
 private fun mergeSkips(
     a: Map<CandidateClass, Map<SkipReason, Int>>,

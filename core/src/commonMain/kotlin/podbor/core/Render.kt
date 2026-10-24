@@ -142,11 +142,13 @@ fun operatorOf(os: OsNetwork): String? = when (os) {
 
 /** Строка про вышку для экрана; `null` — показывать нечего (вышка неизвестна или сеть не сотовая). */
 fun towerLine(os: OsNetwork): String? = when (os) {
-    is OsNetwork.Cellular -> when (val tower = os.tower) {
-        Tower.Unknown -> null
-        is Tower.Known -> "вышка ${tower.earfcn} \u00b7 \u2212${-tower.rsrpDbm} дБм"
-    }
+    is OsNetwork.Cellular -> towerWords(os.tower)
     OsNetwork.Wifi, OsNetwork.None -> null
+}
+
+private fun towerWords(tower: Tower): String? = when (tower) {
+    Tower.Unknown -> null
+    is Tower.Known -> "вышка ${tower.earfcn} \u00b7 \u2212${-tower.rsrpDbm} дБм"
 }
 
 /*
@@ -164,11 +166,13 @@ fun transportWords(t: Transport): String = when (t) {
 
 /** Заголовок карточки сети: пока линия молчит — «измеряю сеть…» (Wi-Fi — так и называем), потом сценарий. */
 fun networkTitle(card: NetworkCard): String = when (card) {
-    is NetworkCard.Measuring -> when (card.os) {
-        OsNetwork.Wifi -> "измеряю Wi-Fi…"
-        is OsNetwork.Cellular, OsNetwork.None -> "измеряю сеть…"
-    }
+    is NetworkCard.Measuring -> measuringTitle(card.os)
     is NetworkCard.Measured -> titleOf(card.scenario)
+}
+
+private fun measuringTitle(os: OsNetwork): String = when (os) {
+    OsNetwork.Wifi -> "измеряю Wi-Fi…"
+    is OsNetwork.Cellular, OsNetwork.None -> "измеряю сеть…"
 }
 
 /**
@@ -190,20 +194,10 @@ fun exitHead(e: ExitState): String = when (e) {
 fun exitNotes(e: ExitState, service: Service = Telegram): List<String> = when (e) {
     ExitState.Off -> listOf("Xray выбирает сам — нажми «Подобрать»")
     is ExitState.Unlisted -> listOf("такого сервера нет в подписке, проверить нечем")
-    is ExitState.Checking -> listOf(
-        when (val r = e.relocation) {
-            Relocation.Unknown, Relocation.Stayed -> "проверяю ${service.titleAcc}…"
-            is Relocation.Moved -> "${moveWords(r.move)} — проверяю ${service.titleAcc}…"
-        },
-    )
-    is ExitState.Works -> when (val r = e.relocation) {
-        Relocation.Unknown, Relocation.Stayed -> emptyList()
-        is Relocation.Moved -> listOf("подобран на ${networkWords(r.move.from)}, на ${networkWords(r.move.to)} тоже работает")
-    }
-    is ExitState.Dead -> listOf(blameWords(e.blame)) + when (val r = e.relocation) {
-        Relocation.Unknown, Relocation.Stayed -> emptyList()
-        is Relocation.Moved -> listOf("подобран на ${networkWords(r.move.from)} — нажми, подберу под ${networkWords(r.move.to)}")
-    }
+    is ExitState.Checking -> "проверяю ${service.titleAcc}…".let { checking -> listOf(e.relocation.fold(checking) { m -> "${moveWords(m)} — $checking" }) }
+    is ExitState.Works -> e.relocation.fold(emptyList()) { m -> listOf("подобран на ${networkWords(m.from)}, на ${networkWords(m.to)} тоже работает") }
+    is ExitState.Dead -> listOf(blameWords(e.blame)) +
+        e.relocation.fold(emptyList()) { m -> listOf("подобран на ${networkWords(m.from)} — нажми, подберу под ${networkWords(m.to)}") }
 }
 
 private fun blameWords(blame: Blame): String = when (blame) {
