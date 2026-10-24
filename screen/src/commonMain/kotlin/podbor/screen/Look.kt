@@ -66,12 +66,14 @@ private fun firstNote(notes: List<Note>): Note = when (val n = notes.firstOrNull
 
 fun toneOf(card: NetworkCard): Tone = when (card) {
     is NetworkCard.Measuring -> Tone.Muted
-    is NetworkCard.Measured -> when (card.scenario) {
-        Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> Tone.Warn
-        Scenario.MobileOpen, Scenario.Wifi -> Tone.Ok
-        Scenario.Offline -> Tone.Fail
-        Scenario.Unclear -> Tone.Neutral
-    }
+    is NetworkCard.Measured -> toneOf(card.scenario)
+}
+
+fun toneOf(scenario: Scenario): Tone = when (scenario) {
+    Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> Tone.Warn
+    Scenario.MobileOpen, Scenario.Wifi -> Tone.Ok
+    Scenario.Offline -> Tone.Fail
+    Scenario.Unclear -> Tone.Neutral
 }
 
 fun toneOf(button: Button): Tone = when (button) {
@@ -144,17 +146,7 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
         CardStatus.Unknown -> bare(exitHead(ExitState.Off), exitNotes(ExitState.Off))
         is CardStatus.Unlisted -> ExitState.Unlisted(st.tag).let { bare(exitHead(it), exitNotes(it)) }
         CardStatus.Searching -> ServiceRow(card.label, null, "подбираю выход…", null, emptyList(), searching = true)
-        is CardStatus.Checking -> {
-            // Восстановленный из памяти подобран на этой же сети — переезда у него нет, слова свои.
-            val notes = when (origin) {
-                ExitOrigin.Recalled -> listOf("последний рабочий: ${st.ref.name} — проверяю")
-                ExitOrigin.Chosen -> when (service) {
-                    null -> listOf("проверяю…")
-                    else -> exitNotes(ExitState.Checking(st.ref, st.relocation), service)
-                }
-            }
-            server(Mark.Checking, st.ref, notes.map { Note(it, Tone.Warn) })
-        }
+        is CardStatus.Checking -> server(Mark.Checking, st.ref, checkingNotes(st, origin, service).map { Note(it, Tone.Warn) })
         is CardStatus.Works -> server(Mark.Works, st.ref, exitNotes(ExitState.Works(st.ref, st.relocation)).map { Note(it, Tone.Ok) })
         // Причина — красным, подсказка после переезда — янтарным: это действие, а не приговор.
         is CardStatus.Dead -> server(
@@ -179,33 +171,40 @@ fun miniOf(status: CardStatus, origin: ExitOrigin, pulse: PairPulse): Note = whe
     CardStatus.Unknown -> Note("Xray выбирает сам", Tone.Muted)
     is CardStatus.Unlisted -> Note("нет в подписке", Tone.Muted)
     CardStatus.Searching -> Note("подбираю…", Tone.Warn)
-    is CardStatus.Checking -> Note(
-        when {
-            status.relocation is Relocation.Moved -> "сеть сменилась — проверяю"
-            origin == ExitOrigin.Recalled -> "последний рабочий — проверяю"
-            else -> "проверяю"
-        },
-        Tone.Warn,
-    )
-    is CardStatus.Works -> Note(
-        when (pulse) {
-            PairPulse.Unseen -> "работает"
-            is PairPulse.Seen -> if (pulse.downBps == 0L && pulse.upBps == 0L) "работает · сейчас не пользуется" else "работает · ↓ ${rateText(pulse.downBps)}"
-        },
-        Tone.Ok,
-    )
+    is CardStatus.Checking -> Note(checkingMini(status.relocation, origin), Tone.Warn)
+    is CardStatus.Works -> Note(worksMini(pulse), Tone.Ok)
     is CardStatus.Found -> Note("найден · ${status.coverage}", Tone.Ok)
-    is CardStatus.Dead -> Note(
-        when (status.blame) {
-            Blame.Whitelist -> "белые списки"
-            Blame.SuspectedWhitelist -> "похоже на белые списки"
-            Blame.NoNetwork -> "нет сети"
-            Blame.Server -> "сервер не отвечает"
-            Blame.Unexplained -> "не отвечает"
-        },
-        Tone.Fail,
-    )
+    is CardStatus.Dead -> Note(deadMini(status.blame), Tone.Fail)
     is CardStatus.NotFound -> Note(status.lines.firstOrNull().orEmpty(), Tone.Fail)
+}
+
+/**
+ * Заметки проверки выхода: восстановленный из памяти подобран на этой же сети — переезда у него нет, слова свои; без
+ * описания сервиса — без его имени.
+ */
+private fun checkingNotes(st: CardStatus.Checking, origin: ExitOrigin, service: Service?): List<String> = when {
+    origin == ExitOrigin.Recalled -> listOf("последний рабочий: ${st.ref.name} — проверяю")
+    service == null -> listOf("проверяю…")
+    else -> exitNotes(ExitState.Checking(st.ref, st.relocation), service)
+}
+
+private fun checkingMini(relocation: Relocation, origin: ExitOrigin): String = when {
+    relocation is Relocation.Moved -> "сеть сменилась — проверяю"
+    origin == ExitOrigin.Recalled -> "последний рабочий — проверяю"
+    else -> "проверяю"
+}
+
+private fun worksMini(pulse: PairPulse): String = when (pulse) {
+    PairPulse.Unseen -> "работает"
+    is PairPulse.Seen -> if (pulse.downBps == 0L && pulse.upBps == 0L) "работает · сейчас не пользуется" else "работает · ↓ ${rateText(pulse.downBps)}"
+}
+
+private fun deadMini(blame: Blame): String = when (blame) {
+    Blame.Whitelist -> "белые списки"
+    Blame.SuspectedWhitelist -> "похоже на белые списки"
+    Blame.NoNetwork -> "нет сети"
+    Blame.Server -> "сервер не отвечает"
+    Blame.Unexplained -> "не отвечает"
 }
 
 /** Пульс — у строки с сервером (работает, найден, проверяю); поиск, тупик и прочее — без него: пары нет. */

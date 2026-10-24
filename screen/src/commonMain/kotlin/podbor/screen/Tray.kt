@@ -17,13 +17,13 @@ fun trayOf(session: SessionView, board: Board): Tray = when (session) {
     SessionView.Down -> TrayOff
     SessionView.Starting -> Tray(on = true, line = "включаю…")
     is SessionView.Failed -> Tray(on = false, line = "не включился — открой Podbor")
-    SessionView.Up -> Tray(
-        on = true,
-        line = when (board.button) {
-            Button.Searching -> "подбираю…"
-            Button.Idle, Button.Ready, Button.Green, Button.Red -> board.cards.joinToString(" · ") { "${it.label} ${markOf(it.status)}" }
-        },
-    )
+    SessionView.Up -> Tray(on = true, line = upLine(board))
+}
+
+/** Поднята: идёт подбор — «подбираю…», иначе по сервису «IG ✓ · TG ✗». */
+private fun upLine(board: Board): String = when (board.button) {
+    Button.Searching -> "подбираю…"
+    Button.Idle, Button.Ready, Button.Green, Button.Red -> board.cards.joinToString(" · ") { "${it.label} ${markOf(it.status)}" }
 }
 
 /** Идёт ли перемер после переезда сети — его строка сильнее статуса шторки. */

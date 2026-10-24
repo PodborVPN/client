@@ -44,19 +44,25 @@ data class LinkFacts(
      */
     fun seen(s: SessionView): LinkFacts {
         val next = when (start) {
-            Start.Issued -> when (s) {
-                SessionView.Starting -> Start.Running
-                SessionView.Up, is SessionView.Failed -> Start.None
-                SessionView.Down -> Start.Issued
-            }
-            Start.Running -> when (s) {
-                SessionView.Starting -> Start.Running
-                SessionView.Up, is SessionView.Failed, SessionView.Down -> Start.None
-            }
+            Start.Issued -> afterIssued(s)
+            Start.Running -> afterRunning(s)
             Start.None, Start.AwaitingConsent, Start.Refused -> start
         }
         return copy(session = s, start = next)
     }
+}
+
+/** Старт выдан: Starting — подъём пошёл, Up/Failed — итог, Down — прежняя сессия, ждём дальше. */
+private fun afterIssued(s: SessionView): Start = when (s) {
+    SessionView.Starting -> Start.Running
+    SessionView.Up, is SessionView.Failed -> Start.None
+    SessionView.Down -> Start.Issued
+}
+
+/** Подъём идёт: кончается любым итогом, в том числе Down (стоп посреди подъёма). */
+private fun afterRunning(s: SessionView): Start = when (s) {
+    SessionView.Starting -> Start.Running
+    SessionView.Up, is SessionView.Failed, SessionView.Down -> Start.None
 }
 
 fun linkOf(f: LinkFacts): Link = when (f.start) {
@@ -64,13 +70,15 @@ fun linkOf(f: LinkFacts): Link = when (f.start) {
     Start.Refused -> Link.Refused
     Start.Issued -> Link.Starting
     // Идущий подъём — по сессии: Starting, пока сервис привязан; ушёл посреди — Off.
-    Start.None, Start.Running -> when (val s = f.session) {
-        // Неудачный подъём остаётся итогом и после ухода сервиса.
-        is SessionView.Failed -> Link.Failed
-        null, SessionView.Down -> Link.Off
-        SessionView.Starting -> if (f.bound) Link.Starting else Link.Off
-        SessionView.Up -> if (f.bound) Link.Up else Link.Off
-    }
+    Start.None, Start.Running -> bySession(f.session, f.bound)
+}
+
+private fun bySession(s: SessionView?, bound: Boolean): Link = when (s) {
+    // Неудачный подъём остаётся итогом и после ухода сервиса.
+    is SessionView.Failed -> Link.Failed
+    null, SessionView.Down -> Link.Off
+    SessionView.Starting -> if (bound) Link.Starting else Link.Off
+    SessionView.Up -> if (bound) Link.Up else Link.Off
 }
 
 /**
