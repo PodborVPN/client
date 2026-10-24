@@ -6,8 +6,6 @@ import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.ExitState
 import podbor.core.HARDCODED_SERVICES
-import podbor.core.Hammer
-import podbor.core.hammerWords
 import podbor.core.NetworkCard
 import podbor.core.PairPulse
 import podbor.core.PulseView
@@ -114,10 +112,8 @@ fun rowsOf(
         cards.map { card ->
             val st = card.status
             val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.firstOrNull() == shared
-            val service = services.find { it.id == card.service }
-            rowOf(card, service, origin[card.service] ?: ExitOrigin.Chosen, repeats)
+            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats)
                 .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pulse.pairs[card.service] ?: PairPulse.Unseen))
-                .let { row -> row.copy(notes = row.notes + hammerNotes(card.status, service, hammerOf(pulse, card.service))) }
         }
     }
 }
@@ -161,26 +157,6 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
             st.lines.mapIndexed { i, line -> Note(line, if (i == 0) Tone.Neutral else Tone.Muted) }.drop(if (sharedHead) 1 else 0),
             searching = false,
         )
-    }
-}
-
-private fun hammerOf(pulse: PulseView, service: ServiceId): Hammer = when (val h = pulse.hammers[service]) {
-    null -> Hammer.Calm
-    else -> h
-}
-
-/**
- * «Долбит» — у строки с сервером, янтарём: проба прошла, а приложение через этот сервер не держится. Без сервера
- * (ищу, не найдено) и без описания сервиса — нечего сказать.
- */
-private fun hammerNotes(status: CardStatus, service: Service?, h: Hammer): List<Note> = when (h) {
-    Hammer.Calm -> emptyList()
-    is Hammer.Hammering -> when (status) {
-        is CardStatus.Works, is CardStatus.Found, is CardStatus.Checking -> when (service) {
-            null -> emptyList()
-            else -> listOf(Note(hammerWords(service, h), Tone.Warn))
-        }
-        CardStatus.Unknown, is CardStatus.Unlisted, CardStatus.Searching, is CardStatus.Dead, is CardStatus.NotFound -> emptyList()
     }
 }
 

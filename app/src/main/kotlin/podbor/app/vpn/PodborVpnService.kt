@@ -102,7 +102,6 @@ import podbor.driver.AccessLog
 import podbor.driver.connLoop
 import podbor.driver.tailAccess
 import podbor.core.ConnSample
-import podbor.core.hammerOf
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.update
 import podbor.screen.AlwaysOn
@@ -462,8 +461,6 @@ class PodborVpnService : VpnService(), ServicePort {
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
         val subscription = subscriptions.load()?.let { subscriptionKey(it, salt) } ?: ""
-        // Сервис → тег выхода его пары сейчас: и пульсу, и свёртке «долбит».
-        val effective = { HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap() }
         install(
             {
                 scope.launch {
@@ -477,10 +474,7 @@ class PodborVpnService : VpnService(), ServicePort {
                             launch {
                                 connLoop(lines, clock, SystemClock::elapsedRealtime, epoch, tape) { s ->
                                     // В лог — только числа: адреса живут в Ленте.
-                                    log(
-                                        "журнал соединений: ${s.conns.sumOf { it.count }} соединений к ${s.conns.size} адресам, " +
-                                            "к одному — до ${s.conns.maxOf { it.count }}",
-                                    )
+                                    log("журнал соединений: ${s.conns.sumOf { it.count }} соединений к ${s.conns.size} адресам")
                                     connsNow.update { (it + s).takeLast(CONNS_KEPT) }
                                 }
                             }
@@ -494,15 +488,13 @@ class PodborVpnService : VpnService(), ServicePort {
                         // Сеть — ОС на момент отсчёта (доска экрана без открытого экрана смену сети не видит).
                         context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
                         watching = watching,
-                        effective = effective,
+                        effective = {
+                            HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id)?.let { s.id to tagOf(it, s.id) } }.toMap()
+                        },
                         pulse = pulseState,
                         tape = tape,
                         save = books::save,
-                        // Вид пульса на экран — вместе с «долбит» по текущим парам из свежих окон журнала соединений.
-                        emit = { v ->
-                            val now = SystemClock.elapsedRealtime()
-                            pulseNow.value = v.copy(hammers = effective().mapValues { (_, tag) -> hammerOf(connsNow.value, tag, now) })
-                        },
+                        emit = { pulseNow.value = it },
                     )
                 }
             },
