@@ -9,6 +9,7 @@ import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.Instagram
 import podbor.core.NetworkCard
+import podbor.core.NetworkMove
 import podbor.core.OsNetwork
 import podbor.core.ServiceCard
 import podbor.core.Telegram
@@ -42,6 +43,20 @@ class TrayTest : FunSpec({
         tapOf(Tray(on = true, line = "включаю…"), consented = false) shouldBe Tap.Stop
         tapOf(Tray(on = false, line = "выключен"), consented = true) shouldBe Tap.Start
         tapOf(Tray(on = false, line = "выключен"), consented = false) shouldBe Tap.OpenApp
+    }
+
+    test("уведомление — из одного значения сессии: нет сессии — нет уведомления; поднимается — только «Выключить»") {
+        shadeOf(SessionView.Down, idle, Remeasure.Idle) shouldBe Shade.None
+        shadeOf(SessionView.Failed("tun"), idle, Remeasure.Idle) shouldBe Shade.None
+        shadeOf(SessionView.Starting, idle, Remeasure.Idle) shouldBe Shade.Shown("включаю…", listOf(ShadeButton.Stop))
+    }
+
+    test("уведомление на поднятой: статус шторки и обе кнопки; идёт перемер после переезда — его строка") {
+        val works = board(Button.Green, CardStatus.Works(nl), CardStatus.Works(nl))
+        shadeOf(SessionView.Up, works, Remeasure.Idle) shouldBe Shade.Shown("IG ✓ · TG ✓", listOf(ShadeButton.Press, ShadeButton.Stop))
+        val move = NetworkMove(OsNetwork.Wifi, OsNetwork.Cellular("MTS", "25001"))
+        shadeOf(SessionView.Up, works, Remeasure.After(move)) shouldBe
+            Shade.Shown("сеть сменилась: Wi-Fi → MTS — проверяю выходы", listOf(ShadeButton.Press, ShadeButton.Stop))
     }
 
     test("поднята — по сервису: работает ✓, мёртв или не найден ✗, проверяю …, неизвестно —") {

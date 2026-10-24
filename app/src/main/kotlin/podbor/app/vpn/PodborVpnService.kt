@@ -94,13 +94,16 @@ import podbor.app.sub.subscriptionKey
 import podbor.core.EpochKind
 import podbor.core.Pulse
 import podbor.core.PulseView
-import podbor.core.moveWords
 import podbor.core.networkKey
 import podbor.core.view
 import podbor.driver.PulseContext
 import podbor.driver.networkMoves
 import podbor.screen.AlwaysOn
 import podbor.screen.ExitOrigin
+import podbor.screen.Remeasure
+import podbor.screen.Shade
+import podbor.screen.ShadeButton
+import podbor.screen.shadeOf
 import podbor.screen.trayOf
 
 private const val TAG = "Podbor"
@@ -244,25 +247,25 @@ class PodborVpnService : VpnService(), ServicePort {
         registerOwnerFinder(getSystemService(ConnectivityManager::class.java))
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW))
-        // Уведомление — производная сессии, доски и переезда: заголовок — выход общего балансера (имя из подписки по
-        // подтверждённому Xray тегу), текст — статус шторки ([trayOf]) или переезд, пока идёт перемер; без сессии не
-        // показывается.
+        // Уведомление — производная сессии, доски и перемера ([shadeOf]); заголовок — выход общего балансера (имя из
+        // подписки по подтверждённому Xray тегу). Сессия — одним значением вместе с выходом: второй поток о той же
+        // сессии отстаёт на остановке, и гибрид «поднята, статус „выключен“» вернул бы убранное уведомление.
         scope.launch {
-            combine(sessionExits(), host.view, desk.board, moving) { (s, exit), view, board, move ->
-                Shade(s, exitName(s, exit), move ?: trayOf(view, board).line)
-            }.distinctUntilChanged().collect { shade ->
-                when (shade.state) {
-                    is SessionState.Up, SessionState.Starting -> nm.notify(NOTIFICATION_ID, notification(shade))
-                    SessionState.Down, is SessionState.Failed -> Unit
+            combine(sessionExits(), desk.board, remeasure) { (s, exit), board, r -> exitName(s, exit) to shadeOf(s.view(), board, r) }
+                .distinctUntilChanged()
+                .collect { (exit, shade) ->
+                    when (shade) {
+                        Shade.None -> Unit
+                        is Shade.Shown -> synchronized(shadeLock) { if (!shadeGone) nm.notify(NOTIFICATION_ID, notification(exit, shade)) }
+                    }
                 }
-            }
         }
         scope.launch {
             host.state.map { it is SessionState.Up }.distinctUntilChanged().filter { it }.collect { expiry.check() }
         }
         // Плитка шторки говорит то же, что уведомление: статус — в общий для процесса канал, плитка проснётся сама.
         scope.launch {
-            combine(host.view, desk.board, ::trayOf).collect { TrayBus.publish(this@PodborVpnService, it) }
+            combine(host.state, desk.board) { s, board -> trayOf(s.view(), board) }.collect { TrayBus.publish(this@PodborVpnService, it) }
         }
         // Сеть сменилась на поднятой сессии — перемер под новую сеть, туннель не рвётся ([Desk.open]). Новый переезд
         // посреди перемера отменяет устаревший. Пока идёт — строка переезда в уведомлении.
@@ -270,21 +273,25 @@ class PodborVpnService : VpnService(), ServicePort {
             val networks = underlying.changes().map { telephony.osNetworkLight(underlying.transport()) }
             networkMoves(networks, host.state.map { it is SessionState.Up }).collectLatest { move ->
                 log("сеть сменилась: ${networkKey(move.from)} → ${networkKey(move.to)}, перемеряю")
-                moving.value = "${moveWords(move)} — проверяю выходы"
+                remeasure.value = Remeasure.After(move)
                 try {
                     desk.open()
                 } finally {
-                    moving.value = null
+                    remeasure.value = Remeasure.Idle
                 }
             }
         }
     }
 
-    /** Строка переезда сети, пока идёт перемер; нет перемера — null, уведомление говорит статус шторки. */
-    private val moving = MutableStateFlow<String?>(null)
+    /**
+     * Публикация уведомления и его уборка — под одним замком: служба уходит — уведомление убрано, и после уборки
+     * публиковать уже нечего, на каком бы потоке ни шёл поток уведомления.
+     */
+    private val shadeLock = Any()
+    private var shadeGone = false
 
-    /** Что показать в уведомлении: состояние сессии (от него — кнопки), выход в заголовке, строка под ним. */
-    private data class Shade(val state: SessionState<Live>, val exitName: String, val line: String)
+    /** Идёт ли перемер после переезда сети — для строки уведомления. */
+    private val remeasure = MutableStateFlow<Remeasure>(Remeasure.Idle)
 
     override fun onBind(intent: Intent): IBinder? =
         if (intent.action == SERVICE_INTERFACE) super.onBind(intent) else binder
@@ -299,8 +306,17 @@ class PodborVpnService : VpnService(), ServicePort {
         }
         // «Подобрать» в уведомлении: то же нажатие, что на экране; без поднятой сессии подбирать нечем — оно молчит.
         if (intent?.action == ACTION_PRESS) {
-            log("нажатие: из уведомления")
-            scope.launch { desk.press() }
+            when (host.state.value) {
+                is SessionState.Up -> {
+                    log("нажатие: из уведомления")
+                    scope.launch { desk.press() }
+                }
+                // Команда разбудила службу без сессии — подбирать нечем, а висеть пустой ей незачем.
+                SessionState.Down, SessionState.Starting, is SessionState.Failed -> {
+                    log("нажатие из уведомления: сессии нет — молчу")
+                    stopSelfResult(startId)
+                }
+            }
             return START_NOT_STICKY
         }
         // Прочие команды — старт: явный старт экрана или перезапуск системой (intent == null). Стоп — лепесток экрана
@@ -478,7 +494,10 @@ class PodborVpnService : VpnService(), ServicePort {
      */
     private fun finish(startId: Int) {
         if (stopSelfResult(startId)) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            synchronized(shadeLock) {
+                shadeGone = true
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
             log("сервис остановлен")
         } else {
             log("сервис остаётся: после стопа пришла новая команда")
@@ -505,14 +524,17 @@ class PodborVpnService : VpnService(), ServicePort {
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> "выход не выбран"
     }
 
-    /** Кнопки — по сессии: поднята — «Подобрать» и «Выключить», поднимается — только «Выключить». */
-    private fun notification(shade: Shade): Notification {
-        val press = when (shade.state) {
-            is SessionState.Up -> listOf(action("Подобрать", ACTION_PRESS))
-            SessionState.Starting, SessionState.Down, is SessionState.Failed -> emptyList()
-        }
-        return notification(shade.exitName, shade.line, press + action("Выключить", ACTION_STOP))
-    }
+    /** Уведомление Android из [Shade.Shown]: кнопки — командами этой же службе. */
+    private fun notification(exitName: String, shade: Shade.Shown): Notification =
+        notification(
+            exitName, shade.line,
+            shade.buttons.map { b ->
+                when (b) {
+                    ShadeButton.Press -> action("Подобрать", ACTION_PRESS)
+                    ShadeButton.Stop -> action("Выключить", ACTION_STOP)
+                }
+            },
+        )
 
     /** Кнопка уведомления — команда этой же службе (не экспортирована: команду шлёт только Podbor). */
     private fun action(title: String, command: String): Notification.Action = Notification.Action.Builder(
