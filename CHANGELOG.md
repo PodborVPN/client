@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.14.0](https://github.com/PodborVPN/client/compare/v0.13.0...v0.14.0) (2026-10-24)
+
+
+### Новое
+
+* анализ — сервисы знаками: точка состояния и знак Телеги и Инсты на карточках и в итоге ([98fb501](https://github.com/PodborVPN/client/commit/98fb50183d7c783702debbd3fb7ed17e21a3b5e0))
+* карточка — «долбит»: сервис переподключается к одному адресу по кругу ([72b1966](https://github.com/PodborVPN/client/commit/72b1966bdb24c1a42739155323ef13a33e7622fc))
+* карточка — история сервиса в шторке ([d9964bb](https://github.com/PodborVPN/client/commit/d9964bbd4e9ec4593687d1c49e2ae3acfcdf0886))
+* карточка — строки сервисов не прыгают, подробности — в шторке по тапу ([4a46ca4](https://github.com/PodborVPN/client/commit/4a46ca41fa599c102a7b7817c6ea65a91265b183))
+* Лента — журнал соединений Телеги и Инсты из access-лога Xray ([6fc20b5](https://github.com/PodborVPN/client/commit/6fc20b5cf7493abb1b610dcd0ddcfa8bb8973fda))
+* линия — DNS сети как улика: российский эталон по IP ([684c23f](https://github.com/PodborVPN/client/commit/684c23fcd7dd0b7ea6239df0a1f24dbdbdb263ae))
+* линия — свежие имена: сломанный DNS видно сразу, а не после кеша ([76c7012](https://github.com/PodborVPN/client/commit/76c7012d5d967f61a71dc282d9b2b5fbed716c32))
+* плашка «Сеть» — DNS сети сломан: слова и 🔧 ремонт по действию ([15e07cf](https://github.com/PodborVPN/client/commit/15e07cf56728aa42268e3d3fb3f9ba8dc63a5a4a))
+* экран — кнопка меню крупнее, в стиле «поделиться Лентой» ([cde68c9](https://github.com/PodborVPN/client/commit/cde68c9027e1c534511f706b19e9690c76e540ff))
+* экран — правила интерфейса: моно, углы 4dp, три вида кнопок, знак П-рупор ([d757afb](https://github.com/PodborVPN/client/commit/d757afb331e50b1d264b722502e30cabe371aa0c))
+
+
+### Исправлено
+
+* Лента — потолок 5 МБ на телефоне, старое удаляется со строкой о потере ([f4efc27](https://github.com/PodborVPN/client/commit/f4efc27135250d1aa40af165610f9a186ac0ba4f))
+
+
+### Быстрее
+
+* Лента — тяжёлые дела хешем, анализ подписки в ~5 раз легче ([a4e8b91](https://github.com/PodborVPN/client/commit/a4e8b913f37dd1a4be6600417fa2f28ee3229cbb))
+
 ## [0.13.0](https://github.com/PodborVPN/client/compare/v0.12.0...v0.13.0) (2026-10-24)
 
 
