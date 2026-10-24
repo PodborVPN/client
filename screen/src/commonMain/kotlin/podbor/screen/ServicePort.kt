@@ -3,6 +3,7 @@ package podbor.screen
 import arrow.core.Either
 import kotlinx.coroutines.flow.StateFlow
 import podbor.core.Board
+import podbor.core.HistoryEvent
 import podbor.core.PulseView
 import podbor.core.ScanBoard
 import podbor.core.ServiceId
@@ -42,6 +43,10 @@ interface ServicePort {
 
     /** Включён ли системный постоянный VPN с блокировкой — для подсказки ([alwaysOnHintDue]). */
     fun alwaysOn(): AlwaysOn
+
+    /** История сервиса для шторки — свёртка Ленты, свежие сверху, сколько влезает. */
+    suspend fun history(service: ServiceId): List<HistoryEvent>
+
 
     /**
      * Анализ подписки: VPN гаснет на его время; часть ссылок не стала серверами — [onSkipped] до первой доски; доски по

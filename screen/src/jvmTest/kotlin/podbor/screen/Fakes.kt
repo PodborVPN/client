@@ -52,6 +52,9 @@ internal class FakePort : ServicePort {
     var always = AlwaysOn.Unknown
     override fun alwaysOn(): AlwaysOn = always
 
+    var histories: Map<ServiceId, List<podbor.core.HistoryEvent>> = emptyMap()
+    override suspend fun history(service: ServiceId): List<podbor.core.HistoryEvent> = histories[service].orEmpty()
+
     var analyses = 0
     /** Что анализ сообщит о пропущенных ссылках до досок; null — пропусков нет. */
     var skipped: Skipped? = null

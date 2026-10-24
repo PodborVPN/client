@@ -409,6 +409,9 @@ class MainActivity : FragmentActivity() {
         vm.press()
     }
 
+    /** История строки [label] для шторки сервиса. */
+    internal suspend fun history(label: String) = vm.history(label)
+
     /**
      * «Поделиться Лентой»: ленты за последние 7 дней одним файлом в cache/share/ → системный шаринг через FileProvider.
      * Отдавать нечего — говорим словами.

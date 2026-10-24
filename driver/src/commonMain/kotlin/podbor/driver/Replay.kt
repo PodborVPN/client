@@ -75,7 +75,7 @@ private fun nameOf(head: Head): String = when (head) {
 }
 
 /** Чей трубопровод; анализ идёт по всему набору — ничей. */
-private fun serviceOf(head: Head): ServiceId? = when (head) {
+internal fun serviceOf(head: Head): ServiceId? = when (head) {
     is Head.Press -> head.service
     is Head.Open -> head.service
     Head.Scan -> null

@@ -71,7 +71,10 @@ import podbor.screen.Support
 import podbor.screen.supportWhenStuck
 import podbor.core.Board
 import podbor.core.Button
+import podbor.core.HistoryEvent
+import podbor.core.Mood
 import podbor.core.PulseView
+import androidx.compose.runtime.LaunchedEffect
 import podbor.core.ServiceId
 import podbor.screen.Link
 import podbor.screen.faceOf
@@ -118,6 +121,8 @@ fun MainScreen(
     onDonate: (() -> Unit)? = null,
     /** Пульс сессии: величины пар в строках сервисов. */
     pulse: PulseView = PulseView.Empty,
+    /** История строки по её метке — для шторки ([ServiceSheet]); свежие сверху. */
+    history: suspend (String) -> List<HistoryEvent> = { emptyList() },
 ) {
     Box(
         Modifier
@@ -135,7 +140,7 @@ fun MainScreen(
             PressButton(faceOf(board, link), onPress, onOff, onOn)
             TierWithTraffic("ТЕКУЩИЙ VPN", vpnTraffic(pulse))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry)
+                VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry, history)
                 when (val s = supportWhenStuck(board.button, supportOf(subscription))) {
                     is Support.Link -> StuckSupport { onSupport(s.url) }
                     Support.None -> Unit
@@ -326,7 +331,7 @@ internal fun Dot(color: Color, size: Int = 8) {
  * «повторить», если подъём не удался.
  */
 @Composable
-private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
+private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit, history: suspend (String) -> List<HistoryEvent>) {
     // Открытая шторка — по метке сервиса: строки обновляются, шторка показывает живую.
     var open by remember { mutableStateOf("") }
     Surface(
@@ -344,7 +349,7 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
     }
     when (val row = rows.firstOrNull { it.label.isNotEmpty() && it.label == open }) {
         null -> Unit
-        else -> ServiceSheet(row, onDismiss = { open = "" })
+        else -> ServiceSheet(row, history, onDismiss = { open = "" })
     }
     if (rows.any { it.retry }) {
         // Акцентом, а не серым, как «поделиться Лентой»: сейчас это единственное, что человек может сделать.
@@ -361,13 +366,21 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
     Spacer(Modifier.height(16.dp))
 }
 
+/** Сколько событий истории в шторке: без прокрутки — столько, сколько влезает на телефоне. */
+private const val HISTORY_SHOWN = 6
+
+private val CLOCK = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
 /**
  * Шторка сервиса по тапу на строку: заголовок — сервис, сервер и протокол; «сейчас» — мини-статус, величины пары и все
- * длинные слова строки (тупик, переезд сети, причины). Без прокрутки — только то, что влезает; смахнуть — закрыть.
+ * длинные слова строки (тупик, переезд сети, причины); ниже — история сервиса ([history], свёртка Ленты), свежие
+ * сверху. Без прокрутки — только то, что влезает; смахнуть — закрыть.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ServiceSheet(row: ServiceRow, onDismiss: () -> Unit) {
+private fun ServiceSheet(row: ServiceRow, history: suspend (String) -> List<HistoryEvent>, onDismiss: () -> Unit) {
+    var events by remember(row.label) { mutableStateOf(emptyList<HistoryEvent>()) }
+    LaunchedEffect(row.label) { events = history(row.label).take(HISTORY_SHOWN) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -387,15 +400,38 @@ private fun ServiceSheet(row: ServiceRow, onDismiss: () -> Unit) {
             row.pulse?.takeUnless { it in row.mini.text }?.let {
                 Text(it, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = 4.dp))
             }
-            row.notes.forEach { n ->
+            // Заметки — кроме уже сказанной мини-статусом.
+            row.notes.filterNot { it.text in row.mini.text }.forEach { n ->
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
                     Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(n.tone)) }
                     Spacer(Modifier.width(10.dp))
                     Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
                 }
             }
+            if (events.isNotEmpty()) {
+                Text("ИСТОРИЯ", color = Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                events.forEach { e ->
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Top) {
+                        Text(
+                            CLOCK.format(java.time.Instant.ofEpochMilli(e.atMs).atZone(java.time.ZoneId.systemDefault())),
+                            color = Muted,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                            modifier = Modifier.width(44.dp).padding(top = 2.dp),
+                        )
+                        Box(Modifier.padding(top = 6.dp)) { Dot(colorOf(toneOf(e.mood))) }
+                        Spacer(Modifier.width(10.dp))
+                        Text(e.text, color = PodborColors.Text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
     }
+}
+
+private fun toneOf(m: Mood): Tone = when (m) {
+    Mood.Good -> Tone.Ok
+    Mood.Bad -> Tone.Fail
+    Mood.Info -> Tone.Muted
 }
 
 /** Тег строки сервиса для UI-тестов. */

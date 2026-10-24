@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import podbor.core.Board
 import podbor.core.HARDCODED_SERVICES
+import podbor.core.HistoryEvent
 import podbor.core.PulseView
 import podbor.core.ServiceId
 import podbor.core.board
@@ -281,6 +282,16 @@ class MainViewModel(
     fun press() {
         val s = service.value ?: return
         viewModelScope.launch { s.press() }
+    }
+
+    /** История строки [label] для шторки: сервис — по карточке доски; сервиса или порта нет — пусто. */
+    suspend fun history(label: String): List<HistoryEvent> {
+        val card = board.value.cards.firstOrNull { it.label == label }
+        val port = service.value
+        return when {
+            card == null || port == null -> emptyList()
+            else -> port.history(card.service)
+        }
     }
 
     /** Подписка прочитана заново: есть ли она; заметка для «⋮» — по ней же. */

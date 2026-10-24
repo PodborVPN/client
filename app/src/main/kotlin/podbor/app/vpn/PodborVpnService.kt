@@ -102,6 +102,11 @@ import podbor.driver.AccessLog
 import podbor.driver.connLoop
 import podbor.driver.tailAccess
 import podbor.core.ConnSample
+import podbor.core.HistoryEvent
+import podbor.driver.historyOf
+import podbor.driver.rowOf
+import podbor.app.net.tapeFilesIn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.update
 import podbor.screen.AlwaysOn
@@ -375,6 +380,17 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Нажатие: см. [Desk.press]. */
     override suspend fun press() = desk.press()
+
+    /**
+     * История сервиса из Ленты: два свежих куска (≈ 2 МБ, часы работы) — строками в свёртку [historyOf]. Битая строка или
+     * нечитаемый файл — пропуск: история короче, а не ошибка.
+     */
+    override suspend fun history(service: ServiceId): List<HistoryEvent> = withContext(Dispatchers.IO) {
+        val rows = tapeFilesIn(filesDir).sortedByDescending { it.first.startedAt }.take(2).reversed()
+            .flatMap { (_, f) -> Either.catch { f.readLines() }.getOrNull().orEmpty() }
+            .mapNotNull { line -> Either.catch { rowOf(line) }.getOrNull() }
+        historyOf(rows, service, limit = 8)
+    }
 
     /** Постоянный VPN считается включённым только с блокировкой: без неё трафик всё равно идёт мимо, пока VPN нет. */
     override fun alwaysOn(): AlwaysOn = when {

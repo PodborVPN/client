@@ -93,6 +93,35 @@ class ServiceCardUiTest {
     }
 
     @Test
+    fun historyInSheetNewestFirst() {
+        val board = Board(
+            NetworkCard.Measuring(OsNetwork.Wifi), Button.Green,
+            listOf(ServiceCard(Telegram.id, "TG", CardStatus.Works(podbor.core.ExitRef("NL-7", podbor.core.Transport.Grpc)))),
+        )
+        val events = listOf(
+            podbor.core.HistoryEvent(2_000, podbor.core.Mood.Good, "Wi-Fi · «NL-7» (gRPC) работает"),
+            podbor.core.HistoryEvent(1_000, podbor.core.Mood.Bad, "MTS · не нашёл: Белые списки."),
+        )
+        val asked = mutableListOf<String>()
+        compose.setContent {
+            PodborTheme {
+                MainScreen(
+                    board, Link.Up, emptyMap(), null, null,
+                    onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = {}, onChangeSubscription = {},
+                    history = { label -> asked += label; events },
+                )
+            }
+        }
+        compose.onNodeWithText("MTS · не нашёл: Белые списки.").assertDoesNotExist()
+        compose.onNodeWithTag(SERVICE_TAG).performClick()
+        compose.waitForIdle()
+        assertEquals(listOf("TG"), asked)
+        val newer = compose.onNodeWithText("Wi-Fi · «NL-7» (gRPC) работает").getBoundsInRoot().top
+        val older = compose.onNodeWithText("MTS · не нашёл: Белые списки.").getBoundsInRoot().top
+        assert(newer < older) { "свежее событие — сверху" }
+    }
+
+    @Test
     fun pulseInSheet() {
         val board = Board(
             NetworkCard.Measuring(OsNetwork.Wifi), Button.Green,

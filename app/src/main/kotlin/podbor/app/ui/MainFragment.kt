@@ -32,6 +32,7 @@ class MainFragment : Fragment() {
                         onShare = screen::share, onChangeSubscription = screen::changeSubscription, onSupport = screen::openSupport,
                         onDonate = if (BuildConfig.SELF_DISTRIBUTED) screen::donate else null,
                         pulse = pulse,
+                        history = screen::history,
                     )
                 }
             }
