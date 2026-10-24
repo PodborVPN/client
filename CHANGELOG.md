@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/PodborVPN/client/compare/v0.12.0...v0.13.0) (2026-10-24)
+
+
+### Новое
+
+* подбор — перемер после смены сети, карточка объясняет переезд ([71bbb0d](https://github.com/PodborVPN/client/commit/71bbb0daed39144f167a614d95203f7775b6bf81))
+* подписка — «Написать в поддержку провайдера», когда ничего не работает ([123e5e3](https://github.com/PodborVPN/client/commit/123e5e324c3b9d75eb6e61718100111ee6d8ba6b))
+* шторка — плитка вкл/выкл и кнопки «Подобрать», «Выключить» в уведомлении ([8910002](https://github.com/PodborVPN/client/commit/89100029dc112976315ef060de57cb1133b17e13))
+* экран — подсказка включить постоянный VPN Android ([a6d3362](https://github.com/PodborVPN/client/commit/a6d3362a5b991acad48107675b10d1c0947f0d8e))
+
+
+### Исправлено
+
+* шторка — значок кнопки пункта управления во всё поле, а не мелкий слой иконки ([1d74353](https://github.com/PodborVPN/client/commit/1d743539018c18fe96ca92a3491811299adf9edb))
+* шторка — уведомление не возвращается после «Выключить» ([695b0ec](https://github.com/PodborVPN/client/commit/695b0ecbe8c5481f672f038e4c92058d5b6affe2))
+* экран — кнопка «Работает», когда выходы на открытии живы ([0a6140b](https://github.com/PodborVPN/client/commit/0a6140b2669fab27a7f680645cf182435793dd66))
+
 ## [0.12.0](https://github.com/PodborVPN/client/compare/v0.11.0...v0.12.0) (2026-10-23)
 
 
