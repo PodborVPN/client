@@ -62,7 +62,7 @@ class MainViewModel(
 
     /** Открытый вопрос человеку; null — ничего не спрошено. */
     val ask: StateFlow<Ask?>
-        field = MutableStateFlow(saved.get<String>(ASK)?.let { name -> Ask.entries.firstOrNull { it.name == name } })
+        field = MutableStateFlow(askOf(saved.get<String>(ASK)))
 
     /** Сохранена ли подписка; null — ещё не прочитали (страницы нет). */
     val subscribed: StateFlow<Boolean?>
@@ -81,7 +81,7 @@ class MainViewModel(
 
     /** Страница под сетью; null — подписка ещё не прочитана. */
     val page: StateFlow<Page?> =
-        combine(subscribed, scan) { has, p -> has?.let { pageOf(it, p) } }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(subscribed, scan) { has, p -> if (has == null) null else pageOf(has, p) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** «назад» есть: на анализе (прервать его) и на странице подписки при сохранённой (к главному). */
     val canGoBack: StateFlow<Boolean> = combine(page, subscribed) { p, has ->
@@ -130,7 +130,7 @@ class MainViewModel(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val pulse: StateFlow<PulseView> =
-        service.flatMapLatest { it?.pulse ?: flowOf(PulseView.Empty) }
+        service.flatMapLatest { s -> if (s == null) flowOf(PulseView.Empty) else s.pulse }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(PULSE_STOP_MS), PulseView.Empty)
 
     /**
@@ -145,7 +145,8 @@ class MainViewModel(
         } else {
             service.keepLast { s -> s.session.map { s } }
                 .transformLatest { s ->
-                    s.latestRelease()?.let { got ->
+                    val got = s.latestRelease()
+                    if (got != null) {
                         memory.remember(got)
                         emit(offerOf(version, got))
                     }
@@ -230,7 +231,8 @@ class MainViewModel(
             scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it }
         }
         reload()
-        (out.leftOrNull() as? InputError.NoServers)?.let { skipped.value = it.skipped }
+        val failed = out.leftOrNull()
+        if (failed is InputError.NoServers) skipped.value = failed.skipped
         scan.value = when (out) {
             is Either.Left -> ScanPhase.Failed(out.value)
             is Either.Right -> ScanPhase.Done(out.value)
@@ -280,7 +282,8 @@ class MainViewModel(
     }
 
     fun press() {
-        val s = service.value ?: return
+        val s = service.value
+        if (s == null) return
         viewModelScope.launch { s.press() }
     }
 
@@ -353,7 +356,10 @@ class MainViewModel(
     }
 
     private fun startedFor() {
-        started.value = (want.value as? Want.Open)?.atMs
+        started.value = when (val w = want.value) {
+            is Want.Open -> w.atMs
+            Want.Idle, is Want.Line -> null
+        }
     }
 
     /** Отказ сохраняется вместе с фактами: восстановленный экран не предложит согласие снова сам. */
@@ -370,3 +376,9 @@ const val PULSE_STOP_MS: Long = 5_000
 
 private const val ASK = "ask"
 private const val REFUSED = "vpn_refused"
+
+/** Вопрос, сохранённый при пересоздании экрана; не сохранён или имя устарело — не спрошено. */
+private fun askOf(name: String?): Ask? = when (name) {
+    null -> null
+    else -> Ask.entries.firstOrNull { it.name == name }
+}

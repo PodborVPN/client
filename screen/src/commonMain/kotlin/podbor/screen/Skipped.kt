@@ -27,8 +27,8 @@ private val SCHEME = Regex("""^([a-z][a-z0-9+.-]*)://""", RegexOption.IGNORE_CAS
 /** Ссылки [text] по схемам против [servers] конвертера; текст секретен — наружу только схемы и счёт. */
 fun skippedOf(text: String, servers: Int): Skipped {
     val schemes = linesOf(text)
-        .mapNotNull { SCHEME.find(it.trim())?.groupValues?.get(1)?.lowercase() }
-        .map { ALIASES[it] ?: it }
+        .mapNotNull { SCHEME.find(it.trim()) }
+        .map { m -> m.groupValues[1].lowercase().let { ALIASES.getOrElse(it) { it } } }
     val (ours, foreign) = schemes.partition { it in OURS }
     return Skipped(servers, foreign.groupingBy { it }.eachCount(), (ours.size - servers).coerceAtLeast(0))
 }
@@ -37,8 +37,8 @@ fun skippedOf(text: String, servers: Int): Skipped {
 private fun linesOf(text: String): List<String> {
     if ("://" in text) return text.lines()
     val packed = text.filterNot(Char::isWhitespace)
+    // Первый раскрывшийся вариант base64; ни один — текст как есть.
     val opened = sequenceOf(Base64.Default, Base64.UrlSafe)
         .mapNotNull { b -> Either.catch { b.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL).decode(packed).decodeToString() }.getOrNull() }
-        .firstOrNull()
-    return (opened ?: text).lines()
+    return (opened + text).first().lines()
 }

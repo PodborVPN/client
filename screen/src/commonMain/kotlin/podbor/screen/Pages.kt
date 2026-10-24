@@ -30,4 +30,7 @@ fun pageOf(hasSubscription: Boolean, scan: ScanPhase): Page = when (scan) {
 }
 
 /** Ошибка, которую страница подписки показывает словами; нет — null. */
-fun errorOf(scan: ScanPhase): InputError? = (scan as? ScanPhase.Failed)?.error
+fun errorOf(scan: ScanPhase): InputError? = when (scan) {
+    is ScanPhase.Failed -> scan.error
+    ScanPhase.Idle, ScanPhase.Choosing, is ScanPhase.Running, is ScanPhase.Done -> null
+}

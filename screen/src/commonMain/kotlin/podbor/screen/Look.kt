@@ -120,12 +120,12 @@ fun rowsOf(
         val cards = board.cards.sortedBy { it.service.id }
         // Не нашли несколько сервисов — первая строка explain (что за сеть) у них общая: один раз, у первого.
         val lost = cards.filter { it.status is CardStatus.NotFound }
-        val shared = (lost.firstOrNull()?.status as? CardStatus.NotFound)?.lines?.firstOrNull()
+        val shared = lost.map { it.status }.filterIsInstance<CardStatus.NotFound>().take(1).flatMap { it.lines.take(1) }
         cards.map { card ->
             val st = card.status
-            val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.firstOrNull() == shared
-            val from = origin[card.service] ?: ExitOrigin.Chosen
-            val pair = pulse.pairs[card.service] ?: PairPulse.Unseen
+            val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.take(1) == shared
+            val from = origin.getOrElse(card.service) { ExitOrigin.Chosen }
+            val pair = pulse.pairs.getOrElse(card.service) { PairPulse.Unseen }
             rowOf(card, services.find { it.id == card.service }, from, repeats)
                 .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = miniOf(card.status, from, pair))
         }
@@ -274,8 +274,13 @@ fun trafficLine(t: Traffic): String = "↓ ${bytesText(t.down)} · ↑ ${bytesTe
  * «СЕТЬ» — общий трафик Podbor (приложения через VPN и пробы, анализ тоже) на этой сети: итог показывается, только если
  * его ключ — ключ сети на экране (сеть сменилась, а Xray не запущен, — старый итог чужой сети не показываем).
  */
-fun networkTraffic(pulse: PulseView, card: NetworkCard): String? =
-    pulse.network?.takeIf { it.key == networkKey(card.os) }?.total?.let(::trafficLine)
+fun networkTraffic(pulse: PulseView, card: NetworkCard): String? = when (val t = pulse.network) {
+    null -> null
+    else -> if (t.key == networkKey(card.os)) trafficLine(t.total) else null
+}
 
 /** «ТЕКУЩИЙ VPN» — трафик, прошедший через VPN на этой подписке. */
-fun vpnTraffic(pulse: PulseView): String? = pulse.vpn?.total?.let(::trafficLine)
+fun vpnTraffic(pulse: PulseView): String? = when (val t = pulse.vpn) {
+    null -> null
+    else -> trafficLine(t.total)
+}
