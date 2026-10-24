@@ -34,7 +34,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -317,12 +321,14 @@ internal fun Dot(color: Color, size: Int = 8) {
 }
 
 /**
- * Карточка текущего VPN: строка на сервис (или одна строка связи с VPN), разделены линией. Строка — ценность слева
- * направо: [✓/✗/… TG] | [имя сервера] | [ПРОТОКОЛ, транспорт]; под ней — её заметки с точкой и полоска поиска.
- * Под карточкой — «повторить», если подъём не удался.
+ * Карточка текущего VPN: строка на сервис (или одна строка связи с VPN), разделены линией. Строка — всегда две
+ * строки текста ([ServiceLine]); тап по строке сервиса — шторка с подробностями ([ServiceSheet]). Под карточкой —
+ * «повторить», если подъём не удался.
  */
 @Composable
 private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
+    // Открытая шторка — по метке сервиса: строки обновляются, шторка показывает живую.
+    var open by remember { mutableStateOf("") }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -332,9 +338,13 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
         Column {
             rows.forEachIndexed { i, row ->
                 if (i > 0) HorizontalDivider(thickness = 1.dp, color = Rule)
-                ServiceLine(row)
+                ServiceLine(row, onTap = { open = row.label })
             }
         }
+    }
+    when (val row = rows.firstOrNull { it.label.isNotEmpty() && it.label == open }) {
+        null -> Unit
+        else -> ServiceSheet(row, onDismiss = { open = "" })
     }
     if (rows.any { it.retry }) {
         // Акцентом, а не серым, как «поделиться Лентой»: сейчас это единственное, что человек может сделать.
@@ -351,61 +361,31 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit) {
     Spacer(Modifier.height(16.dp))
 }
 
-/** Одна строка карточки: отметка с меткой сервиса, имя, протокол; ниже — заметки и полоска поиска этой строки. */
+/**
+ * Шторка сервиса по тапу на строку: заголовок — сервис, сервер и протокол; «сейчас» — мини-статус, величины пары и все
+ * длинные слова строки (тупик, переезд сети, причины). Без прокрутки — только то, что влезает; смахнуть — закрыть.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ServiceLine(row: ServiceRow) {
-    Box {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                if (row.label.isNotEmpty()) {
-                    val (sign, color) = when (row.mark) {
-                        Mark.Checking -> "…" to PodborColors.Accent
-                        Mark.Works -> "✓" to PodborColors.Ok
-                        Mark.Dead -> "✗" to PodborColors.Fail
-                        null -> "–" to Muted
-                    }
-                    // Под меткой — секундомер подбора этого сервиса (с десятыми), если подбор был.
-                    Column(Modifier.widthIn(min = 44.dp)) {
-                        Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                        elapsedOf(row.stopwatch)?.let {
-                            Text(cardTime(it), color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), maxLines = 1)
-                        }
-                    }
-                    VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
-                }
-                Text(
-                    row.name,
-                    color = PodborColors.Text,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                row.protocol?.let { p ->
-                    VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
-                    Column {
-                        Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            p,
-                            color = PodborColors.Text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 96.dp),
-                        )
-                    }
-                }
-            }
-            // Величины пары — серым, мелко, цифры одной ширины: числа меняются раз в секунду и не прыгают.
-            row.pulse?.let {
-                Text(
-                    it,
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+private fun ServiceSheet(row: ServiceRow, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = PodborColors.Surface,
+        scrimColor = Color.Black.copy(alpha = 0.6f),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Rule) },
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Text(
+                listOfNotNull(row.label, row.name, row.protocol).joinToString(" · "),
+                color = PodborColors.Text,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(row.mini.text, color = colorOf(row.mini.tone), style = MaterialTheme.typography.bodyMedium)
+            // Величины пары — если добавляют к мини-статусу («сейчас не пользуется» там уже сказано).
+            row.pulse?.takeUnless { it in row.mini.text }?.let {
+                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = 4.dp))
             }
             row.notes.forEach { n ->
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Top) {
@@ -414,6 +394,74 @@ internal fun ServiceLine(row: ServiceRow) {
                     Text(n.text, color = if (n.tone == Tone.Neutral) PodborColors.Text else Muted, style = MaterialTheme.typography.bodyMedium)
                 }
             }
+        }
+    }
+}
+
+/** Тег строки сервиса для UI-тестов. */
+const val SERVICE_TAG = "service"
+
+/**
+ * Одна строка карточки — всегда две строки текста, высота не прыгает ни в каком состоянии: слева отметка с меткой
+ * сервиса и секундомер, в середине сервер и мини-статус ([ServiceRow.mini]), справа протокол. Каждый текст — в одну
+ * строку с многоточием; пустое место держит строку той же высоты. Длинные слова — в шторке ([onTap]).
+ */
+@Composable
+internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
+    val tappable = row.label.isNotEmpty()
+    Box(
+        Modifier
+            .testTag(SERVICE_TAG)
+            .then(if (tappable) Modifier.clickable(role = Role.Button, onClick = onTap) else Modifier),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp).height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (tappable) {
+                val (sign, color) = when (row.mark) {
+                    Mark.Checking -> "…" to PodborColors.Accent
+                    Mark.Works -> "✓" to PodborColors.Ok
+                    Mark.Dead -> "✗" to PodborColors.Fail
+                    null -> "–" to Muted
+                }
+                // Под меткой — секундомер подбора этого сервиса (с десятыми); подбора не было — пустая строка той же высоты.
+                Column(Modifier.widthIn(min = 44.dp)) {
+                    Text("$sign ${row.label}", color = color, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(
+                        elapsedOf(row.stopwatch)?.let(::cardTime).orEmpty(),
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        maxLines = 1,
+                    )
+                }
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(row.name, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    row.mini.text,
+                    color = colorOf(row.mini.tone),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            row.protocol?.let { p ->
+                VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp))
+                Column {
+                    Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    Text(
+                        p,
+                        color = PodborColors.Text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 96.dp),
+                    )
+                }
+            }
+            if (tappable) Text("›", color = Muted, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
         }
         // Полоска — только во время поиска: после результата «1 из 92» читалась бы как 1 %. Лежит поверх нижнего отступа
         // строки, а не своей строкой: появляясь и уходя, не двигает то, что ниже.

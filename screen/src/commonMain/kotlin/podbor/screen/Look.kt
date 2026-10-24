@@ -1,7 +1,9 @@
 package podbor.screen
 
+import podbor.core.Blame
 import podbor.core.Board
 import podbor.core.Button
+import podbor.core.Relocation
 import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.ExitState
@@ -53,7 +55,14 @@ data class ServiceRow(
     val retry: Boolean = false,
     val stopwatch: Stopwatch = Stopwatch.None,
     val pulse: String? = null,
+    /** Мини-статус — вторая строка строки сервиса ([miniOf]); у строки связи с VPN — её первая заметка. */
+    val mini: Note = firstNote(notes),
 )
+
+private fun firstNote(notes: List<Note>): Note = when (val n = notes.firstOrNull()) {
+    null -> Note("", Tone.Muted)
+    else -> n
+}
 
 fun toneOf(card: NetworkCard): Tone = when (card) {
     is NetworkCard.Measuring -> Tone.Muted
@@ -112,8 +121,10 @@ fun rowsOf(
         cards.map { card ->
             val st = card.status
             val repeats = st is CardStatus.NotFound && card != lost.first() && st.lines.firstOrNull() == shared
-            rowOf(card, services.find { it.id == card.service }, origin[card.service] ?: ExitOrigin.Chosen, repeats)
-                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pulse.pairs[card.service] ?: PairPulse.Unseen))
+            val from = origin[card.service] ?: ExitOrigin.Chosen
+            val pair = pulse.pairs[card.service] ?: PairPulse.Unseen
+            rowOf(card, services.find { it.id == card.service }, from, repeats)
+                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = miniOf(card.status, from, pair))
         }
     }
 }
@@ -158,6 +169,43 @@ private fun rowOf(card: ServiceCard, service: Service?, origin: ExitOrigin, shar
             searching = false,
         )
     }
+}
+
+/**
+ * Мини-статус строки сервиса — одна короткая фраза: работает ли и что сейчас происходит. Длинные слова (тупик,
+ * переезд, причины) — в шторке; фраза от них не зависит, и строка не меняет высоту ни в каком состоянии.
+ */
+fun miniOf(status: CardStatus, origin: ExitOrigin, pulse: PairPulse): Note = when (status) {
+    CardStatus.Unknown -> Note("Xray выбирает сам", Tone.Muted)
+    is CardStatus.Unlisted -> Note("нет в подписке", Tone.Muted)
+    CardStatus.Searching -> Note("подбираю…", Tone.Warn)
+    is CardStatus.Checking -> Note(
+        when {
+            status.relocation is Relocation.Moved -> "сеть сменилась — проверяю"
+            origin == ExitOrigin.Recalled -> "последний рабочий — проверяю"
+            else -> "проверяю"
+        },
+        Tone.Warn,
+    )
+    is CardStatus.Works -> Note(
+        when (pulse) {
+            PairPulse.Unseen -> "работает"
+            is PairPulse.Seen -> if (pulse.downBps == 0L && pulse.upBps == 0L) "работает · сейчас не пользуется" else "работает · ↓ ${rateText(pulse.downBps)}"
+        },
+        Tone.Ok,
+    )
+    is CardStatus.Found -> Note("найден · ${status.coverage}", Tone.Ok)
+    is CardStatus.Dead -> Note(
+        when (status.blame) {
+            Blame.Whitelist -> "белые списки"
+            Blame.SuspectedWhitelist -> "похоже на белые списки"
+            Blame.NoNetwork -> "нет сети"
+            Blame.Server -> "сервер не отвечает"
+            Blame.Unexplained -> "не отвечает"
+        },
+        Tone.Fail,
+    )
+    is CardStatus.NotFound -> Note(status.lines.firstOrNull().orEmpty(), Tone.Fail)
 }
 
 /** Пульс — у строки с сервером (работает, найден, проверяю); поиск, тупик и прочее — без него: пары нет. */

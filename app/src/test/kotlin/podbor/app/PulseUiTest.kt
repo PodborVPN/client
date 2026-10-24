@@ -68,12 +68,13 @@ class PulseUiTest {
     }
 
     @Test
-    fun pulseUnderServiceRow() {
+    fun pulseNotOnServiceRow() {
         compose.setContent {
             PodborTheme {
-                ServiceLine(ServiceRow("TG", Mark.Works, "NL-7", "gRPC", emptyList(), searching = false, pulse = "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"))
+                ServiceLine(ServiceRow("TG", Mark.Works, "NL-7", "gRPC", emptyList(), searching = false, pulse = "↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад"), onTap = {})
             }
         }
-        compose.onNodeWithText("↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад").assertExists()
+        // Строка — две строки текста; полные величины пары — в шторке по тапу.
+        compose.onNodeWithText("↓ 340 КБ/с · ↑ 12 КБ/с · ответ 2 с назад").assertDoesNotExist()
     }
 }

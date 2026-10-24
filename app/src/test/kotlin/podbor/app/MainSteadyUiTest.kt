@@ -34,7 +34,7 @@ class MainSteadyUiTest {
         compose.setContent {
             PodborTheme {
                 Column {
-                    ServiceLine(ServiceRow("IG", null, "подбираю выход…", null, emptyList(), searching = searching))
+                    ServiceLine(ServiceRow("IG", null, "подбираю выход…", null, emptyList(), searching = searching), onTap = {})
                     Text("ниже")
                 }
             }
