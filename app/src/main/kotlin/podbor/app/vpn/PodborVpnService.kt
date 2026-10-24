@@ -98,6 +98,12 @@ import podbor.core.networkKey
 import podbor.core.view
 import podbor.driver.PulseContext
 import podbor.driver.networkMoves
+import podbor.driver.AccessLog
+import podbor.driver.connLoop
+import podbor.driver.tailAccess
+import podbor.core.ConnSample
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.update
 import podbor.screen.AlwaysOn
 import podbor.screen.ExitOrigin
 import podbor.screen.Remeasure
@@ -112,6 +118,12 @@ private const val NOTIFICATION_ID = 1
 
 /** Файл Unix-сокета API Xray в noBackupFilesDir: путь короткий — у сокета предел 108 байт. */
 private const val API_SOCKET = "xray-api.sock"
+
+/** Access-лог Xray сессии — в личной папке: адреса, куда ходят сервисы, соседям не видны. */
+private const val ACCESS_LOG = "xray-access.log"
+
+/** Сколько последних окон журнала соединений держать в памяти: минута при окне 10 с. */
+private const val CONNS_KEPT = 6
 
 /** Сколько прогрев ждёт загрузку geoip.dat: дольше — идём без страны, VPN важнее. */
 private const val GEO_WAIT_MS = 3_000L
@@ -214,6 +226,9 @@ class PodborVpnService : VpnService(), ServicePort {
     private val pulseState = MutableStateFlow(Pulse.Empty)
 
     private val pulseNow = MutableStateFlow(PulseView.Empty)
+
+    /** Последние окна журнала соединений сессии ([CONNS_KEPT] штук) — для свёртки «долбит» на карточке. */
+    private val connsNow = MutableStateFlow<List<ConnSample>>(emptyList())
 
     /** Итоги прошлых процессов прочитаны (в фоне, не на главном потоке): запуск Xray ждёт их — не сложить поверх пустых. */
     private val booksLoaded = CompletableDeferred<Unit>()
@@ -403,6 +418,11 @@ class PodborVpnService : VpnService(), ServicePort {
             uids = HARDCODED_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
             socksAuth = LOCAL_SOCKS,
             api = ApiListen.Unix(apiSocket.path),
+            // Журнал соединений — только у сессии с TUN: там ходят приложения; лог прошлой сессии свёрнут — с нуля.
+            accessLog = when (tunFd) {
+                null -> AccessLog.Off
+                else -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
+            },
         )
         // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
         val geo = GeoHolder.await(GEO_WAIT_MS)
@@ -444,6 +464,22 @@ class PodborVpnService : VpnService(), ServicePort {
         install(
             {
                 scope.launch {
+                    // Журнал соединений сессии — дети этой же петли (гаснут с ней): хвост access-лога Xray → окна по
+                    // парам сервисов → Лента и [connsNow].
+                    when (val a = opts.accessLog) {
+                        AccessLog.Off -> Unit
+                        is AccessLog.File -> {
+                            val lines = Channel<String>(Channel.UNLIMITED)
+                            launch { tailAccess(File(a.path), lines) }
+                            launch {
+                                connLoop(lines, clock, SystemClock::elapsedRealtime, epoch, tape) { s ->
+                                    // В лог — только числа: адреса живут в Ленте.
+                                    log("журнал соединений: ${s.conns.sumOf { it.count }} соединений к ${s.conns.size} адресам")
+                                    connsNow.update { (it + s).takeLast(CONNS_KEPT) }
+                                }
+                            }
+                        }
+                    }
                     pulseLoop(
                         stats = stats,
                         clock = clock,

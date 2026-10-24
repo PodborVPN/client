@@ -38,7 +38,15 @@ data class ConfigOpts(
     val logLevel: String = "warning",
     /** Пароль SOCKS-входов кандидатов; null — без пароля (тесты, JVM без соседей). */
     val socksAuth: SocksAuth? = null,
+    /** Журнал соединений Xray ([connLoop]): только у сессии с TUN — там ходят приложения. */
+    val accessLog: AccessLog = AccessLog.Off,
 )
+
+/** Access-лог Xray: выключен или в файл [File.path] — его читает край ([connLoop]). */
+sealed interface AccessLog {
+    data object Off : AccessLog
+    data class File(val path: String) : AccessLog
+}
 
 /** Тег балансера выхода: OverrideBalancerTarget переключает его без перезапуска Xray. */
 const val EXIT_BALANCER = "exit"
@@ -78,7 +86,13 @@ fun socksPortOf(server: ServerId, servers: List<Server>, opts: ConfigOpts): Int 
  */
 fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opts: ConfigOpts): JsonObject =
     buildJsonObject {
-        putJsonObject("log") { put("loglevel", opts.logLevel) }
+        putJsonObject("log") {
+            put("loglevel", opts.logLevel)
+            when (val a = opts.accessLog) {
+                AccessLog.Off -> Unit
+                is AccessLog.File -> put("access", a.path)
+            }
+        }
         putJsonObject("env") {
             put("xray.location.asset", opts.assetDir)
             opts.tunFd?.let { put("xray.tun.fd", it.toString()) }

@@ -57,6 +57,8 @@ sealed interface Row {
     @Serializable @SerialName("note") data class Note(val text: String) : Row
     /** Отсчёт счётчиков Xray сессии (пульс): ничей прогон, машинами не проигрывается — сырьё знания. */
     @Serializable @SerialName("pulse") data class Pulse(val sample: PulseSample) : Row
+    /** Окно журнала соединений Xray (пары сервисов): ничей прогон — сырьё свёрток «куда ходит» и «долбит». */
+    @Serializable @SerialName("conns") data class Conns(val sample: podbor.core.ConnSample) : Row
     /** Старая Лента удалена по потолку ([TAPE_CAP_BYTES]): свёртки по истории знают о дыре, а не врут. */
     @Serializable @SerialName("lost") data class Lost(val lost: podbor.driver.Lost) : Row
 }

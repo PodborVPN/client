@@ -189,6 +189,12 @@ class XrayConfigTest : FunSpec({
         buildConfig(servers, outbounds, opts.copy(logLevel = "info"))["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("info")
     }
 
+    test("журнал соединений: по умолчанию выключен; включён — access-лог Xray в файл") {
+        ("access" in cfg["log"]!!.jsonObject) shouldBe false
+        buildConfig(servers, outbounds, opts.copy(accessLog = AccessLog.File("/data/x/access.log")))["log"]!!.jsonObject["access"] shouldBe
+            JsonPrimitive("/data/x/access.log")
+    }
+
     test("socksPortOf: s001 → 20000, s003 → 20002; inbound на этом порту") {
         socksPortOf(ServerId("s001"), servers, opts) shouldBe 20000
         socksPortOf(ServerId("s003"), servers, opts) shouldBe 20002
