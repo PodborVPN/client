@@ -227,13 +227,14 @@ class MainViewModel(
         skipped.value = null
         when (parsed) {
             is Either.Left -> scan.value = ScanPhase.Failed(parsed.value)
-            is Either.Right -> viewModelScope.launch {
-                when (val known = service.filterNotNull().first().known(parsed.value)) {
-                    Known.New -> analyzePasted(parsed.value)
-                    is Known.Saved -> asking.value = Repeat(known.card, parsed.value)
-                }
-            }
+            is Either.Right -> viewModelScope.launch { pasted(parsed.value, service.filterNotNull().first().known(parsed.value)) }
         }
+    }
+
+    /** Вставленное [input]: новое — анализ; уже в списке — вопрос «обновить?». */
+    private fun pasted(input: SubscriptionInput, known: Known) = when (known) {
+        Known.New -> analyzePasted(input)
+        is Known.Saved -> asking.value = Repeat(known.card, input)
     }
 
     /** Вопрос «обновить?» и то, что вставили: одним значением, чтобы не разошлись; null — вопроса нет. */
