@@ -9,6 +9,7 @@ import podbor.app.sub.current
 import podbor.app.sub.put
 import podbor.app.sub.updated
 import podbor.app.sub.without
+import podbor.screen.Analyzed
 
 /** Список подписок: чистые операции — вставка с дублями, выбор, правка, удаление. */
 class ShelfTest : FunSpec({
@@ -30,6 +31,15 @@ class ShelfTest : FunSpec({
         put shouldBe a.copy(text = "vless://a2")
         shelf.items shouldBe listOf(put, b)
         shelf.currentId shouldBe "A"
+    }
+    test("повторная вставка хранит прежнюю отметку анализа — новая придёт с концом анализа") {
+        val done = a.copy(analyzed = Analyzed.Done(7))
+        val (_, put) = Shelf(listOf(done), "A").put(Subscription("https://a.b/s", "vless://a2"), ids(), nowMs = 9)
+        put.analyzed shouldBe Analyzed.Done(7)
+    }
+    test("ставшая текущей — помечена моментом (вставка и выбор)") {
+        two.put(Subscription(null, "vless://c"), ids(), nowMs = 5).second.usedAtMs shouldBe 5
+        two.chosen("B", nowMs = 8).items.single { it.id == "B" }.usedAtMs shouldBe 8
     }
     test("без ссылки — дубль по тексту") {
         val (shelf, put) = two.put(Subscription(null, "vless://b"), ids())

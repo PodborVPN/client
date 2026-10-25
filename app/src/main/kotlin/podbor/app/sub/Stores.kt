@@ -23,7 +23,7 @@ import javax.crypto.spec.SecretKeySpec
  * [fetchedAtMs] — когда текст последний раз скачан по ссылке; [updateHours] — интервал обновления от провайдера;
  * [provider] — что провайдер сказал о подписке; [fallbackUrl] — его запасная ссылка, когда основная не скачивается.
  * [id] — место в списке (не секрет, в Ленту не идёт); [servers] — ключи её серверов (`Server.key`) на последнем
- * разборе; [analyzed] — чем кончился её последний анализ.
+ * разборе; [analyzed] — чем кончился её последний анализ; [usedAtMs] — когда последний раз стала текущей (порядок списка).
  */
 @Serializable
 data class Subscription(
@@ -36,6 +36,7 @@ data class Subscription(
     val id: String = "",
     val servers: List<String> = emptyList(),
     val analyzed: Analyzed = Analyzed.Never,
+    val usedAtMs: Long = 0,
 )
 
 private val json = Json { ignoreUnknownKeys = true }

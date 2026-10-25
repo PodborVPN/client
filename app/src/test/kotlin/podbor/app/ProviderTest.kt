@@ -102,6 +102,12 @@ class ProviderTest : FunSpec({
         cardOf(s.copy(provider = ProviderInfo()), 0).title shouldBe "подписка без имени"
         cardOf(Subscription(null, "t"), 0).title shouldBe "конфиги текстом"
     }
+    test("прочие подписки — по последнему использованию, свежие выше") {
+        val a = Subscription(null, "a", id = "A", usedAtMs = 1)
+        val b = Subscription(null, "b", id = "B", usedAtMs = 9)
+        val c = Subscription(null, "c", id = "C", usedAtMs = 5)
+        subscriptionsOf(Shelf(listOf(a, b, c), currentId = "C"), 0) shouldBe Subscriptions.Chosen(cardOf(c, 0), listOf(cardOf(b, 0), cardOf(a, 0)))
+    }
     test("подписки экрана: пусто — None; текущей нет или чужой id — Unchosen; иначе Chosen текущей первой") {
         val a = Subscription("https://a.b", "t", id = "A")
         val b = Subscription(null, "u", id = "B")

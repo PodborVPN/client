@@ -370,7 +370,7 @@ class Desk(
 
     /** Подписка [s] — в список и текущая (та же — та же запись); возвращает её id. */
     private suspend fun putCurrent(s: Subscription): String {
-        val (shelf, put) = scan.subscriptions.load().put(s, ::newSubscriptionId)
+        val (shelf, put) = scan.subscriptions.load().put(s, ::newSubscriptionId, scan.clock.nowMs())
         scan.subscriptions.save(shelf)
         return put.id
     }
@@ -411,7 +411,7 @@ class Desk(
             val updated = shelf.updated(id) { fresh }
             scan.subscriptions.save(
                 when (picked) {
-                    Picked.Ready -> updated.chosen(id)
+                    Picked.Ready -> updated.chosen(id, scan.clock.nowMs())
                     is Picked.Expired -> updated
                 },
             )

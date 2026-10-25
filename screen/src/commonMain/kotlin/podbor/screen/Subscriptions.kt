@@ -3,14 +3,18 @@ package podbor.screen
 import arrow.core.Nel
 import podbor.core.SubscriptionFacts
 import podbor.core.Traffic
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Анализ подписки: не было; прошёл целиком; прерван — проверено [Interrupted.done] из [Interrupted.total]. */
+/**
+ * Анализ подписки: не было; прошёл целиком; прерван — проверено [Interrupted.done] из [Interrupted.total]. Имена в
+ * файле подписок закреплены (`@SerialName` — те, что писала 0.15): перенос или переименование класса файл не ломает.
+ */
 @Serializable
 sealed interface Analyzed {
-    @Serializable data object Never : Analyzed
-    @Serializable data class Done(val atMs: Long) : Analyzed
-    @Serializable data class Interrupted(val atMs: Long, val done: Int, val total: Int) : Analyzed
+    @Serializable @SerialName("podbor.screen.Analyzed.Never") data object Never : Analyzed
+    @Serializable @SerialName("podbor.screen.Analyzed.Done") data class Done(val atMs: Long) : Analyzed
+    @Serializable @SerialName("podbor.screen.Analyzed.Interrupted") data class Interrupted(val atMs: Long, val done: Int, val total: Int) : Analyzed
 }
 
 /** Срок подписки по словам провайдера: не сказал (или бессрочно); оплачена до; кончилась; кончился трафик. */

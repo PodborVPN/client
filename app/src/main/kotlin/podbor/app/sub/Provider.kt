@@ -151,10 +151,14 @@ fun subscriptionsOf(
     return cards.toNonEmptyListOrNone().fold({ Subscriptions.None }) { all ->
         when (val current = all.firstOrNull { it.id == shelf.currentId }) {
             null -> Subscriptions.Unchosen(all)
-            else -> Subscriptions.Chosen(current, cards - current)
+            else -> Subscriptions.Chosen(current, othersByUse(shelf, current.id).map { all.single { c -> c.id == it.id } })
         }
     }
 }
+
+/** Прочие подписки — по последнему использованию, свежие выше; при равных — порядок вставки. */
+private fun othersByUse(shelf: Shelf, currentId: String): List<Subscription> =
+    shelf.items.filter { it.id != currentId }.sortedByDescending { it.usedAtMs }
 
 /** Давность словами: «только что», «N мин назад», «N ч назад», «N дн назад». */
 internal fun ago(ms: Long): String {

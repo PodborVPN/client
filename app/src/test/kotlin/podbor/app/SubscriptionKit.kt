@@ -11,6 +11,6 @@ internal suspend fun SubscriptionStore.saveOne(s: Subscription) {
     save(Shelf(listOf(one), one.id))
 }
 
-/** Текущая без полей списка (id, ключи серверов, анализ) — сравнивать с записью подписки, как до списка. */
+/** Текущая без полей списка (id, ключи серверов, анализ, момент использования) — сравнивать с записью, как до списка. */
 internal suspend fun SubscriptionStore.one(): Subscription? =
-    current()?.copy(id = "", servers = emptyList(), analyzed = Analyzed.Never)
+    current()?.copy(id = "", servers = emptyList(), analyzed = Analyzed.Never, usedAtMs = 0)

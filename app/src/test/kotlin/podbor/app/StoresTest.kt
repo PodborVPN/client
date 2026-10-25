@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldNotBe
 import podbor.app.sub.FilePassportStore
 import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.Shelf
+import podbor.screen.Analyzed
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.deviceHeaders
@@ -54,6 +55,18 @@ class StoresTest : FunSpec({
         only.id.length shouldBe 16
         shelf.currentId shouldBe only.id
         dir.resolve("subscription.json").exists() shouldBe true
+    }
+    test("файл подписок 0.15 читается: отметки анализа по закреплённым именам") {
+        val dir = tmp()
+        dir.resolve("subscriptions.json").writeText(
+            """{"items":[""" +
+                """{"link":null,"text":"a","id":"A","analyzed":{"type":"podbor.screen.Analyzed.Done","atMs":5}},""" +
+                """{"link":null,"text":"b","id":"B","analyzed":{"type":"podbor.screen.Analyzed.Interrupted","atMs":6,"done":2,"total":3}},""" +
+                """{"link":null,"text":"c","id":"C","analyzed":{"type":"podbor.screen.Analyzed.Never"}}""" +
+                """],"currentId":"A"}""",
+        )
+        SubscriptionStore(dir).load().items.map { it.analyzed } shouldBe
+            listOf(Analyzed.Done(5), Analyzed.Interrupted(6, 2, 3), Analyzed.Never)
     }
     test("переезд закрепляется сразу: два чтения подряд — тот же id") {
         val dir = tmp()
