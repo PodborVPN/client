@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.15.0](https://github.com/PodborVPN/client/compare/v0.14.0...v0.15.0) (2026-10-25)
+
+
+### Новое
+
+* подписка — повторная вставка спрашивает «обновить?», а не анализирует молча ([6c66683](https://github.com/PodborVPN/client/commit/6c66683f773617982ac56010b15114fabc132c45))
+* подписки — список на диске, срок и карточка, переезд со старого файла ([6b4ad3c](https://github.com/PodborVPN/client/commit/6b4ad3c933939bb389cd6d3ee8ab43dd39d8c5f8))
+* пульс — счёт «через VPN» свой у каждой подписки ([7861e38](https://github.com/PodborVPN/client/commit/7861e389882d0442ad11370b5c640ae473edaeae))
+* уведомление о сроке — продлить или сменить подписку ([2e0090e](https://github.com/PodborVPN/client/commit/2e0090e5e7f9b7a785f4e620ba91f3c68d74e2c7))
+* шторка подписки — как она ведёт себя здесь: сервисы на этой сети, белые списки, ответили, трафик через Podbor ([b2994e2](https://github.com/PodborVPN/client/commit/b2994e2ab17b68a23cc4d1ea70441d3993c27baf))
+* экран — выбор, удаление и переанализ подписки из списка ([3a14b45](https://github.com/PodborVPN/client/commit/3a14b452bbe6b736d911c5b39783b7f9e3b0b225))
+* экран — подписки алгеброй: нет, не выбрана, выбрана ([eee2c93](https://github.com/PodborVPN/client/commit/eee2c936f6cd9680010c3acd88213fe923893f0d))
+* экран подписок — список, карточки и шторки ([745bc9b](https://github.com/PodborVPN/client/commit/745bc9b53e9e5fc54c4ca0a832560e1e4abf3895))
+* ядро — забвение серверов в паспорте и памяти ([1cee206](https://github.com/PodborVPN/client/commit/1cee2060e9fd1d918d1533faba604192978e42c6))
+
+
+### Исправлено
+
+* подбор — тот же сервер под другой ремаркой — один кандидат: экран анализа больше не падает на повторе ([43a7727](https://github.com/PodborVPN/client/commit/43a7727b77c024e9730171d5dedcf8704982aaef))
+* подписка — повторы того же сервера не считаются битыми ссылками ([effa790](https://github.com/PodborVPN/client/commit/effa79028e3f3364d3a47d11d19885bfb124e4f1))
+* подписки — переезд закрепляется сразу, удалённая уходит с диска до стопа VPN ([b5a3949](https://github.com/PodborVPN/client/commit/b5a3949f2f8cd8ee3d55d54333624834638d5338))
+* шторка подписки — трафик через Podbor в тех же единицах, что на главном ([2dda10c](https://github.com/PodborVPN/client/commit/2dda10cd32d162820ac3d67ce7edcdc6b61a5a77))
+
 ## [0.14.0](https://github.com/PodborVPN/client/compare/v0.13.0...v0.14.0) (2026-10-24)
 
 
