@@ -40,3 +40,6 @@ data class Passport(val servers: Map<String, ServerFacts>, val analyzedAtMs: Lon
 
 /** Ключи newer заменяют, прочие остаются; время — newer. */
 fun Passport.merged(newer: Passport): Passport = Passport(servers + newer.servers, newer.analyzedAtMs)
+
+/** Факты только серверов [keys] (забвение удалённой подписки); время — прежнее. */
+fun Passport.keptOnly(keys: Set<String>): Passport = copy(servers = servers.filterKeys { it in keys })

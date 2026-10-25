@@ -16,6 +16,13 @@ class PassportTest : FunSpec({
         val new = Passport(mapOf("b" to facts("FI"), "c" to facts("SE")), 2)
         old.merged(new) shouldBe Passport(mapOf("a" to facts("DE"), "b" to facts("FI"), "c" to facts("SE")), 2)
     }
+    test("keptOnly оставляет только перечисленные серверы, время прежнее") {
+        val p = Passport(mapOf("a" to facts("DE"), "b" to facts("NL"), "c" to facts("SE")), 3)
+        p.keptOnly(setOf("a", "c")) shouldBe Passport(mapOf("a" to facts("DE"), "c" to facts("SE")), 3)
+    }
+    test("keptOnly пустым набором — паспорт без серверов") {
+        Passport(mapOf("a" to facts("DE")), 3).keptOnly(emptySet()) shouldBe Passport(emptyMap(), 3)
+    }
     test("JSON-кругооборот") {
         val p = Passport(mapOf("a" to facts("DE"), "b" to ServerFacts(Transport.Ws, Entry.Unknown, WhiteHint.Unlikely, Exit.Unknown, Seen.Silent)), 7)
         val json = Json { encodeDefaults = true }

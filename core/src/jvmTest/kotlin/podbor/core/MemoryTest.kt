@@ -23,6 +23,19 @@ class MemoryTest : FunSpec({
         format.decodeFromString<Memory>(json) shouldBe memory
     }
 
+    test("keptOnly: успехи чужих серверов уходят, ключ без успехов исчезает, блоки целы") {
+        val other = MemoryKey(operator = "MTS", scenario = Scenario.Wifi)
+        val blocks = mapOf(Endpoint("h", 443) to 9L)
+        val memory = Memory(
+            successes = mapOf(
+                key to nonEmptyListOf(Success("a", 2L), Success("x", 1L)),
+                other to nonEmptyListOf(Success("x", 3L)),
+            ),
+            blocks = blocks,
+        )
+        memory.keptOnly(setOf("a")) shouldBe Memory(mapOf(key to nonEmptyListOf(Success("a", 2L))), blocks)
+    }
+
     test("тот же сервер не дублируется и встаёт первым") {
         val a = server("s001", Entry.Ru)
         val b = server("s002", Entry.Ru)

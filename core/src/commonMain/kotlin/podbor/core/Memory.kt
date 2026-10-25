@@ -3,6 +3,7 @@
 package podbor.core
 
 import arrow.core.nonEmptyListOf
+import arrow.core.toNonEmptyListOrNone
 import arrow.core.serialization.NonEmptyListSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
@@ -50,6 +51,13 @@ fun Memory.isBlocked(endpoint: Endpoint, nowMs: Long): Boolean =
 fun Memory.successesOf(key: MemoryKey): List<Success> = successes.getOrElse(key) { emptyList() }
 
 /** Успехи ключей сервиса [service] — из [update], прочие — из this; блоки — объединение с бо́льшим сроком. */
+/** Успехи только серверов [keys] (забвение удалённой подписки); ключ без успехов исчезает. Блоки — по адресу и со сроком: не трогаем. */
+fun Memory.keptOnly(keys: Set<String>): Memory = copy(
+    successes = successes.entries.flatMap { (k, list) ->
+        list.filter { it.serverKey in keys }.toNonEmptyListOrNone().fold({ emptyList() }, { listOf(k to it) })
+    }.toMap(),
+)
+
 fun Memory.merged(update: Memory, service: ServiceId): Memory =
     Memory(
         successes = successes.filterKeys { it.service != service } + update.successes.filterKeys { it.service == service },
