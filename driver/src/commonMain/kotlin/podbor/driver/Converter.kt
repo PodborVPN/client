@@ -32,8 +32,12 @@ fun outboundsOfResponse(stdout: String): Either<EngineError, Nel<JsonObject>> = 
  * Имя кандидата = исходный tag (ремарка провайдера) — только подпись; непригодные отбрасываются. Тот же конфиг под
  * другой ремаркой — тот же сервер (ключ один, outbound у Xray один): кандидат — первый по порядку.
  */
-fun draftsOf(outbounds: List<JsonObject>): List<ServerDraft> =
-    outbounds.mapNotNull { ob -> draftOf(ob.text("tag"), ob).getOrNull() }.distinctBy { it.key }
+fun draftsOf(outbounds: List<JsonObject>): List<ServerDraft> = usable(outbounds).distinctBy { it.key }
+
+/** Ключи пригодных outbound'ов по порядку, с повторами: сколько ссылок стало сервером, считая одинаковые. */
+fun draftKeysOf(outbounds: List<JsonObject>): List<String> = usable(outbounds).map { it.key }
+
+private fun usable(outbounds: List<JsonObject>): List<ServerDraft> = outbounds.mapNotNull { ob -> draftOf(ob.text("tag"), ob).getOrNull() }
 
 /** Outbound каждого кандидата под тегом ServerId; связь — по устойчивому ключу (хеш outbound'а без tag). */
 fun retag(servers: List<Server>, outbounds: List<JsonObject>): Map<ServerId, JsonObject> {

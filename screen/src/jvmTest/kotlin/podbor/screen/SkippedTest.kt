@@ -27,6 +27,12 @@ class SkippedTest : FunSpec({
             Skipped(servers = 1, unsupported = mapOf("hysteria2" to 2), broken = 0)
     }
 
+    test("тот же сервер под другой ремаркой — повтор, не битая; одни повторы — сказать нечего") {
+        val s = skippedOf(sub("vless://a@h:1#A", "vless://a@h:1#B", "vless://b@h:1", "vless://x"), servers = 2, repeats = 1)
+        s shouldBe Skipped(servers = 2, unsupported = emptyMap(), broken = 1, repeats = 1)
+        skippedOf(sub("vless://a@h:1#A", "vless://a@h:1#B"), servers = 1, repeats = 1).any shouldBe false
+    }
+
     test("наша схема, а сервером не стала — битая") {
         val s = skippedOf(sub("vless://a@h", "vless://a@h:1", "trojan://@h:1"), servers = 1)
         s shouldBe Skipped(servers = 1, unsupported = emptyMap(), broken = 2)

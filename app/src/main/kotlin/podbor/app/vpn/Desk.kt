@@ -110,7 +110,7 @@ class ScanPorts(
     val proxy: suspend (String) -> Fetched? = download,
     /** Куда редиректит ссылка (Location ответа 3xx): порт SOCKS — туннелем, null — нижележащей сетью; не вышло — null. */
     val location: suspend (String, Int?) -> String? = { _, _ -> null },
-    /** Ключи (`Server.key`) поддерживаемых серверов в тексте (конвертер, без Xray); счёт — их число. */
+    /** Ключи (`Server.key`) поддерживаемых ссылок текста по порядку, с повторами (конвертер, без Xray): разных — серверы. */
     val serverKeys: suspend (String) -> List<String>,
     /** Xray анализа без TUN — в области вызова: её освобождение (конец, отмена) его останавливает. */
     val warm: suspend ResourceScope.(String) -> Either<EngineError, Live>,
@@ -310,8 +310,9 @@ class Desk(
     ): Either<InputError, ScanBoard> = either {
         val got = fetchText(input, scan.download, ::whitelistNow, tunnel(), scan.proxy).bind()
         val text = got.body
-        val keys = scan.serverKeys(text)
-        val skipped = skippedOf(text, keys.size)
+        val drafted = scan.serverKeys(text)
+        val keys = drafted.distinct()
+        val skipped = skippedOf(text, keys.size, repeats = drafted.size - keys.size)
         ensure(skipped.servers > 0) { InputError.NoServers(skipped) }
         if (skipped.any) onSkipped(skipped)
         evictSession()
@@ -426,7 +427,7 @@ class Desk(
         val net = os()
         suspend fun fetch(url: String) = fetchText(SubscriptionInput.Link(url), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy)
         val got = fetch(link).getOrNull() ?: s.fallbackUrl?.let { fetch(it).getOrNull() } ?: return s
-        val keys = scan.serverKeys(got.body)
+        val keys = scan.serverKeys(got.body).distinct()
         if (keys.isEmpty()) return s
         return s.fetched(got, scan.clock.nowMs()).copy(servers = keys)
     }

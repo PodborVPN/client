@@ -57,6 +57,7 @@ class ConverterTest : FunSpec({
         val drafts = draftsOf(listOf(ob("Germany"), ob("Germany 2"), ob("Germany")))
         drafts.map { it.name } shouldBe listOf("Germany")
         classify(drafts) { Entry.Unknown }.map { it.key }.toSet().size shouldBe 1
+        draftKeysOf(listOf(ob("Germany"), ob("Germany 2"))).size shouldBe 2
     }
 
     test("retag: outbound получает tag = ServerId, остальное без изменений") {

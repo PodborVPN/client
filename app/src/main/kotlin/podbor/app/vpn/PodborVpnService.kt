@@ -81,7 +81,7 @@ import podbor.driver.TelegramProbeImpl
 import podbor.driver.TlsHandshaker
 import podbor.driver.detectLine
 import podbor.driver.XrayStats
-import podbor.driver.draftsOf
+import podbor.driver.draftKeysOf
 import podbor.driver.exitTagOf
 import podbor.driver.pulseLoop
 import podbor.driver.xrayApiOn
@@ -214,7 +214,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 downloadVia = { url, port -> underlying.downloadVia(url, port, device) },
                 proxy = { url -> underlying.download(url) },
                 location = underlying::location,
-                serverKeys = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ emptyList() }, { obs -> draftsOf(obs).map { it.key } }) },
+                serverKeys = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ emptyList() }, ::draftKeysOf) },
                 warm = { text -> live(Tun.Off, text) },
                 lists = { WhiteHolder.await(WHITE_WAIT_MS) },
                 subscriptions = subscriptions,

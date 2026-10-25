@@ -119,6 +119,12 @@ class SubscriptionInputTest : FunSpec({
         )
     }
 
+    test("шторка пропусков: повторы — своей строкой, не битыми; в «из» — все ссылки") {
+        val w = skippedWords(Skipped(79, emptyMap(), broken = 1, repeats = 5))
+        w.title shouldBe "Проверю 79 серверов из 85"
+        w.lines shouldBe listOf("битая ссылка — 1", "повторы того же сервера — 5")
+    }
+
     test("шторка пропусков: ссылок нет — формат не узнан") {
         skippedWords(Skipped(0, emptyMap(), 0)) shouldBe SkippedWords(
             title = "Не узнал формат подписки",

@@ -117,8 +117,11 @@ private const val OURS_WORDS = "vless, vmess, trojan и shadowsocks"
 fun skippedWords(s: Skipped): SkippedWords {
     val lines = s.unsupported.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
         .map { (scheme, n) -> "$scheme — $n" } +
-        listOfNotNull(s.broken.takeIf { it > 0 }?.let { "${plural(it, "битая ссылка", "битые ссылки", "битых ссылок")} — $it" })
-    val total = s.servers + s.broken + s.unsupported.values.sum()
+        listOfNotNull(
+            s.broken.takeIf { it > 0 }?.let { "${plural(it, "битая ссылка", "битые ссылки", "битых ссылок")} — $it" },
+            s.repeats.takeIf { it > 0 }?.let { "повторы того же сервера — $it" },
+        )
+    val total = s.servers + s.broken + s.repeats + s.unsupported.values.sum()
     return when {
         s.servers > 0 -> SkippedWords(
             "Проверю ${s.servers} ${plural(s.servers, "сервер", "сервера", "серверов")} из $total",
