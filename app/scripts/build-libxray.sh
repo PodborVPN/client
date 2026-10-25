@@ -33,7 +33,12 @@ else
   export ANDROID_NDK_HOME="${ndk%/}"
 fi
 
-tmp=$(mktemp -d)
+# Каталог сборки — один и тот же на любой машине, не mktemp: gomobile подключает libXray локальным путём (replace),
+# и этот путь попадает в сведения о сборке Go в библиотеке — -trimpath его не вырезает. Случайный каталог давал
+# разные .so из одного исходника; фиксированный — побайтно одинаковые (воспроизводимая сборка).
+tmp=/tmp/podbor-libxray
+rm -rf "$tmp"
+mkdir -p "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 git clone -q --depth 1 --branch "$TAG" https://github.com/XTLS/libXray "$tmp/libXray"
 cd "$tmp/libXray"
