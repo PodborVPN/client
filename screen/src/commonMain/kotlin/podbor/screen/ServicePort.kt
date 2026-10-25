@@ -57,6 +57,15 @@ interface ServicePort {
         onSkipped: (Skipped) -> Unit,
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard>
+
+    /** Переанализ сохранённой подписки [id] — как [analyze], вход из её записи (ссылка или текст). */
+    suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard>
+
+    /** Выбор подписки [id]: сервис сначала обновляет её; кончилась — не выбирает. VPN на прежней гасится. */
+    suspend fun select(id: String): Picked
+
+    /** Удаление подписки [id] со всем, что знали только о её серверах; была текущей — VPN гасится. */
+    suspend fun delete(id: String)
 }
 
 /** Сохранённые подписки глазами экрана: список карточек и текущая. */

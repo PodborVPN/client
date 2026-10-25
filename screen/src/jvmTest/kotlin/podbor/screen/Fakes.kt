@@ -68,6 +68,26 @@ internal class FakePort : ServicePort {
         skipped?.let(onSkipped)
         return analysis(onBoard)
     }
+
+    val reanalyzed = mutableListOf<String>()
+    override suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> {
+        reanalyzed += id
+        return analysis(onBoard)
+    }
+
+    val selected = mutableListOf<String>()
+    var picked: suspend (String) -> Picked = { Picked.Ready }
+    override suspend fun select(id: String): Picked {
+        selected += id
+        return picked(id)
+    }
+
+    val deleted = mutableListOf<String>()
+    var onDelete: (String) -> Unit = {}
+    override suspend fun delete(id: String) {
+        deleted += id
+        onDelete(id)
+    }
 }
 
 internal val SCAN = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(), finished = true)

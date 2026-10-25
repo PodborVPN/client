@@ -52,6 +52,17 @@ fun Subscriptions.isCurrent(id: String): Boolean = when (this) {
     is Subscriptions.Chosen -> current.id == id
 }
 
+/**
+ * Шторка подписки на странице подписок: карточка ([Card.current] — текущая, «выбрать» ей не нужно); подтверждение
+ * удаления ([Confirm.stopsVpn] — на ней сейчас VPN); выбор идёт (сервис обновляет подписку); выбор не вышел — кончилась.
+ */
+sealed interface SubSheet {
+    data class Card(val card: SubscriptionCard, val current: Boolean) : SubSheet
+    data class Confirm(val card: SubscriptionCard, val stopsVpn: Boolean) : SubSheet
+    data class Picking(val card: SubscriptionCard) : SubSheet
+    data class Ended(val card: SubscriptionCard, val support: Support) : SubSheet
+}
+
 /** Выбор подписки после её обновления: можно ехать; провайдер говорит, что она кончилась ([Expired.support] — к нему). */
 sealed interface Picked {
     data object Ready : Picked

@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import podbor.core.Board
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.HistoryEvent
+import podbor.core.ScanBoard
 import podbor.core.PulseView
 import podbor.core.ServiceId
 import podbor.core.board
@@ -173,7 +174,7 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            analysis.collectLatest { a -> if (a != null) analyze(a.input) else finish() }
+            analysis.collectLatest { a -> if (a != null) analyze(a.source) else finish() }
         }
     }
 
@@ -224,16 +225,19 @@ class MainViewModel(
             is Either.Left -> scan.value = ScanPhase.Failed(parsed.value)
             is Either.Right -> {
                 scan.value = ScanPhase.Running(null)
-                analysis.value = Analysis(parsed.value, ++analyses)
+                analysis.value = Analysis(Source.Pasted(parsed.value), ++analyses)
             }
         }
     }
 
     /** Анализ в сервисе (VPN гаснет на его время): доски по ходу — в [scan], пропущенные ссылки — в [skipped]. */
-    private suspend fun analyze(input: SubscriptionInput) {
+    private suspend fun analyze(source: Source) {
         val s = service.filterNotNull().first()
-        val out = s.analyze(input, onSkipped = { skipped.value = it }) { b ->
-            scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it }
+        val onSkipped: (Skipped) -> Unit = { skipped.value = it }
+        val onBoard: (ScanBoard) -> Unit = { b -> scan.update { if (it is ScanPhase.Running) ScanPhase.Running(b) else it } }
+        val out = when (source) {
+            is Source.Pasted -> s.analyze(source.input, onSkipped, onBoard)
+            is Source.Saved -> s.reanalyze(source.id, onSkipped, onBoard)
         }
         reload()
         val failed = out.leftOrNull()
@@ -268,6 +272,73 @@ class MainViewModel(
     /** «⋮» → «Сменить подписку». VPN не трогаем: его погасит анализ новой подписки, если до него дойдёт. */
     fun changeSubscription() {
         scan.value = ScanPhase.Choosing
+    }
+
+    /** Шторка подписки на странице подписок; null — закрыта. */
+    val sheet: StateFlow<SubSheet?>
+        field = MutableStateFlow<SubSheet?>(null)
+
+    /** Тап по карточке подписки — её шторка. */
+    fun openCard(card: SubscriptionCard) {
+        sheet.value = SubSheet.Card(card, current = isCurrent(card))
+    }
+
+    fun closeSheet() {
+        sheet.value = null
+    }
+
+    /**
+     * «выбрать»: сервис обновляет подписку (шторка — «обновляю»); можно — шторки нет, главный и открытие (VPN поднимется
+     * на ней); кончилась — шторка «кончилась» с поддержкой провайдера, страница прежняя.
+     */
+    fun pick(card: SubscriptionCard) {
+        sheet.value = SubSheet.Picking(card)
+        viewModelScope.launch {
+            val s = service.filterNotNull().first()
+            val picked = s.select(card.id)
+            reload()
+            when (picked) {
+                Picked.Ready -> {
+                    sheet.value = null
+                    scan.value = ScanPhase.Idle
+                    want.value = Want.Open(nowMs())
+                }
+                is Picked.Expired -> sheet.value = SubSheet.Ended(card, picked.support)
+            }
+        }
+    }
+
+    /** «удалить» — подтверждение; на текущей с поднятым (или поднимающимся) VPN — со словами, что VPN выключится. */
+    fun askDelete(card: SubscriptionCard) {
+        val port = service.value
+        val stopsVpn = isCurrent(card) && when (port) {
+            null -> false
+            else -> vpnOn(port.session.value)
+        }
+        sheet.value = SubSheet.Confirm(card, stopsVpn)
+    }
+
+    /** Подтвердил удаление: шторки нет, подписки перечитаны; текущую удалили — выбирает человек, сами не выбираем. */
+    fun confirmDelete(card: SubscriptionCard) {
+        sheet.value = null
+        viewModelScope.launch {
+            service.filterNotNull().first().delete(card.id)
+            reload()
+        }
+    }
+
+    /** «проанализировать заново»: шторки нет, анализ сохранённой подписки — тем же экраном, что вставленной. */
+    fun reanalyze(card: SubscriptionCard) {
+        if (scan.value is ScanPhase.Running) return
+        sheet.value = null
+        skipped.value = null
+        scan.value = ScanPhase.Running(null)
+        analysis.value = Analysis(Source.Saved(card.id), ++analyses)
+    }
+
+    private fun isCurrent(card: SubscriptionCard): Boolean = when (val subs = subscriptions.value) {
+        null -> false
+        else -> subs.isCurrent(card.id)
     }
 
     /**
@@ -374,7 +445,19 @@ class MainViewModel(
     }
 }
 
-private data class Analysis(val input: SubscriptionInput, val n: Int)
+private data class Analysis(val source: Source, val n: Int)
+
+/** Что анализировать: вставленное человеком или сохранённую подписку по id. */
+private sealed interface Source {
+    data class Pasted(val input: SubscriptionInput) : Source
+    data class Saved(val id: String) : Source
+}
+
+/** На подписке сейчас VPN (поднят или поднимается) — удаление его выключит. */
+private fun vpnOn(session: SessionView): Boolean = when (session) {
+    SessionView.Up, SessionView.Starting -> true
+    SessionView.Down, is SessionView.Failed -> false
+}
 
 /** Подписки прочитаны и текущая есть. */
 private fun hasCurrent(subs: Subscriptions?): Boolean = when (subs) {

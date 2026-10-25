@@ -93,6 +93,7 @@ import podbor.app.sub.hwidOf
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.app.sub.Subscription
+import podbor.screen.Picked
 import podbor.core.without
 import podbor.driver.noteLine
 import podbor.core.EpochKind
@@ -427,6 +428,14 @@ class PodborVpnService : VpnService(), ServicePort {
         onSkipped: (Skipped) -> Unit,
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard> = desk.analyze(input, onSkipped, onBoard)
+
+    override suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit) =
+        desk.reanalyze(id, onSkipped, onBoard)
+
+    /** Выбор подписки: см. [Desk.select]; уведомление о сроке — уже по новой текущей. */
+    override suspend fun select(id: String): Picked = desk.select(id).also { expiry.check() }
+
+    override suspend fun delete(id: String) = desk.delete(id)
 
     /** Сессия и выход общего балансера в ней ([podbor.driver.ExitsState.general]): у новой сессии — свои выходы. */
     @OptIn(ExperimentalCoroutinesApi::class)
