@@ -168,7 +168,7 @@ internal fun ago(ms: Long): String {
 }
 
 /** Байты в ГБ: до 10 — с десятой, дальше — целыми. */
-internal fun gb(bytes: Long): String {
+private fun gb(bytes: Long): String {
     val v = bytes / 1_073_741_824.0
     return if (v < 10) "%.1f ГБ".format(java.util.Locale.ROOT, v).replace('.', ',') else "${v.toLong()} ГБ"
 }

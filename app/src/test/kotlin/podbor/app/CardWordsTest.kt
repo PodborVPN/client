@@ -48,13 +48,13 @@ class CardWordsTest : FunSpec({
             worked = listOf(Worked(Telegram, LastWorked.At(0)), Worked(Instagram, LastWorked.Never)),
             ruEntries = 16, likelyWhite = 23, answered = 61, checked = 79,
         )
-        val c = card(analyzed = Analyzed.Done(0)).copy(facts = facts, viaPodbor = Traffic(up = 200 * 1_048_576L, down = 3 * 1_073_741_824L))
+        val c = card(analyzed = Analyzed.Done(0)).copy(facts = facts, viaPodbor = Traffic(up = 300_000, down = 5_000_000))
         factRows(c, 2 * 3_600_000L) shouldBe listOf(
             Fact("Телега здесь", Word("работала 2 ч назад", Tone.Plain)),
             Fact("Инста здесь", Word("ещё не работала", Tone.Plain)),
             Fact("белые списки", Word("вероятно 23 · входов в РФ 16", Tone.Plain)),
             Fact("ответили", Word("61 из 79", Tone.Plain)),
-            Fact("через Podbor", Word("3,2 ГБ", Tone.Plain)),
+            Fact("через Podbor", Word("↓ 5 МБ · ↑ 300 КБ", Tone.Plain)),
             Fact("анализ", Word("2 ч назад", Tone.Plain)),
         )
     }

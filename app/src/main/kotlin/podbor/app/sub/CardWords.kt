@@ -5,6 +5,7 @@ import podbor.core.plural
 import podbor.screen.Analyzed
 import podbor.screen.SubscriptionCard
 import podbor.screen.Term
+import podbor.screen.trafficLine
 import java.time.Instant
 import java.time.ZoneId
 
@@ -60,7 +61,7 @@ fun factRows(c: SubscriptionCard, nowMs: Long): List<Fact> {
     val via = c.viaPodbor.up + c.viaPodbor.down
     return f.worked.map { Fact("${it.service.title} здесь", Word(workedWords(it.last, nowMs), Tone.Plain)) } +
         analyzed +
-        listOfNotNull(via.takeIf { it > 0 }?.let { Fact("через Podbor", Word(gb(it), Tone.Plain)) }) +
+        listOfNotNull(via.takeIf { it > 0 }?.let { Fact("через Podbor", Word(trafficLine(c.viaPodbor), Tone.Plain)) }) +
         Fact("анализ", Word(analyzedDetail(c.analyzed, nowMs), Tone.Plain))
 }
 
