@@ -32,6 +32,14 @@ import podbor.screen.Skipped
 import podbor.app.sub.Subscription
 import podbor.screen.SubscriptionInput
 import podbor.app.sub.SubscriptionStore
+import podbor.app.sub.Shelf
+import podbor.app.sub.current
+import podbor.core.MemoryKey
+import podbor.core.Scenario
+import podbor.core.Success
+import podbor.screen.Analyzed
+import podbor.screen.Picked
+import podbor.screen.Support
 import podbor.screen.LATEST_RELEASE_PAGE
 import podbor.screen.apkUrlOf
 import podbor.screen.releasePageOf
@@ -332,6 +340,126 @@ class ScanDeskTest : FunSpec({
             runCurrent()
             s.events.last() shouldBe "scan down"
             s.passports.load().shouldNotBeNull().servers.size shouldBe 2
+        }
+    }
+
+    test("анализ новой — в списке и текущая, прежняя осталась; прошёл целиком — Done, ключи серверов записаны") {
+        runTest {
+            val s = stand()
+            s.subscriptions.saveOne(Subscription(null, "прежняя"))
+            s.analyze(SubscriptionInput.Text("vless://новая")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            val shelf = s.subscriptions.load()
+            shelf.items.map { it.text } shouldBe listOf("прежняя", "vless://новая")
+            val now = shelf.current().shouldNotBeNull()
+            now.text shouldBe "vless://новая"
+            now.servers shouldBe listOf("k0", "k1", "k2")
+            now.analyzed shouldBe Analyzed.Done(1_000)
+        }
+    }
+
+    test("отмена анализа посреди — Interrupted: сколько проверено из скольких") {
+        runTest {
+            val s = stand(hang = "10.0.0.3", hangPort = 20002)
+            val twoDone = CompletableDeferred<Unit>()
+            val job = async { s.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
+            twoDone.await()
+            job.cancel()
+            job.join()
+            runCurrent()
+            s.subscriptions.current().shouldNotBeNull().analyzed shouldBe Analyzed.Interrupted(1_000, 2, 3)
+        }
+    }
+
+    test("переанализ текстовой подписки — вход её текст, та же запись") {
+        runTest {
+            val s = stand()
+            s.subscriptions.saveOne(Subscription(null, "vless://t", id = "T"))
+            s.desk.reanalyze("T", {}, {}).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            val shelf = s.subscriptions.load()
+            shelf.items.map { it.id } shouldBe listOf("T")
+            shelf.current().shouldNotBeNull().analyzed shouldBe Analyzed.Done(1_000)
+        }
+    }
+
+    /** Две подписки: «A» текстом — текущая, «B» по ссылке. */
+    suspend fun ScanStand.twoSubscriptions(b: Subscription = Subscription("https://b.example/s", "vless://b", id = "B")) =
+        subscriptions.save(Shelf(listOf(Subscription(null, "vless://a", id = "A"), b), currentId = "A"))
+
+    test("выбор: обновилась, срок жив — текущая на свежем тексте, сессия на прежней погашена") {
+        runTest {
+            val s = stand(download = { Fetched("vless://свежий") })
+            s.twoSubscriptions()
+            s.start()
+            s.up()
+            s.desk.select("B") shouldBe Picked.Ready
+            runCurrent()
+            s.host.state.value shouldBe SessionState.Down
+            val now = s.subscriptions.current().shouldNotBeNull()
+            now.id shouldBe "B"
+            now.text shouldBe "vless://свежий"
+        }
+    }
+
+    test("выбор: обновление дало 0 серверов (заглушка) — выбор на сохранённом тексте") {
+        runTest {
+            val s = stand(download = { Fetched("мусор") }, keysOf = { t -> if (t == "мусор") emptyList() else listOf("k0") })
+            s.twoSubscriptions()
+            s.desk.select("B") shouldBe Picked.Ready
+            s.subscriptions.current().shouldNotBeNull().text shouldBe "vless://b"
+        }
+    }
+
+    test("выбор: по свежим словам провайдера кончилась — Expired с поддержкой, текущая прежняя, сессия цела") {
+        runTest {
+            val s = stand(
+                download = {
+                    Fetched("vless://b", mapOf("subscription-userinfo" to "upload=0; download=0; total=0; expire=1", "support-url" to "https://t.me/help"))
+                },
+            )
+            s.twoSubscriptions()
+            s.start()
+            s.up()
+            s.desk.select("B") shouldBe Picked.Expired(Support.Link("https://t.me/help"))
+            runCurrent()
+            s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
+            val shelf = s.subscriptions.load()
+            shelf.currentId shouldBe "A"
+            shelf.items.single { it.id == "B" }.provider.expireS shouldBe 1
+        }
+    }
+
+    test("удаление текущей, пока сессия поднимается — сессия погашена, текущей нет, прочая цела") {
+        runTest {
+            val s = stand()
+            s.twoSubscriptions()
+            // Xray занят — сессия застряла в подъёме.
+            s.xray.lock()
+            s.start()
+            runCurrent()
+            s.host.state.value shouldBe SessionState.Starting
+            s.desk.delete("A")
+            runCurrent()
+            s.host.state.value shouldBe SessionState.Down
+            s.subscriptions.load() shouldBe Shelf(listOf(Subscription("https://b.example/s", "vless://b", id = "B")), currentId = null)
+            s.xray.unlock()
+        }
+    }
+
+    test("удаление: из паспорта и памяти уходят серверы только удалённой, общий остаётся; сервис узнал, сколько забыто") {
+        runTest {
+            val s = stand(keysOf = { t -> if (t == "vless://b") listOf("shared", "y") else emptyList() })
+            // «B» — переехавшая со старого файла: ключей ещё нет, считаются по тексту.
+            s.subscriptions.save(
+                Shelf(listOf(Subscription(null, "vless://a", id = "A", servers = listOf("x", "shared")), Subscription(null, "vless://b", id = "B")), "A"),
+            )
+            val f = ServerFacts(Transport.Grpc, Entry.Ru, WhiteHint.Likely, Exit.Unknown, Seen.Silent)
+            s.passports.save(Passport(mapOf("x" to f, "shared" to f, "y" to f), 1))
+            val key = MemoryKey("MTS", Scenario.Wifi)
+            s.memoryNow = Memory(mapOf(key to nonEmptyListOf(Success("x", 1), Success("shared", 2))), emptyMap())
+            s.desk.delete("A")
+            s.passports.load().shouldNotBeNull().servers.keys shouldBe setOf("shared", "y")
+            s.memoryNow.successes shouldBe mapOf(key to nonEmptyListOf(Success("shared", 2)))
+            s.forgotten.map { it.first.id to it.second } shouldBe listOf("A" to 1)
         }
     }
 
