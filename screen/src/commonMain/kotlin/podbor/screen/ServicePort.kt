@@ -1,7 +1,10 @@
 package podbor.screen
 
 import arrow.core.Either
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import podbor.core.Board
 import podbor.core.HistoryEvent
 import podbor.core.PulseView
@@ -13,10 +16,11 @@ import podbor.core.ServiceId
  * приложении или в расширении туннеля: значения — снимками, которые можно передать между процессами.
  */
 interface ServicePort {
-    val session: StateFlow<SessionView>
-
-    /** Сводный экран ядра: сеть, кнопка, карточка на сервис. */
-    val board: StateFlow<Board>
+    /**
+     * Состояние Podbor одним значением ([Status]): сессия, сводный экран ядра, чем занят. Тот же источник, что у
+     * уведомления и плитки, — экран не собирает его из частей сам.
+     */
+    val status: StateFlow<Status>
 
     /** Чьи выходы в замере открытия восстановлены из памяти сети. */
     val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>>
@@ -70,6 +74,12 @@ interface ServicePort {
     /** Удаление подписки [id] со всем, что знали только о её серверах; была текущей — VPN гасится. */
     suspend fun delete(id: String)
 }
+
+/** Сессия — проекция [ServicePort.status]. */
+val ServicePort.session: Flow<SessionView> get() = status.map { it.session }.distinctUntilChanged()
+
+/** Сводный экран ядра — проекция [ServicePort.status]. */
+val ServicePort.board: Flow<Board> get() = status.map { it.board }.distinctUntilChanged()
 
 /** Сохранённые подписки глазами экрана: список карточек и текущая. */
 fun interface SubscriptionShelf {

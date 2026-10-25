@@ -350,7 +350,7 @@ class MainViewModel(
         val port = service.value
         val stopsVpn = isCurrent(card) && when (port) {
             null -> false
-            else -> vpnOn(port.session.value)
+            else -> vpnOn(port.status.value.session)
         }
         sheet.value = SubSheet.Confirm(card, stopsVpn)
     }
@@ -450,7 +450,7 @@ class MainViewModel(
         if (seen || hint != null) return
         hint = viewModelScope.launch {
             service.filterNotNull()
-                .flatMapLatest { s -> combine(s.session, s.board, ask) { session, b, a -> alwaysOnHintDue(s.alwaysOn(), session, b.button, a) } }
+                .flatMapLatest { s -> combine(s.status, ask) { st, a -> alwaysOnHintDue(s.alwaysOn(), st.session, st.board.button, a) } }
                 .first { it }
             asked(Ask.AlwaysOn)
         }

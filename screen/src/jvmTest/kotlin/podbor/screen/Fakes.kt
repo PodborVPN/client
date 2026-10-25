@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import arrow.core.Either
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -15,8 +16,11 @@ import podbor.core.board
 
 /** Сервис глазами экрана: значения — потоками, релиз — по запросу (счётчик вызовов, ответ подменяется). */
 internal class FakePort : ServicePort {
-    override val session = MutableStateFlow<SessionView>(SessionView.Down)
-    override val board = MutableStateFlow(board(HARDCODED_SERVICES, emptyMap()))
+    override val status: MutableStateFlow<Status> = MutableStateFlow(Status(SessionView.Down, podbor.core.board(HARDCODED_SERVICES, emptyMap())))
+
+    /** Ручки теста: сессия и доска пишут в тот же [status] — источник один, как у службы. */
+    val session: Knob<SessionView> = Knob({ status.value.session }) { v -> status.update { it.copy(session = v) } }
+    val board: Knob<podbor.core.Board> = Knob({ status.value.board }) { v -> status.update { it.copy(board = v) } }
     override val exitOrigin = MutableStateFlow<Map<ServiceId, ExitOrigin>>(emptyMap())
     override val pulse = MutableStateFlow(PulseView.Empty)
     var asked = 0
@@ -92,6 +96,13 @@ internal class FakePort : ServicePort {
         deleted += id
         onDelete(id)
     }
+}
+
+/** Поле состояния для теста: читать и писать как `.value`. */
+internal class Knob<T>(private val read: () -> T, private val write: (T) -> Unit) {
+    var value: T
+        get() = read()
+        set(v) = write(v)
 }
 
 internal val SCAN = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(), finished = true)

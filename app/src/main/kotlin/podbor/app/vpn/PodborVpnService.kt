@@ -227,9 +227,6 @@ class PodborVpnService : VpnService(), ServicePort {
         )
     }
 
-    /** Сводный экран ядра для Activity: замер линии до подъёма, открытие, нажатие — карточка на сервис. */
-    override val board: StateFlow<Board> get() = desk.board
-
     /** Чьи выходы в замере открытия восстановлены — для слов «последний рабочий: … — проверяю». */
     override val exitOrigin: StateFlow<Map<ServiceId, ExitOrigin>> get() = desk.origin
 
@@ -270,8 +267,6 @@ class PodborVpnService : VpnService(), ServicePort {
         Either.catch { tape.write(noteLine("subscription: удалена, забыто серверов $servers")) }
     }
 
-    /** Жизнь сессии для экрана: поднимается, поднята, не поднялась, нет. Что внутри поднятой — экрану не нужно. */
-    override val session: StateFlow<SessionView> get() = host.view
 
     /** Номер последней команды Android: отзыв VPN системой приходит без своего. */
     @Volatile
@@ -324,7 +319,7 @@ class PodborVpnService : VpnService(), ServicePort {
      * одним значением вместе с выходом: второй поток о той же сессии отстаёт на остановке, и гибрид «поднята, статус
      * „выключен“» вернул бы убранное уведомление.
      */
-    private val status: StateFlow<Status> by lazy {
+    override val status: StateFlow<Status> by lazy {
         combine(sessionExits(), desk.board, desk.work) { (s, exit), board, work -> Status(s.view(), board, work, exitName(s, exit)) }
             .stateIn(scope, SharingStarted.Eagerly, Status(host.state.value.view(), desk.board.value))
     }
