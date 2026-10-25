@@ -15,6 +15,8 @@ import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
 import podbor.app.vpn.ExpiryNotice
 import podbor.app.vpn.EXTRA_CHOOSE_SUBSCRIPTION
+import podbor.app.vpn.EXTRA_RENEW_URL
+import podbor.app.vpn.dismissExpiry
 import podbor.app.sub.Shelf
 import java.nio.file.Files
 
@@ -62,6 +64,26 @@ class ExpiryNoticeTest {
         assertEquals(listOf("Продлить", "Сменить"), n.actions.map { it.title.toString() })
         val change = shadowOf(n.actions[1].actionIntent).savedIntent
         assertEquals(true, change.getBooleanExtra(EXTRA_CHOOSE_SUBSCRIPTION, false))
+    }
+
+    /** Кнопки ведут в Podbor (а не сразу в браузер): только так уведомление снимается и по кнопке. */
+    @Test
+    fun renewGoesThroughPodborWithSupportLink() = runBlocking {
+        val now = System.currentTimeMillis()
+        val store = SubscriptionStore(Files.createTempDirectory("expiry").toFile())
+        store.saveOne(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(expireS = now / 1000 + 2 * 86_400 + 3_600, support = podbor.screen.Support.Link("https://t.me/help"))))
+        ExpiryNotice(app, store) { now }.check()
+        val renew = shadowOf(shadowOf(nm).allNotifications.single().actions[0].actionIntent).savedIntent
+        assertEquals("podbor.app.ui.MainActivity", renew.component?.className)
+        assertEquals("https://t.me/help", renew.getStringExtra(EXTRA_RENEW_URL))
+    }
+
+    @Test
+    fun dismissRemovesExpiryNotice() = runBlocking {
+        ExpiryNotice(app, expiring(others = 1)) { System.currentTimeMillis() }.check()
+        assertEquals(1, shadowOf(nm).allNotifications.size)
+        dismissExpiry(app)
+        assertEquals(0, shadowOf(nm).allNotifications.size)
     }
 
     @Test

@@ -72,6 +72,9 @@ import podbor.core.of
 import podbor.core.subscriptionFacts
 import podbor.screen.Subscriptions
 import podbor.app.vpn.EXTRA_CHOOSE_SUBSCRIPTION
+import podbor.app.vpn.EXTRA_RENEW
+import podbor.app.vpn.EXTRA_RENEW_URL
+import podbor.app.vpn.dismissExpiry
 import podbor.app.vpn.PodborVpnService
 import podbor.app.net.DnsFixes
 import podbor.core.networkKey
@@ -254,9 +257,16 @@ class MainActivity : FragmentActivity() {
         shared(intent)
     }
 
-    /** «Сменить» из уведомления о сроке — сразу страница подписок. */
+    /** Кнопки уведомления о сроке: «Сменить» — страница подписок, «Продлить» — поддержка провайдера; уведомление снято. */
     private fun choose(intent: Intent) {
-        if (intent.getBooleanExtra(EXTRA_CHOOSE_SUBSCRIPTION, false)) vm.changeSubscription()
+        if (intent.getBooleanExtra(EXTRA_CHOOSE_SUBSCRIPTION, false)) {
+            dismissExpiry(this)
+            vm.changeSubscription()
+        }
+        if (intent.getBooleanExtra(EXTRA_RENEW, false)) {
+            dismissExpiry(this)
+            intent.getStringExtra(EXTRA_RENEW_URL)?.let(::openSupport)
+        }
     }
 
     /** Возврат из открытого вопроса (окно системы, шторка) — не новое открытие. */

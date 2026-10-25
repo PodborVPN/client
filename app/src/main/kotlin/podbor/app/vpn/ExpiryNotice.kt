@@ -27,6 +27,15 @@ private const val DAY = "day"
 /** Экран Podbor с этим флагом открывает страницу подписок — «Сменить» из уведомления о сроке. */
 const val EXTRA_CHOOSE_SUBSCRIPTION = "choose_subscription"
 
+/** «Продлить» из уведомления о сроке: экран снимает уведомление и открывает поддержку ([EXTRA_RENEW_URL], если дана). */
+const val EXTRA_RENEW = "renew_subscription"
+const val EXTRA_RENEW_URL = "renew_url"
+
+/** Снять уведомление о сроке — человек ответил на него кнопкой. */
+fun dismissExpiry(context: Context) {
+    context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+}
+
 /**
  * Напоминание о конце срока подписки уведомлением ([reminderDay]: за 3, 2, 1 и 0 дней, по разу на день срока). Тап —
  * поддержка провайдера, если он её дал, иначе экран Podbor. Что уже напомнили — в своих SharedPreferences. Разрешения на
@@ -54,13 +63,20 @@ class ExpiryNotice(
             Support.None -> Intent(context, MainActivity::class.java)
         }
         val tap = PendingIntent.getActivity(context, 1, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        // Кнопки — через Podbor: автоснятие действует только на тап по телу, а экран снимет уведомление и сам.
+        val renewIntent = Intent(context, MainActivity::class.java).putExtra(EXTRA_RENEW, true)
+        when (val s = p.support) {
+            is Support.Link -> renewIntent.putExtra(EXTRA_RENEW_URL, s.url)
+            Support.None -> Unit
+        }
+        val renew = PendingIntent.getActivity(context, 3, renewIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(tap)
             .setAutoCancel(true)
-            .addAction(Notification.Action.Builder(null as Icon?, "Продлить", tap).build())
+            .addAction(Notification.Action.Builder(null as Icon?, "Продлить", renew).build())
         // Есть на что сменить — страница подписок; одна подписка — менять не на что.
         if (shelf.items.size > 1) {
             val choose = Intent(context, MainActivity::class.java).putExtra(EXTRA_CHOOSE_SUBSCRIPTION, true)
