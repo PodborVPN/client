@@ -151,7 +151,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (signing != null) "release" else "debug")
-            isMinifyEnabled = false
+            // R8: код и ресурсы без неиспользуемого — APK меньше (правила рефлексии — proguard-rules.pro).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             manifestPlaceholders["appLabel"] = "Podbor"
         }
         // Своя сборка для телефона разработчика: как release (не отладочная), но рядом с ним — свой пакет и
@@ -174,6 +177,8 @@ android {
     packaging {
         // Дубликаты метаданных из gRPC/protobuf/Arrow.
         resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties", "META-INF/DEPENDENCIES")
+        // libXray (~32 МБ) — сжатой в APK: скачивать втрое меньше; цена — распаковка на диск при установке.
+        jniLibs.useLegacyPackaging = true
     }
     // Юнит-тесты :app — kotest на JUnit Platform, как в :core/:driver.
     testOptions.unitTests.all { it.useJUnitPlatform() }
