@@ -122,7 +122,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.update
 import podbor.screen.AlwaysOn
 import podbor.screen.ExitOrigin
-import podbor.screen.Remeasure
+import podbor.screen.Status
 import podbor.screen.Shade
 import podbor.screen.ShadeButton
 import podbor.screen.shadeOf
@@ -290,25 +290,16 @@ class PodborVpnService : VpnService(), ServicePort {
         registerOwnerFinder(getSystemService(ConnectivityManager::class.java))
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW))
-        // Уведомление — производная сессии, доски и перемера ([shadeOf]); заголовок — выход общего балансера (имя из
-        // подписки по подтверждённому Xray тегу). Сессия — одним значением вместе с выходом: второй поток о той же
-        // сессии отстаёт на остановке, и гибрид «поднята, статус „выключен“» вернул бы убранное уведомление.
+        // Уведомление — проекция [status] ([shadeOf]), отрисовка — к значению целиком: снято — убрать, если висит.
         scope.launch {
-            combine(sessionExits(), desk.board, remeasure) { (s, exit), board, r -> exitName(s, exit) to shadeOf(s.view(), board, r) }
-                .distinctUntilChanged()
-                .collect { (exit, shade) ->
-                    when (shade) {
-                        Shade.None -> Unit
-                        is Shade.Shown -> synchronized(shadeLock) { if (!shadeGone) nm.notify(NOTIFICATION_ID, notification(exit, shade)) }
-                    }
-                }
+            status.map { it.exit to shadeOf(it) }.distinctUntilChanged().collect { (exit, shade) -> render(nm, exit, shade) }
         }
         scope.launch {
             host.state.map { it is SessionState.Up }.distinctUntilChanged().filter { it }.collect { expiry.check() }
         }
-        // Плитка шторки говорит то же, что уведомление: статус — в общий для процесса канал, плитка проснётся сама.
+        // Плитка — проекция того же [status]: статус — в общий для процесса канал, плитка проснётся сама.
         scope.launch {
-            combine(host.state, desk.board) { s, board -> trayOf(s.view(), board) }.collect { TrayBus.publish(this@PodborVpnService, it) }
+            status.map(::trayOf).collect { TrayBus.publish(this@PodborVpnService, it) }
         }
         // Сеть сменилась на поднятой сессии — перемер под новую сеть, туннель не рвётся ([Desk.open]). Новый переезд
         // посреди перемера отменяет устаревший. Пока идёт — строка переезда в уведомлении.
@@ -316,12 +307,7 @@ class PodborVpnService : VpnService(), ServicePort {
             val networks = underlying.changes().map { telephony.osNetworkLight(underlying.transport()) }
             networkMoves(networks, host.state.map { it is SessionState.Up }).collectLatest { move ->
                 log("сеть сменилась: ${networkKey(move.from)} → ${networkKey(move.to)}, перемеряю")
-                remeasure.value = Remeasure.After(move)
-                try {
-                    desk.open()
-                } finally {
-                    remeasure.value = Remeasure.Idle
-                }
+                desk.remeasure(move)
             }
         }
     }
@@ -333,8 +319,26 @@ class PodborVpnService : VpnService(), ServicePort {
     private val shadeLock = Any()
     private var shadeGone = false
 
-    /** Идёт ли перемер после переезда сети — для строки уведомления. */
-    private val remeasure = MutableStateFlow<Remeasure>(Remeasure.Idle)
+    /**
+     * Состояние Podbor одним значением — единственный источник для уведомления, плитки и экрана ([Status]). Сессия —
+     * одним значением вместе с выходом: второй поток о той же сессии отстаёт на остановке, и гибрид «поднята, статус
+     * „выключен“» вернул бы убранное уведомление.
+     */
+    private val status: StateFlow<Status> by lazy {
+        combine(sessionExits(), desk.board, desk.work) { (s, exit), board, work -> Status(s.view(), board, work, exitName(s, exit)) }
+            .stateIn(scope, SharingStarted.Eagerly, Status(host.state.value.view(), desk.board.value))
+    }
+
+    /**
+     * Шторка — к значению [shade] целиком: показано — опубликовать (служба ещё не ушла), снято — убрать, если висит
+     * прежнее (уведомление переднего плана система не даст снять — его уберёт [finish]).
+     */
+    private fun render(nm: NotificationManager, exit: String, shade: Shade) = synchronized(shadeLock) {
+        when (shade) {
+            is Shade.Shown -> if (!shadeGone) nm.notify(NOTIFICATION_ID, notification(exit, shade))
+            Shade.Hidden -> nm.cancel(NOTIFICATION_ID)
+        }
+    }
 
     override fun onBind(intent: Intent): IBinder? =
         if (intent.action == SERVICE_INTERFACE) super.onBind(intent) else binder

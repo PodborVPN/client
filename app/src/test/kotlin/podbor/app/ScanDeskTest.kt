@@ -40,6 +40,8 @@ import podbor.core.Success
 import podbor.screen.Analyzed
 import podbor.screen.Picked
 import podbor.screen.Known
+import podbor.screen.Work
+import kotlinx.coroutines.launch
 import podbor.screen.Support
 import podbor.screen.LATEST_RELEASE_PAGE
 import podbor.screen.apkUrlOf
@@ -359,6 +361,37 @@ class ScanDeskTest : FunSpec({
             now.text shouldBe "vless://новая"
             now.servers shouldBe listOf("k0", "k1", "k2")
             now.analyzed shouldBe Analyzed.Done(1_000)
+        }
+    }
+
+    test("work: пока идёт анализ — Analysis (сколько проверено из скольких), кончился или отменён — Idle") {
+        runTest {
+            val s = stand(hang = "10.0.0.3", hangPort = 20002)
+            s.desk.work.value shouldBe Work.Idle
+            val twoDone = CompletableDeferred<Unit>()
+            val job = async { s.analyze(SubscriptionInput.Text("vless://x")) { if (it.done == 2) twoDone.complete(Unit) } }
+            twoDone.await()
+            s.desk.work.value shouldBe Work.Analysis(2, 3)
+            job.cancel()
+            job.join()
+            runCurrent()
+            s.desk.work.value shouldBe Work.Idle
+        }
+    }
+
+    test("work: перемер после переезда — Remeasure на время замера, потом Idle") {
+        runTest {
+            val s = stand()
+            s.start()
+            s.up()
+            val move = podbor.core.NetworkMove(OsNetwork.Wifi, mts)
+            val seen = mutableListOf<Work>()
+            val watch = backgroundScope.launch { s.desk.work.collect { seen += it } }
+            runCurrent()
+            s.desk.remeasure(move)
+            runCurrent()
+            watch.cancel()
+            seen shouldBe listOf(Work.Idle, Work.Remeasure(move), Work.Idle)
         }
     }
 

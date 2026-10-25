@@ -42,6 +42,8 @@ import podbor.app.sub.put
 import podbor.app.sub.same
 import podbor.app.sub.cardOf
 import podbor.screen.Known
+import podbor.screen.Work
+import podbor.core.NetworkMove
 import podbor.app.sub.termOf
 import podbor.app.sub.updated
 import podbor.app.sub.without
@@ -172,6 +174,20 @@ class Desk(
     private val initial = board(services, emptyMap())
     private val boardState = MutableStateFlow(initial)
     val board: StateFlow<Board> = boardState.asStateFlow()
+
+    /** Чем занят сверх сессии — анализ подписки или перемер после переезда; часть общего состояния [podbor.screen.Status]. */
+    private val workState = MutableStateFlow<Work>(Work.Idle)
+    val work: StateFlow<Work> = workState.asStateFlow()
+
+    /** Сеть сменилась на поднятой сессии — перемер под новую сеть ([open]); пока идёт — [Work.Remeasure]. */
+    suspend fun remeasure(move: NetworkMove) {
+        workState.value = Work.Remeasure(move)
+        try {
+            open()
+        } finally {
+            workState.value = Work.Idle
+        }
+    }
 
     /** Чьи выходы в идущем замере открытия восстановлены из памяти; кого нет — выбран. */
     private val originState = MutableStateFlow<Map<ServiceId, ExitOrigin>>(emptyMap())
@@ -319,7 +335,8 @@ class Desk(
         ensure(skipped.servers > 0) { InputError.NoServers(skipped) }
         if (skipped.any) onSkipped(skipped)
         evictSession()
-        // Замок взят tryLock в evictSession, приостановок до try нет.
+        // Замок взят tryLock в evictSession, приостановок до try нет. С этого мига VPN выключен на время анализа.
+        workState.value = Work.Analysis(0, keys.size)
         try {
             resourceScope {
                 val live = scan.warm(this, text).mapLeft { InputError.ScanFailed }.bind()
@@ -332,7 +349,11 @@ class Desk(
                 val last = AtomicReference<ScanBoard?>(null)
                 try {
                     paced(FRAME_MS, onBoard) { emit ->
-                        live.driver.analyze(live.warm, services, os(), prior, hints, sni) { b -> last.set(b); emit(b) }
+                        live.driver.analyze(live.warm, services, os(), prior, hints, sni) { b ->
+                            last.set(b)
+                            workState.value = Work.Analysis(b.done, b.total)
+                            emit(b)
+                        }
                     }.also { mark(id, Analyzed.Done(scan.clock.nowMs())) }
                 } catch (e: CancellationException) {
                     // «ОК» или «назад» посреди: отметка — по последней доске; отмену не глотаем.
@@ -342,6 +363,7 @@ class Desk(
                 }
             }
         } finally {
+            workState.value = Work.Idle
             xray.unlock()
         }
     }
