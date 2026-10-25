@@ -12,6 +12,7 @@ import podbor.core.Passport
 import podbor.core.TrafficBook
 import podbor.driver.PassportStore
 import podbor.driver.TrafficBookStore
+import podbor.screen.Analyzed
 import java.io.File
 import java.security.SecureRandom
 import javax.crypto.Mac
@@ -21,6 +22,8 @@ import javax.crypto.spec.SecretKeySpec
  * Подписка человека: ссылка (если вставил ссылку) и скачанный/вставленный текст. Секрет — в логи и Ленту не пишется.
  * [fetchedAtMs] — когда текст последний раз скачан по ссылке; [updateHours] — интервал обновления от провайдера;
  * [provider] — что провайдер сказал о подписке; [fallbackUrl] — его запасная ссылка, когда основная не скачивается.
+ * [id] — место в списке (не секрет, в Ленту не идёт); [servers] — ключи её серверов (`Server.key`) на последнем
+ * разборе; [analyzed] — чем кончился её последний анализ.
  */
 @Serializable
 data class Subscription(
@@ -30,6 +33,9 @@ data class Subscription(
     val updateHours: Int? = null,
     val provider: ProviderInfo = ProviderInfo(),
     val fallbackUrl: String? = null,
+    val id: String = "",
+    val servers: List<String> = emptyList(),
+    val analyzed: Analyzed = Analyzed.Never,
 )
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -49,15 +55,30 @@ class SubscriptionStore(
     /** Пул файла; тест подставляет свой диспетчер. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    private val file = File(dir, "subscription.json")
+    private val file = File(dir, "subscriptions.json")
+    /** Одна подписка прежних версий: читается, пока нового файла нет (или он битый), и не удаляется. */
+    private val single = File(dir, "subscription.json")
+
     /** Файл — на пуле IO: зовут и с главного потока (экран). */
-    suspend fun load(): Subscription? = withContext(io) {
-        readJson(file) { json.decodeFromString(Subscription.serializer(), it) }
+    suspend fun load(): Shelf = withContext(io) {
+        readJson(file) { json.decodeFromString(Shelf.serializer(), it) } ?: migrated()
     }
-    suspend fun save(s: Subscription) = withContext(io) {
-        writeAtomic(file, "подписка", json.encodeToString(Subscription.serializer(), s), warn)
+
+    suspend fun save(s: Shelf) = withContext(io) {
+        writeAtomic(file, "подписки", json.encodeToString(Shelf.serializer(), s), warn)
+    }
+
+    suspend fun current(): Subscription? = load().current()
+
+    private fun migrated(): Shelf {
+        val old = readJson(single) { json.decodeFromString(Subscription.serializer(), it) } ?: return Shelf()
+        val s = old.copy(id = newSubscriptionId())
+        return Shelf(listOf(s), s.id)
     }
 }
+
+/** Id места подписки в списке: 8 случайных байт hex. */
+fun newSubscriptionId(): String = ByteArray(8).also { SecureRandom().nextBytes(it) }.hex()
 
 class FilePassportStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) : PassportStore {
     private val file = File(dir, "passport.json")

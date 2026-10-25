@@ -92,6 +92,9 @@ import podbor.app.sub.deviceHeaders
 import podbor.app.sub.hwidOf
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
+import podbor.app.sub.Subscription
+import podbor.core.without
+import podbor.driver.noteLine
 import podbor.core.EpochKind
 import podbor.core.Pulse
 import podbor.core.PulseView
@@ -194,6 +197,7 @@ class PodborVpnService : VpnService(), ServicePort {
 
     private val subscriptions by lazy { SubscriptionStore(filesDir) }
     private val passports by lazy { FilePassportStore(filesDir) }
+    private val memory by lazy { AndroidStore(filesDir) }
 
     /** Напоминание о конце срока: при открытии экрана (после обновления подписки) и подъёме VPN — экран могут не открывать. */
     private val expiry by lazy { ExpiryNotice(this, subscriptions) { clock.nowMs() } }
@@ -209,11 +213,13 @@ class PodborVpnService : VpnService(), ServicePort {
                 downloadVia = { url, port -> underlying.downloadVia(url, port, device) },
                 proxy = { url -> underlying.download(url) },
                 location = underlying::location,
-                servers = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ 0 }, { draftsOf(it).size }) },
+                serverKeys = { text -> LibXrayConverter(LibXrayInvoke).convert(text).fold({ emptyList() }, { obs -> draftsOf(obs).map { it.key } }) },
                 warm = { text -> live(Tun.Off, text) },
                 lists = { WhiteHolder.await(WHITE_WAIT_MS) },
                 subscriptions = subscriptions,
                 passports = passports,
+                memory = memory,
+                forgot = ::forgot,
                 stopSession = { host.stop(lastStartId) },
                 clock = clock,
             ),
@@ -253,6 +259,15 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Подписка сохранена: без неё экран зовёт «Добавь подписку». */
     suspend fun hasSubscription(): Boolean = desk.hasSubscription()
+
+    /** Подписка [s] удалена: её итог «через VPN» забыт (и сохранён), в Ленте — сколько серверов забыто, без ключа. */
+    private fun forgot(s: Subscription, servers: Int) {
+        val key = subscriptionKey(s, salt)
+        pulseState.update { it.copy(book = it.book.without(key)) }
+        books.save(pulseState.value.book)
+        pulseNow.update { if (it.vpn?.key == key) it.copy(vpn = null) else it }
+        Either.catch { tape.write(noteLine("subscription: удалена, забыто серверов $servers")) }
+    }
 
     /** Жизнь сессии для экрана: поднимается, поднята, не поднялась, нет. Что внутри поднятой — экрану не нужно. */
     override val session: StateFlow<SessionView> get() = host.view
@@ -425,7 +440,7 @@ class PodborVpnService : VpnService(), ServicePort {
     /** Сессия VPN: Xray на fd туннеля с сохранённой подпиской; её нет — сессия Failed «нет подписки». */
     private suspend fun ResourceScope.warmUp(fd: Int): Either<EngineError, Live> {
         // Подписку человека кладёт экран входа; её текст секретен и в лог не идёт.
-        val subscription = subscriptions.load() ?: return Either.Left(EngineError.Failed("нет подписки"))
+        val subscription = subscriptions.current() ?: return Either.Left(EngineError.Failed("нет подписки"))
         return live(Tun.On(fd), subscription.text)
     }
 
@@ -461,7 +476,7 @@ class PodborVpnService : VpnService(), ServicePort {
             resolver = underlying.resolver,
             line = line,
             clock = clock,
-            store = AndroidStore(filesDir),
+            store = memory,
             passportStore = passports,
             tape = tape,
             opts = opts,
@@ -490,7 +505,7 @@ class PodborVpnService : VpnService(), ServicePort {
         booksLoaded.await()
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
-        val subscription = subscriptions.load()?.let { subscriptionKey(it, salt) } ?: ""
+        val subscription = subscriptions.current()?.let { subscriptionKey(it, salt) } ?: ""
         install(
             {
                 scope.launch {

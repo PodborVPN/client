@@ -35,7 +35,7 @@ class ExpiryNotice(
     private val prefs by lazy { context.getSharedPreferences("expiry", Context.MODE_PRIVATE) }
 
     suspend fun check(): Unit = withContext(Dispatchers.IO) {
-        val p = subscriptions.load()?.provider ?: return@withContext
+        val p = subscriptions.current()?.provider ?: return@withContext
         val expireS = p.expireS ?: return@withContext
         val last = prefs.getLong(EXPIRE_S, -1).takeIf { it >= 0 }?.let { Reminded(it, prefs.getInt(DAY, -1)) }
         val day = reminderDay(expireS, nowMs(), ZoneId.systemDefault(), last) ?: return@withContext

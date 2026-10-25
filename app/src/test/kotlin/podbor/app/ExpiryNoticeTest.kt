@@ -29,7 +29,7 @@ class ExpiryNoticeTest {
         val now = System.currentTimeMillis()
         val store = SubscriptionStore(Files.createTempDirectory("expiry").toFile())
         val expireS = now / 1000 + 2 * 86_400 + 3_600
-        store.save(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(title = "Мой VPN", expireS = expireS, support = podbor.screen.Support.Link("https://t.me/help"))))
+        store.saveOne(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(title = "Мой VPN", expireS = expireS, support = podbor.screen.Support.Link("https://t.me/help"))))
         val notice = ExpiryNotice(app, store) { now }
         notice.check()
         val posted = shadowOf(nm).allNotifications
@@ -47,7 +47,7 @@ class ExpiryNoticeTest {
     @Test
     fun noExpiryNoNotice() = runBlocking {
         val store = SubscriptionStore(Files.createTempDirectory("expiry").toFile())
-        store.save(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(expireS = 0)))
+        store.saveOne(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(expireS = 0)))
         ExpiryNotice(app, store) { System.currentTimeMillis() }.check()
         assertEquals(0, shadowOf(nm).allNotifications.size)
     }

@@ -182,9 +182,13 @@ private class Rig(
             xray = Mutex(),
             // Анализ здесь не зовётся (он — в ScanDeskTest): порты анализа — заглушки.
             scan = ScanPorts(
-                download = { null }, servers = { 0 }, warm = { _ -> error("анализ не зовётся") },
+                download = { null }, serverKeys = { emptyList() }, warm = { _ -> error("анализ не зовётся") },
                 lists = { listsCalls++; lists },
                 subscriptions = SubscriptionStore(Files.createTempDirectory("desk").toFile()), passports = InMemoryPassportStore(),
+                memory = object : Store {
+                    override fun loadMemory() = Memory.Empty
+                    override fun saveMemory(m: Memory) = Unit
+                },
                 stopSession = { },
             ),
         )

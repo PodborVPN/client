@@ -57,7 +57,7 @@ import podbor.app.share.wordsOf
 import podbor.app.share.writeShare
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
-import podbor.app.sub.noteOf
+import podbor.app.sub.subscriptionsOf
 import podbor.app.vpn.PodborVpnService
 import podbor.app.net.DnsFixes
 import podbor.core.networkKey
@@ -96,7 +96,7 @@ class MainActivity : FragmentActivity() {
                     BuildConfig.VERSION_NAME, BuildConfig.SELF_DISTRIBUTED,
                     PrefsUpdateMemory(getSharedPreferences(PREFS, MODE_PRIVATE)), System::currentTimeMillis,
                     createSavedStateHandle(),
-                    { store.load()?.let { noteOf(it, System.currentTimeMillis()) } },
+                    { subscriptionsOf(store.load(), System.currentTimeMillis()) },
                 )
             }
         }

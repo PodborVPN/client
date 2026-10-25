@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import podbor.app.sub.FilePassportStore
 import podbor.app.sub.FileTrafficBookStore
+import podbor.app.sub.Shelf
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.deviceHeaders
@@ -33,14 +34,39 @@ class StoresTest : FunSpec({
         analyzedAtMs = 99,
     )
 
-    test("подписка: кругооборот, без файла — null, битый файл — null") {
+    test("подписки: кругооборот, без файлов — пусто, текущая — по id") {
         val dir = tmp()
         val store = SubscriptionStore(dir)
-        store.load() shouldBe null
-        store.save(Subscription("https://a.b/s", "vless://x")); store.load() shouldBe Subscription("https://a.b/s", "vless://x")
-        store.save(Subscription(null, "т")); store.load() shouldBe Subscription(null, "т")
-        dir.resolve("subscription.json").writeText("{ не json")
-        store.load() shouldBe null
+        store.load() shouldBe Shelf()
+        store.current() shouldBe null
+        val shelf = Shelf(listOf(Subscription("https://a.b/s", "vless://x", id = "A"), Subscription(null, "т", id = "B")), currentId = "B")
+        store.save(shelf)
+        store.load() shouldBe shelf
+        store.current() shouldBe Subscription(null, "т", id = "B")
+    }
+    test("переезд: старый файл одной подписки, нового нет — список из неё, она текущая; старый файл цел") {
+        val dir = tmp()
+        dir.resolve("subscription.json").writeText("""{"link":"https://a.b/s","text":"vless://x","fetchedAtMs":5}""")
+        val shelf = SubscriptionStore(dir).load()
+        shelf.items.size shouldBe 1
+        val only = shelf.items.single()
+        only.copy(id = "") shouldBe Subscription("https://a.b/s", "vless://x", fetchedAtMs = 5)
+        only.id.length shouldBe 16
+        shelf.currentId shouldBe only.id
+        dir.resolve("subscription.json").exists() shouldBe true
+    }
+    test("битый новый файл при живом старом — старая подписка в списке") {
+        val dir = tmp()
+        dir.resolve("subscription.json").writeText("""{"link":null,"text":"vless://x"}""")
+        dir.resolve("subscriptions.json").writeText("{ не json")
+        SubscriptionStore(dir).load().items.map { it.text } shouldBe listOf("vless://x")
+    }
+    test("переезд один раз: после сохранения нового старый файл не читается") {
+        val dir = tmp()
+        dir.resolve("subscription.json").writeText("""{"link":null,"text":"vless://old"}""")
+        val store = SubscriptionStore(dir)
+        store.save(Shelf())
+        store.load() shouldBe Shelf()
     }
     test("паспорт: кругооборот, без файла — null, битый файл — null") {
         val dir = tmp()
@@ -104,7 +130,7 @@ class StoresTest : FunSpec({
         dir.resolve("passport.json").mkdirs() // на месте файла каталог — rename невозможен
         val warns = mutableListOf<String>()
         FilePassportStore(dir, warns::add).save(passport)
-        SubscriptionStore(tmp().also { it.deleteRecursively() }, warns::add).save(Subscription(null, "x"))
+        SubscriptionStore(tmp().also { it.deleteRecursively() }, warns::add).save(Shelf(listOf(Subscription(null, "x"))))
         warns.size shouldBe 1 // каталог-на-месте-файла: сбой; второй save создаёт каталог сам и пишет
     }
 })

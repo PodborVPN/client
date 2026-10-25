@@ -1,6 +1,10 @@
 package podbor.app.sub
 
 import arrow.core.Either
+import arrow.core.toNonEmptyListOrNone
+import podbor.screen.SubscriptionCard
+import podbor.screen.Subscriptions
+import podbor.screen.Term
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.ZoneId
@@ -96,6 +100,43 @@ fun noteOf(s: Subscription, nowMs: Long, zone: ZoneId = ZoneId.systemDefault()):
         if (total == null) "потрачено ${gb(used)}" else "потрачено ${gb(used)} из ${gb(total)}"
     }
     return SubscriptionNote(p.title, listOfNotNull(fresh, expire, traffic), p.support, p.announce)
+}
+
+/**
+ * Срок подписки по словам провайдера на момент [nowMs]: трафик кончился (лимит есть — `total > 0`) — важнее даты; срока
+ * нет или 0 (бессрочно) — не знаем; момент срока наступил — кончилась.
+ */
+fun termOf(p: ProviderInfo, nowMs: Long): Term {
+    val used = p.usedBytes
+    val total = p.totalBytes
+    val expire = p.expireS
+    return when {
+        used != null && total != null && total > 0 && used >= total -> Term.OutOfTraffic
+        expire == null || expire <= 0 -> Term.Unknown
+        expire * 1000 <= nowMs -> Term.Expired(expire)
+        else -> Term.Until(expire)
+    }
+}
+
+/** Карточка подписки для экрана — без ссылки и текста. Имени от провайдера нет — по виду подписки. */
+fun cardOf(s: Subscription, nowMs: Long): SubscriptionCard = SubscriptionCard(
+    id = s.id,
+    title = s.provider.title ?: if (s.link != null) "подписка без имени" else "конфиги текстом",
+    servers = s.servers.size,
+    analyzed = s.analyzed,
+    term = termOf(s.provider, nowMs),
+    note = noteOf(s, nowMs),
+)
+
+/** Подписки глазами экрана: пусто — нет; текущей нет в списке — не выбрана; иначе текущая первой и прочие по порядку. */
+fun subscriptionsOf(shelf: Shelf, nowMs: Long): Subscriptions {
+    val cards = shelf.items.map { cardOf(it, nowMs) }
+    return cards.toNonEmptyListOrNone().fold({ Subscriptions.None }) { all ->
+        when (val current = all.firstOrNull { it.id == shelf.currentId }) {
+            null -> Subscriptions.Unchosen(all)
+            else -> Subscriptions.Chosen(current, cards - current)
+        }
+    }
 }
 
 private fun ago(ms: Long): String {

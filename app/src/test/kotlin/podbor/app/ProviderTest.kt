@@ -11,6 +11,15 @@ import podbor.screen.SubscriptionNote
 import podbor.app.sub.fetched
 import podbor.app.sub.noteOf
 import podbor.app.sub.providerOf
+import arrow.core.nonEmptyListOf
+import io.kotest.matchers.types.shouldBeInstanceOf
+import podbor.app.sub.Shelf
+import podbor.app.sub.cardOf
+import podbor.app.sub.subscriptionsOf
+import podbor.app.sub.termOf
+import podbor.screen.Analyzed
+import podbor.screen.Subscriptions
+import podbor.screen.Term
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -68,5 +77,37 @@ class ProviderTest : FunSpec({
         noteOf(Subscription("https://a.b", "t", fetchedAtMs = 0, provider = p), 3 * 24 * HOUR, ZoneOffset.UTC).lines shouldBe
             listOf("обновлена 3 дн назад", "оплачена до 01.01.1970 — срок вышел", "потрачено 12 ГБ")
         noteOf(Subscription("https://a.b", "t", fetchedAtMs = 0), 30_000).lines shouldBe listOf("обновлена только что")
+    }
+
+    test("срок: трафик 0 из 0 — без лимита; expire 0 — бессрочно; ничего — не знаем") {
+        termOf(ProviderInfo(usedBytes = 0, totalBytes = 0), 0) shouldBe Term.Unknown
+        termOf(ProviderInfo(expireS = 0), 0) shouldBe Term.Unknown
+        termOf(ProviderInfo(), 0) shouldBe Term.Unknown
+    }
+    test("срок: ровно в момент expire — кончилась; до — оплачена до") {
+        termOf(ProviderInfo(expireS = 100), 100_000) shouldBe Term.Expired(100)
+        termOf(ProviderInfo(expireS = 100), 99_999) shouldBe Term.Until(100)
+    }
+    test("срок: трафик кончился раньше срока — OutOfTraffic важнее даты") {
+        termOf(ProviderInfo(usedBytes = 10 * GB, totalBytes = 10 * GB, expireS = 1_000), 0) shouldBe Term.OutOfTraffic
+        termOf(ProviderInfo(usedBytes = 9 * GB, totalBytes = 10 * GB, expireS = 1_000), 0) shouldBe Term.Until(1_000)
+    }
+    test("карточка: имя провайдера, а нет — «подписка без имени» по ссылке и «конфиги текстом» без неё") {
+        val s = Subscription("https://a.b", "t", id = "A", servers = listOf("k1", "k2"), provider = ProviderInfo(title = "Мой VPN"))
+        val card = cardOf(s, 0)
+        card.id shouldBe "A"
+        card.title shouldBe "Мой VPN"
+        card.servers shouldBe 2
+        card.analyzed shouldBe Analyzed.Never
+        cardOf(s.copy(provider = ProviderInfo()), 0).title shouldBe "подписка без имени"
+        cardOf(Subscription(null, "t"), 0).title shouldBe "конфиги текстом"
+    }
+    test("подписки экрана: пусто — None; текущей нет или чужой id — Unchosen; иначе Chosen текущей первой") {
+        val a = Subscription("https://a.b", "t", id = "A")
+        val b = Subscription(null, "u", id = "B")
+        subscriptionsOf(Shelf(), 0) shouldBe Subscriptions.None
+        subscriptionsOf(Shelf(listOf(a, b), currentId = null), 0) shouldBe Subscriptions.Unchosen(nonEmptyListOf(cardOf(a, 0), cardOf(b, 0)))
+        subscriptionsOf(Shelf(listOf(a, b), currentId = "Z"), 0).shouldBeInstanceOf<Subscriptions.Unchosen>()
+        subscriptionsOf(Shelf(listOf(a, b), currentId = "B"), 0) shouldBe Subscriptions.Chosen(cardOf(b, 0), listOf(cardOf(a, 0)))
     }
 })

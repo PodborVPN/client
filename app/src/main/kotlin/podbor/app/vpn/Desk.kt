@@ -35,6 +35,19 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.fetchText
 import podbor.app.sub.fetched
 import podbor.app.sub.refreshDue
+import podbor.app.sub.chosen
+import podbor.app.sub.current
+import podbor.app.sub.newSubscriptionId
+import podbor.app.sub.put
+import podbor.app.sub.termOf
+import podbor.app.sub.updated
+import podbor.app.sub.without
+import podbor.core.keptOnly
+import podbor.driver.Store
+import podbor.screen.Analyzed
+import podbor.screen.Picked
+import podbor.screen.Support
+import podbor.screen.Term
 import podbor.screen.LATEST_RELEASE_PAGE
 import podbor.screen.apkUrlOf
 import podbor.screen.releasePageOf
@@ -97,14 +110,18 @@ class ScanPorts(
     val proxy: suspend (String) -> Fetched? = download,
     /** Куда редиректит ссылка (Location ответа 3xx): порт SOCKS — туннелем, null — нижележащей сетью; не вышло — null. */
     val location: suspend (String, Int?) -> String? = { _, _ -> null },
-    /** Сколько поддерживаемых серверов в тексте (конвертер, без Xray). */
-    val servers: suspend (String) -> Int,
+    /** Ключи (`Server.key`) поддерживаемых серверов в тексте (конвертер, без Xray); счёт — их число. */
+    val serverKeys: suspend (String) -> List<String>,
     /** Xray анализа без TUN — в области вызова: её освобождение (конец, отмена) его останавливает. */
     val warm: suspend ResourceScope.(String) -> Either<EngineError, Live>,
     /** Списки белых IP/SNI; null — недоступны (анализ: подсказки — Unlikely; нажатие: подсказки — из паспорта). */
     val lists: suspend () -> WhiteLists?,
     val subscriptions: SubscriptionStore,
     val passports: PassportStore,
+    /** Память пар сети: при удалении подписки из неё уходят серверы, которых больше нет ни в одной. */
+    val memory: Store,
+    /** Подписка удалена, забыто серверов (число): её итог трафика и строка Ленты — у сервиса. */
+    val forgot: (Subscription, Int) -> Unit = { _, _ -> },
     /** Стоп сессии VPN той же дорогой, что лепесток «выкл». */
     val stopSession: () -> Unit,
     /** Часы обновления подписки: когда скачана, пора ли снова. */
@@ -265,8 +282,8 @@ class Desk(
         detect(os()) { boardState.value = it }
     }
 
-    /** Подписка сохранена: экран решает, звать ли «Добавь подписку». */
-    suspend fun hasSubscription(): Boolean = scan.subscriptions.load() != null
+    /** Текущая подписка есть: экран решает, звать ли «Добавь подписку». */
+    suspend fun hasSubscription(): Boolean = scan.subscriptions.current() != null
 
     /**
      * Анализ подписки (на пуле IO; [onBoard] — оттуда же, не чаще раза в кадр — [paced]). Сначала — вход, при живом VPN:
@@ -293,7 +310,8 @@ class Desk(
     ): Either<InputError, ScanBoard> = either {
         val got = fetchText(input, scan.download, ::whitelistNow, tunnel(), scan.proxy).bind()
         val text = got.body
-        val skipped = skippedOf(text, scan.servers(text))
+        val keys = scan.serverKeys(text)
+        val skipped = skippedOf(text, keys.size)
         ensure(skipped.servers > 0) { InputError.NoServers(skipped) }
         if (skipped.any) onSkipped(skipped)
         evictSession()
@@ -302,17 +320,118 @@ class Desk(
             resourceScope {
                 val live = scan.warm(this, text).mapLeft { InputError.ScanFailed }.bind()
                 val link = (input as? SubscriptionInput.Link)?.url
-                scan.subscriptions.save(
-                    Subscription(link, text).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it },
-                )
+                // С подъёма Xray анализа подписка в списке и текущая: человек её вставил — значит, выбрал.
+                val id = putCurrent(Subscription(link, text, servers = keys).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it })
                 val lists = scan.lists()
                 val hints = hintsBy(lists, live.warm.servers) ?: live.warm.servers.associate { it.key to WhiteHint.Unlikely }
                 val sni = lists?.let { l -> live.warm.servers.filter { sniWhite(l, it.sni) }.map { it.key }.toSet() }.orEmpty()
-                paced(FRAME_MS, onBoard) { emit -> live.driver.analyze(live.warm, services, os(), prior, hints, sni, emit) }
+                val last = AtomicReference<ScanBoard?>(null)
+                try {
+                    paced(FRAME_MS, onBoard) { emit ->
+                        live.driver.analyze(live.warm, services, os(), prior, hints, sni) { b -> last.set(b); emit(b) }
+                    }.also { mark(id, Analyzed.Done(scan.clock.nowMs())) }
+                } catch (e: CancellationException) {
+                    // «ОК» или «назад» посреди: отметка — по последней доске; отмену не глотаем.
+                    val b = last.get()
+                    withContext(NonCancellable) { mark(id, Analyzed.Interrupted(scan.clock.nowMs(), b?.done ?: 0, b?.total ?: keys.size)) }
+                    throw e
+                }
             }
         } finally {
             xray.unlock()
         }
+    }
+
+    /** Подписка [s] — в список и текущая (та же — та же запись); возвращает её id. */
+    private suspend fun putCurrent(s: Subscription): String {
+        val (shelf, put) = scan.subscriptions.load().put(s, ::newSubscriptionId)
+        scan.subscriptions.save(shelf)
+        return put.id
+    }
+
+    private suspend fun mark(id: String, a: Analyzed) {
+        scan.subscriptions.save(scan.subscriptions.load().updated(id) { it.copy(analyzed = a) })
+    }
+
+    /** Переанализ сохранённой подписки [id]: вход — её ссылка, без ссылки — текст; дальше как [analyze]. */
+    suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> {
+        val s = scan.subscriptions.load().items.firstOrNull { it.id == id } ?: return Either.Left(InputError.Empty)
+        return analyze(s.link?.let { SubscriptionInput.Link(it) } ?: SubscriptionInput.Text(s.text), onSkipped, onBoard)
+    }
+
+    /**
+     * Выбор подписки [id]: сначала — свежий текст по её ссылке (основная, затем запасная; серверов 0 — как не скачалась:
+     * остаёмся на сохранённом). По свежим словам провайдера кончилась — не выбираем ([Picked.Expired]), VPN не трогаем.
+     * Иначе — текущая, а сессия на прежней гасится: экран поднимет VPN на новой.
+     */
+    suspend fun select(id: String): Picked = withContext(io) {
+        val picked = scans.withLock {
+            val shelf = scan.subscriptions.load()
+            val s = shelf.items.firstOrNull { it.id == id } ?: return@withLock Picked.Ready
+            val fresh = refreshed(s, prior)
+            val picked = pickedOf(termOf(fresh.provider, scan.clock.nowMs()), fresh.provider.support)
+            val updated = shelf.updated(id) { fresh }
+            scan.subscriptions.save(
+                when (picked) {
+                    Picked.Ready -> updated.chosen(id)
+                    is Picked.Expired -> updated
+                },
+            )
+            picked
+        }
+        if (picked == Picked.Ready) stopSessionIfAny()
+        picked
+    }
+
+    /**
+     * Удаление подписки [id]: была текущей — сессия на ней гаснет; из паспорта и памяти пар уходят серверы, которых нет
+     * ни в одной оставшейся (у переехавшей со старого файла ключей ещё нет — считаем по тексту); итог трафика и строка
+     * Ленты — [ScanPorts.forgot].
+     */
+    suspend fun delete(id: String): Unit = withContext(io) {
+        val shelf = scan.subscriptions.load()
+        val gone = shelf.items.firstOrNull { it.id == id } ?: return@withContext
+        if (shelf.currentId == id) stopSessionIfAny()
+        scans.withLock {
+            val rest = scan.subscriptions.load().without(id)
+            scan.subscriptions.save(rest)
+            val keep = rest.items.flatMap { s -> s.servers.ifEmpty { scan.serverKeys(s.text) } }.toSet()
+            val was = scan.passports.load()
+            if (was != null) scan.passports.save(was.keptOnly(keep))
+            scan.memory.saveMemory(scan.memory.loadMemory().keptOnly(keep))
+            scan.forgot(gone, was?.servers?.keys?.count { it !in keep } ?: 0)
+        }
+    }
+
+    /** Сессия поднята или поднимается — гасим и ждём, пока хост исполнит стоп; нет её — ничего. */
+    private suspend fun stopSessionIfAny() {
+        when (host.state.value) {
+            is SessionState.Up, SessionState.Starting -> {
+                val done = host.stops.value
+                scan.stopSession()
+                host.stops.first { it > done }
+            }
+            SessionState.Down, is SessionState.Failed -> Unit
+        }
+    }
+
+    /**
+     * Свежий текст подписки [s] по её ссылке (основная, затем запасная провайдера); белые списки — по линии [line].
+     * Не скачалась, без ссылки или в новом тексте нет серверов — [s] как есть.
+     */
+    private suspend fun refreshed(s: Subscription, line: Prior): Subscription {
+        val link = s.link ?: return s
+        val net = os()
+        suspend fun fetch(url: String) = fetchText(SubscriptionInput.Link(url), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy)
+        val got = fetch(link).getOrNull() ?: s.fallbackUrl?.let { fetch(it).getOrNull() } ?: return s
+        val keys = scan.serverKeys(got.body)
+        if (keys.isEmpty()) return s
+        return s.fetched(got, scan.clock.nowMs()).copy(servers = keys)
+    }
+
+    private fun pickedOf(t: Term, support: Support): Picked = when (t) {
+        is Term.Expired, Term.OutOfTraffic -> Picked.Expired(support)
+        Term.Unknown, is Term.Until -> Picked.Ready
     }
 
     /**
@@ -372,16 +491,13 @@ class Desk(
     suspend fun refreshSubscription(): Unit = withContext(io) {
         if (!scans.tryLock()) return@withContext
         try {
-            val old = scan.subscriptions.load() ?: return@withContext
-            val link = old.link ?: return@withContext
-            if (!refreshDue(old, scan.clock.nowMs())) return@withContext
-            val net = os()
-            val line = prior
-            suspend fun fetch(url: String) = fetchText(SubscriptionInput.Link(url), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy)
+            val shelf = scan.subscriptions.load()
+            val old = shelf.current() ?: return@withContext
+            // Переехавшая со старого файла — без ключей серверов: дописываем по тексту (карточка и забвение на них).
+            val filled = if (old.servers.isEmpty()) old.copy(servers = scan.serverKeys(old.text)) else old
             // Основная не скачалась никаким путём — запасная ссылка провайдера; ссылка подписки остаётся прежней.
-            val got = fetch(link).getOrNull() ?: old.fallbackUrl?.let { fetch(it).getOrNull() } ?: return@withContext
-            if (scan.servers(got.body) == 0) return@withContext
-            scan.subscriptions.save(old.fetched(got, scan.clock.nowMs()))
+            val next = if (refreshDue(filled, scan.clock.nowMs())) refreshed(filled, prior) else filled
+            if (next != old) scan.subscriptions.save(shelf.updated(old.id) { next })
         } finally {
             scans.unlock()
         }

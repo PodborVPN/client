@@ -106,6 +106,8 @@ private class ScanStand(
     val download: suspend (String) -> Fetched? = { null },
     val downloadVia: suspend (String, Int) -> Fetched? = { _, _ -> null },
     val servers: Int = 3,
+    /** Ключи серверов текста (конвертер); по умолчанию — [servers] штук `k0…`. */
+    val keysOf: (String) -> List<String> = { List(servers) { i -> "k$i" } },
     val lists: WhiteLists? = null,
     /** Сколько раз стоп сессии от анализа тут же стартует её снова (быстрое выкл→вкл, always-on). */
     var restarts: Int = 0,
@@ -120,6 +122,13 @@ private class ScanStand(
     val dir = Files.createTempDirectory("scan").toFile()
     val subscriptions = SubscriptionStore(dir, io = io)
     val passports = InMemoryPassportStore()
+    var memoryNow = Memory.Empty
+    val memory = object : Store {
+        override fun loadMemory() = memoryNow
+        override fun saveMemory(m: Memory) { memoryNow = m }
+    }
+    /** Что сервис узнал об удалённых подписках: запись и сколько серверов забыто. */
+    val forgotten = mutableListOf<Pair<Subscription, Int>>()
     private val lock = Mutex()
     private var busy = busyTries
     /** Замок «Xray один на процесс»; первые [busyTries] tryLock — заняты (тестовый двойник перехвата). */
@@ -188,11 +197,13 @@ private class ScanStand(
             download = { url -> downloads++; download(url) },
             downloadVia = downloadVia,
             location = location,
-            servers = { servers },
+            serverKeys = { text -> keysOf(text) },
             warm = { _ -> if (warmFails) Either.Left(podbor.driver.EngineError.Failed("движок")) else xrayOf("scan") },
             lists = { lists },
             subscriptions = subscriptions,
             passports = passports,
+            memory = memory,
+            forgot = { s, n -> forgotten += s to n },
             stopSession = {
                 host.stop(++startId)
                 if (restarts > 0) { restarts--; host.start(++startId) }
@@ -221,6 +232,7 @@ private fun TestScope.stand(
     download: suspend (String) -> Fetched? = { null },
     downloadVia: suspend (String, Int) -> Fetched? = { _, _ -> null },
     servers: Int = 3,
+    keysOf: (String) -> List<String> = { List(servers) { i -> "k$i" } },
     lists: WhiteLists? = null,
     restarts: Int = 0,
     busyTries: Int = 0,
@@ -228,7 +240,7 @@ private fun TestScope.stand(
     location: suspend (String, Int?) -> String? = { _, _ -> null },
 ) = ScanStand(
     backgroundScope, StandardTestDispatcher(testScheduler), { testScheduler.currentTime },
-    hang, hangPort, probeMs, line, download, downloadVia, servers, lists, restarts, busyTries, warmFails, location,
+    hang, hangPort, probeMs, line, download, downloadVia, servers, keysOf, lists, restarts, busyTries, warmFails, location,
 )
 
 class ScanDeskTest : FunSpec({
@@ -259,7 +271,7 @@ class ScanDeskTest : FunSpec({
         runTest {
             val s = stand(download = { Fetched("vless://из ссылки") })
             s.analyze(SubscriptionInput.Link("https://a.b/sub")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
-            s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://из ссылки", fetchedAtMs = 1_000)
+            s.subscriptions.one() shouldBe Subscription("https://a.b/sub", "vless://из ссылки", fetchedAtMs = 1_000)
             s.desk.hasSubscription() shouldBe true
             s.passports.load().shouldNotBeNull().servers.size shouldBe 3
         }
@@ -270,7 +282,7 @@ class ScanDeskTest : FunSpec({
             val s = stand(servers = 0)
             val text = SubscriptionInput.Text(listOf("vless://x", "tuic://p", "hy2://p").joinToString("\n"))
             s.analyze(text) shouldBe Either.Left(InputError.NoServers(Skipped(0, mapOf("tuic" to 1, "hysteria2" to 1), broken = 1)))
-            s.subscriptions.load() shouldBe null
+            s.subscriptions.one() shouldBe null
             s.desk.hasSubscription() shouldBe false
             s.events shouldNotContain "scan up"
         }
@@ -302,7 +314,7 @@ class ScanDeskTest : FunSpec({
         runTest {
             val white = stand(line = whiteLine)
             white.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(true))
-            white.subscriptions.load() shouldBe null
+            white.subscriptions.one() shouldBe null
             val open = stand(line = openLine)
             open.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(false))
         }
@@ -416,34 +428,34 @@ class ScanDeskTest : FunSpec({
     test("VPN поднят, серверов нет → сессия не гасится, прежняя подписка цела") {
         runTest {
             val s = stand(servers = 0)
-            s.subscriptions.save(Subscription(null, "прежняя"))
+            s.subscriptions.saveOne(Subscription(null, "прежняя"))
             s.start()
             s.up()
             s.analyze() shouldBe Either.Left(InputError.NoServers(Skipped(0, emptyMap(), broken = 1)))
             s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
             s.events shouldNotContain "vpn down"
-            s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+            s.subscriptions.one() shouldBe Subscription(null, "прежняя")
         }
     }
 
     test("VPN поднят, ссылка не скачалась → сессия не гасится, прежняя подписка цела") {
         runTest {
             val s = stand()
-            s.subscriptions.save(Subscription("https://old/sub", "прежняя"))
+            s.subscriptions.saveOne(Subscription("https://old/sub", "прежняя"))
             s.start()
             s.up()
             s.analyze(SubscriptionInput.Link("https://a.b/sub")) shouldBe Either.Left(InputError.Download(false))
             s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
-            s.subscriptions.load() shouldBe Subscription("https://old/sub", "прежняя")
+            s.subscriptions.one() shouldBe Subscription("https://old/sub", "прежняя")
         }
     }
 
     test("Xray анализа не поднялся → ScanFailed, прежняя подписка цела") {
         runTest {
             val s = stand(warmFails = true)
-            s.subscriptions.save(Subscription(null, "прежняя"))
+            s.subscriptions.saveOne(Subscription(null, "прежняя"))
             s.analyze(SubscriptionInput.Text("vless://новая")) shouldBe Either.Left(InputError.ScanFailed)
-            s.subscriptions.load() shouldBe Subscription(null, "прежняя")
+            s.subscriptions.one() shouldBe Subscription(null, "прежняя")
         }
     }
 
@@ -474,20 +486,20 @@ class ScanDeskTest : FunSpec({
         runTest {
             val s = stand(download = { Fetched("vless://x", mapOf("profile-update-interval" to "6")) })
             s.analyze(SubscriptionInput.Link("https://a.b/sub")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
-            s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://x", fetchedAtMs = 1_000, updateHours = 6)
+            s.subscriptions.one() shouldBe Subscription("https://a.b/sub", "vless://x", fetchedAtMs = 1_000, updateHours = 6)
             val t = stand()
             t.analyze(SubscriptionInput.Text("vless://y")).shouldBeInstanceOf<Either.Right<ScanBoard>>()
-            t.subscriptions.load() shouldBe Subscription(null, "vless://y")
+            t.subscriptions.one() shouldBe Subscription(null, "vless://y")
         }
     }
 
     test("обновление подписки: пора — новый текст и время сохранены") {
         runTest {
             val s = stand(download = { Fetched("vless://новый") })
-            s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый", fetchedAtMs = 0, updateHours = 1))
+            s.subscriptions.saveOne(Subscription("https://a.b/sub", "vless://старый", fetchedAtMs = 0, updateHours = 1))
             s.nowMs = 3_600_000
             s.desk.refreshSubscription()
-            s.subscriptions.load() shouldBe Subscription("https://a.b/sub", "vless://новый", fetchedAtMs = 3_600_000, updateHours = 1)
+            s.subscriptions.one() shouldBe Subscription("https://a.b/sub", "vless://новый", fetchedAtMs = 3_600_000, updateHours = 1)
         }
     }
 
@@ -495,14 +507,14 @@ class ScanDeskTest : FunSpec({
         runTest {
             val old = Subscription("https://a.b/sub", "vless://старый")
             val failed = stand(download = { null })
-            failed.subscriptions.save(old)
+            failed.subscriptions.saveOne(old)
             failed.desk.refreshSubscription()
             failed.downloads shouldBe 1
-            failed.subscriptions.load() shouldBe old
+            failed.subscriptions.one() shouldBe old
             val empty = stand(download = { Fetched("мусор") }, servers = 0)
-            empty.subscriptions.save(old)
+            empty.subscriptions.saveOne(old)
             empty.desk.refreshSubscription()
-            empty.subscriptions.load() shouldBe old
+            empty.subscriptions.one() shouldBe old
         }
     }
 
@@ -510,10 +522,10 @@ class ScanDeskTest : FunSpec({
         runTest {
             val asked = mutableListOf<String>()
             val s = stand(download = { url -> asked += url; if (url == "https://b.example/sub") Fetched("vless://b") else null })
-            s.subscriptions.save(Subscription("https://a.example/sub", "vless://a", fallbackUrl = "https://b.example/sub"))
+            s.subscriptions.saveOne(Subscription("https://a.example/sub", "vless://a", fallbackUrl = "https://b.example/sub"))
             s.desk.refreshSubscription()
             asked shouldBe listOf("https://a.example/sub", "https://b.example/sub")
-            val now = s.subscriptions.load()
+            val now = s.subscriptions.one()
             now?.text shouldBe "vless://b"
             now?.link shouldBe "https://a.example/sub"
             now?.fallbackUrl shouldBe "https://b.example/sub"
@@ -524,14 +536,14 @@ class ScanDeskTest : FunSpec({
         runTest {
             val ports = mutableListOf<Int>()
             val s = stand(line = whiteLine, download = { null }, downloadVia = { _, port -> ports += port; Fetched("vless://тоннель") })
-            s.subscriptions.save(Subscription("https://a.b/sub", "vless://старый"))
+            s.subscriptions.saveOne(Subscription("https://a.b/sub", "vless://старый"))
             s.start()
             val up = s.up() as SessionState.Up<Live>
             s.desk.open()
             up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"), podbor.core.ChosenOn.Unknown)
             s.desk.refreshSubscription()
             ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
-            s.subscriptions.load()?.text shouldBe "vless://тоннель"
+            s.subscriptions.one()?.text shouldBe "vless://тоннель"
         }
     }
 
