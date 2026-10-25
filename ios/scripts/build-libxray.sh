@@ -24,7 +24,11 @@ command -v go >/dev/null || die "нет Go"
 export GOTOOLCHAIN=go1.27.3
 command -v xcrun >/dev/null || die "нет Xcode (xcrun)"
 
-tmp=$(mktemp -d)
+# Каталог сборки — один и тот же на любой машине (как в app/scripts/build-libxray.sh): путь libXray попадает в
+# сведения о сборке Go, и случайный каталог делал бы библиотеку из одного исходника разной.
+tmp=/tmp/podbor-libxray-ios
+rm -rf "$tmp"
+mkdir -p "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 git clone -q --depth 1 --branch "$TAG" https://github.com/XTLS/libXray "$tmp/libXray"
 cd "$tmp/libXray"
