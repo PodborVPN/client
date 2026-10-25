@@ -59,9 +59,9 @@ interface ServicePort {
     ): Either<InputError, ScanBoard>
 }
 
-/** Сохранённая подписка глазами экрана: что о ней сказать; подписки нет — null. */
+/** Сохранённые подписки глазами экрана: список карточек и текущая. */
 fun interface SubscriptionShelf {
-    suspend fun note(): SubscriptionNote?
+    suspend fun read(): Subscriptions
 }
 
 /** Память обновлялки: что ответил GitHub — чип сразу, до нового запроса. Android — SharedPreferences, iOS — UserDefaults. */

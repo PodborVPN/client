@@ -281,4 +281,17 @@ class PipelinesTest : FunSpec({
             port.opens shouldBe 0
         }
     }
+
+    test("подписки есть, а текущей нет — страница подписки, «назад» к главному нет") {
+        vmTest {
+            val vm = vm(shelf = FakeShelf(Subscriptions.Unchosen(arrow.core.nonEmptyListOf(CARD))))
+            vm.attach(FakePort())
+            runCurrent()
+            vm.page.value shouldBe Page.AddSubscription
+            vm.canGoBack.value shouldBe false
+            vm.back()
+            runCurrent()
+            vm.page.value shouldBe Page.AddSubscription
+        }
+    }
 })

@@ -22,11 +22,23 @@ sealed interface ScanPhase {
 }
 
 /** Страница по фактам экрана: анализ виден, пока его не закрыли «ОК»; без подписки — только «Добавь подписку». */
-fun pageOf(hasSubscription: Boolean, scan: ScanPhase): Page = when (scan) {
+fun pageOf(subscriptions: Subscriptions, scan: ScanPhase): Page = when (scan) {
     is ScanPhase.Running -> Page.Scanning(scan.board)
     is ScanPhase.Done -> Page.Scanning(scan.board)
     ScanPhase.Choosing, is ScanPhase.Failed -> Page.AddSubscription
-    ScanPhase.Idle -> if (hasSubscription) Page.Main else Page.AddSubscription
+    ScanPhase.Idle -> restingOn(subscriptions)
+}
+
+/** Страница на покое: главный — только при текущей; нет подписок или текущую удалили — выбирать на странице подписки. */
+private fun restingOn(subscriptions: Subscriptions): Page = when (subscriptions) {
+    is Subscriptions.Chosen -> Page.Main
+    Subscriptions.None, is Subscriptions.Unchosen -> Page.AddSubscription
+}
+
+/** Есть ли текущая подписка: к главному можно вернуться. */
+fun Subscriptions.chosen(): Boolean = when (this) {
+    is Subscriptions.Chosen -> true
+    Subscriptions.None, is Subscriptions.Unchosen -> false
 }
 
 /** Ошибка, которую страница подписки показывает словами; нет — null. */

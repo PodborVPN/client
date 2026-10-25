@@ -74,9 +74,27 @@ internal val SCAN = ScanBoard(3, 1, 1, 0, emptyList(), emptyList(), emptyList(),
 internal val MIXED = Skipped(servers = 4, unsupported = mapOf("hysteria2" to 2, "tuic" to 1), broken = 1)
 internal val NOTE = SubscriptionNote("подписка", emptyList(), Support.None, Announce.None)
 
-/** Полка подписки: [note] — есть подписка, null — нет. */
-internal class FakeShelf(var note: SubscriptionNote? = NOTE) : SubscriptionShelf {
-    override suspend fun note(): SubscriptionNote? = note
+internal val CARD = SubscriptionCard("a", "подписка", 3, Analyzed.Never, Term.Unknown, NOTE)
+
+/** Полка подписок: [subs] как есть; [note] — коротко: есть одна текущая с этими сведениями, null — подписок нет. */
+internal class FakeShelf(var subs: Subscriptions = Subscriptions.Chosen(CARD, emptyList())) : SubscriptionShelf {
+    constructor(note: SubscriptionNote?) : this(single(note))
+
+    var note: SubscriptionNote?
+        get() = when (val s = subs) {
+            is Subscriptions.Chosen -> s.current.note
+            Subscriptions.None, is Subscriptions.Unchosen -> null
+        }
+        set(value) {
+            subs = single(value)
+        }
+
+    override suspend fun read(): Subscriptions = subs
+}
+
+private fun single(note: SubscriptionNote?): Subscriptions = when (note) {
+    null -> Subscriptions.None
+    else -> Subscriptions.Chosen(CARD.copy(note = note), emptyList())
 }
 
 internal class FakeMemory(var release: Release? = null) : UpdateMemory {

@@ -64,9 +64,9 @@ class MainViewModel(
     val ask: StateFlow<Ask?>
         field = MutableStateFlow(askOf(saved.get<String>(ASK)))
 
-    /** Сохранена ли подписка; null — ещё не прочитали (страницы нет). */
-    val subscribed: StateFlow<Boolean?>
-        field = MutableStateFlow<Boolean?>(null)
+    /** Сохранённые подписки; null — ещё не прочитали (страницы нет). */
+    val subscriptions: StateFlow<Subscriptions?>
+        field = MutableStateFlow<Subscriptions?>(null)
 
     /** Что показать о подписке в «⋮»: пересчитывается, когда подписка прочитана заново. */
     val subscriptionNote: StateFlow<SubscriptionNote?>
@@ -81,13 +81,18 @@ class MainViewModel(
 
     /** Страница под сетью; null — подписка ещё не прочитана. */
     val page: StateFlow<Page?> =
-        combine(subscribed, scan) { has, p -> if (has == null) null else pageOf(has, p) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(subscriptions, scan) { subs, p ->
+            when (subs) {
+                null -> null
+                else -> pageOf(subs, p)
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** «назад» есть: на анализе (прервать его) и на странице подписки при сохранённой (к главному). */
-    val canGoBack: StateFlow<Boolean> = combine(page, subscribed) { p, has ->
+    /** «назад» есть: на анализе (прервать его) и на странице подписки при текущей (к главному). */
+    val canGoBack: StateFlow<Boolean> = combine(page, subscriptions) { p, subs ->
         when (p) {
             is Page.Scanning -> true
-            Page.AddSubscription -> has == true
+            Page.AddSubscription -> hasCurrent(subs)
             Page.Main, null -> false
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -255,7 +260,7 @@ class MainViewModel(
     /** Выход с анализа: подписка сохранена — главный и открытие, не успела — снова «Добавь подписку». */
     private suspend fun finish() {
         if (scan.value !is ScanPhase.Running && scan.value !is ScanPhase.Done) return
-        val has = reload()
+        val has = reload().chosen()
         scan.value = ScanPhase.Idle
         if (has) want.value = Want.Open(nowMs())
     }
@@ -272,7 +277,7 @@ class MainViewModel(
     fun back() {
         when (page.value) {
             is Page.Scanning -> finishScan()
-            Page.AddSubscription -> if (subscribed.value == true) {
+            Page.AddSubscription -> if (hasCurrent(subscriptions.value)) {
                 val tried = scan.value is ScanPhase.Failed
                 scan.value = ScanPhase.Idle
                 if (tried) want.value = Want.Open(nowMs())
@@ -297,12 +302,12 @@ class MainViewModel(
         }
     }
 
-    /** Подписка прочитана заново: есть ли она; заметка для «⋮» — по ней же. */
-    private suspend fun reload(): Boolean {
-        val note = shelf.note()
-        subscriptionNote.value = note
-        subscribed.value = note != null
-        return note != null
+    /** Подписки прочитаны заново; заметка для «⋮» — по текущей. */
+    private suspend fun reload(): Subscriptions {
+        val subs = shelf.read()
+        subscriptions.value = subs
+        subscriptionNote.value = noteOf(subs)
+        return subs
     }
 
     fun attach(port: ServicePort) {
@@ -370,6 +375,18 @@ class MainViewModel(
 }
 
 private data class Analysis(val input: SubscriptionInput, val n: Int)
+
+/** Подписки прочитаны и текущая есть. */
+private fun hasCurrent(subs: Subscriptions?): Boolean = when (subs) {
+    null -> false
+    else -> subs.chosen()
+}
+
+/** Сведения текущей подписки для «⋮»; текущей нет — null. */
+private fun noteOf(subs: Subscriptions): SubscriptionNote? = when (subs) {
+    is Subscriptions.Chosen -> subs.current.note
+    Subscriptions.None, is Subscriptions.Unchosen -> null
+}
 
 /** Сколько пульс держит подписку на сервис после ухода экрана: поворот — не уход. */
 const val PULSE_STOP_MS: Long = 5_000
