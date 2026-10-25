@@ -374,6 +374,25 @@ class ScanDeskTest : FunSpec({
         }
     }
 
+    test("вставил, прервал анализ, вставил ту же ссылку снова — одна запись, id без повторов") {
+        runTest {
+            val s = stand(hang = "10.0.0.3", hangPort = 20002, download = { Fetched("vless://из ссылки") })
+            val started = CompletableDeferred<Unit>()
+            val first = async { s.analyze(SubscriptionInput.Link("https://a.b/sub")) { started.complete(Unit) } }
+            started.await()
+            first.cancel()
+            first.join()
+            runCurrent()
+            val again = async { s.analyze(SubscriptionInput.Link("https://a.b/sub")) }
+            runCurrent()
+            again.cancel()
+            again.join()
+            runCurrent()
+            val ids = s.subscriptions.load().items.map { it.id }
+            ids.size shouldBe 1
+        }
+    }
+
     test("переанализ текстовой подписки — вход её текст, та же запись") {
         runTest {
             val s = stand()
