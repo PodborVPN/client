@@ -39,6 +39,9 @@ import podbor.app.sub.chosen
 import podbor.app.sub.current
 import podbor.app.sub.newSubscriptionId
 import podbor.app.sub.put
+import podbor.app.sub.same
+import podbor.app.sub.cardOf
+import podbor.screen.Known
 import podbor.app.sub.termOf
 import podbor.app.sub.updated
 import podbor.app.sub.without
@@ -352,6 +355,18 @@ class Desk(
 
     private suspend fun mark(id: String, a: Analyzed) {
         scan.subscriptions.save(scan.subscriptions.load().updated(id) { it.copy(analyzed = a) })
+    }
+
+    /** Есть ли вставленное уже в списке: та же ссылка, а без ссылки — тот же текст (как при вставке в список). */
+    suspend fun known(input: SubscriptionInput): Known = withContext(io) {
+        val probe = when (input) {
+            is SubscriptionInput.Link -> Subscription(input.url, "")
+            is SubscriptionInput.Text -> Subscription(null, input.text)
+        }
+        when (val s = scan.subscriptions.load().same(probe)) {
+            null -> Known.New
+            else -> Known.Saved(cardOf(s, scan.clock.nowMs()))
+        }
     }
 
     /** Переанализ сохранённой подписки [id]: вход — её ссылка, без ссылки — текст; дальше как [analyze]. */

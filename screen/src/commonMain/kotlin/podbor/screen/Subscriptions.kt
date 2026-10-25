@@ -63,6 +63,12 @@ sealed interface SubSheet {
     data class Ended(val card: SubscriptionCard, val support: Support) : SubSheet
 }
 
+/** Вставленное человеком: новая подписка или уже есть в списке (та же ссылка, а без ссылки — тот же текст). */
+sealed interface Known {
+    data object New : Known
+    data class Saved(val card: SubscriptionCard) : Known
+}
+
 /** Чья шторка: карточка подписки на любом шаге. */
 fun SubSheet.card(): SubscriptionCard = when (this) {
     is SubSheet.Card -> card

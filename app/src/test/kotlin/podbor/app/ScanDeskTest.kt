@@ -39,6 +39,7 @@ import podbor.core.Scenario
 import podbor.core.Success
 import podbor.screen.Analyzed
 import podbor.screen.Picked
+import podbor.screen.Known
 import podbor.screen.Support
 import podbor.screen.LATEST_RELEASE_PAGE
 import podbor.screen.apkUrlOf
@@ -407,6 +408,17 @@ class ScanDeskTest : FunSpec({
     /** Две подписки: «A» текстом — текущая, «B» по ссылке. */
     suspend fun ScanStand.twoSubscriptions(b: Subscription = Subscription("https://b.example/s", "vless://b", id = "B")) =
         subscriptions.save(Shelf(listOf(Subscription(null, "vless://a", id = "A"), b), currentId = "A"))
+
+    test("known: та же ссылка или тот же текст — уже в списке (её карточка); иное — новая") {
+        runTest {
+            val s = stand()
+            s.twoSubscriptions()
+            s.desk.known(SubscriptionInput.Link("https://b.example/s")).shouldBeInstanceOf<Known.Saved>().card.id shouldBe "B"
+            s.desk.known(SubscriptionInput.Text("vless://a")).shouldBeInstanceOf<Known.Saved>().card.id shouldBe "A"
+            s.desk.known(SubscriptionInput.Link("https://c.example/s")) shouldBe Known.New
+            s.desk.known(SubscriptionInput.Text("vless://c")) shouldBe Known.New
+        }
+    }
 
     test("выбор: обновилась, срок жив — текущая на свежем тексте, сессия на прежней погашена") {
         runTest {

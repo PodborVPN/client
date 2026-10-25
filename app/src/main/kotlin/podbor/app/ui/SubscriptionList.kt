@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -171,6 +172,23 @@ private fun ColumnScope.EndedBody(support: Support, onSupport: (String) -> Unit)
         }
         Support.None -> Unit
     }
+}
+
+/**
+ * Вставили подписку, что уже в списке, — вопрос окном, не шторкой: это не штатный шаг, а ошибка или неясное
+ * намерение. «обновить» — свежий список и анализ, как при новой; «отмена» — ничего.
+ */
+@Composable
+fun RepeatDialog(card: SubscriptionCard, onRefresh: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = Corner,
+        containerColor = PodborColors.Surface,
+        title = { Text("Эта подписка уже есть в списке", color = PodborColors.Text, style = MaterialTheme.typography.titleMedium) },
+        text = { Text("«${card.title}» — обновить её и проверить заново?", color = Muted, style = MaterialTheme.typography.bodyMedium) },
+        confirmButton = { PrimaryButton("обновить", onRefresh) },
+        dismissButton = { QuietButton("отмена", onDismiss, color = Muted) },
+    )
 }
 
 @Composable

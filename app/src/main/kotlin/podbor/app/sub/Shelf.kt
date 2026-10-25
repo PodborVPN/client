@@ -13,11 +13,14 @@ fun Shelf.current(): Subscription? = items.firstOrNull { it.id == currentId }
  * прежним id и свежими полями [s]; иначе новая с id из [newId]. Возвращает список и вставленную запись.
  */
 fun Shelf.put(s: Subscription, newId: () -> String): Pair<Shelf, Subscription> {
-    val same = items.firstOrNull { it.sameAs(s) }
+    val same = same(s)
     val put = s.copy(id = same?.id ?: newId())
     val list = if (same == null) items + put else items.map { if (it.id == put.id) put else it }
     return Shelf(list, put.id) to put
 }
+
+/** Та же подписка, что [s], если она уже в списке — тем же правилом, что [put]. */
+fun Shelf.same(s: Subscription): Subscription? = items.firstOrNull { it.sameAs(s) }
 
 /** Текущая — [id]; нет такой в списке — ничего. */
 fun Shelf.chosen(id: String): Shelf = if (items.any { it.id == id }) copy(currentId = id) else this

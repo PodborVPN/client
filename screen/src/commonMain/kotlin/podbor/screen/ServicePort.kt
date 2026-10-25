@@ -58,6 +58,9 @@ interface ServicePort {
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard>
 
+    /** Есть ли вставленное [input] уже в списке подписок. */
+    suspend fun known(input: SubscriptionInput): Known
+
     /** Переанализ сохранённой подписки [id] — как [analyze], вход из её записи (ссылка или текст). */
     suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard>
 

@@ -82,6 +82,10 @@ internal class FakePort : ServicePort {
         return picked(id)
     }
 
+    /** Есть ли вставленное уже в списке; по умолчанию — новая. */
+    var known: (SubscriptionInput) -> Known = { Known.New }
+    override suspend fun known(input: SubscriptionInput): Known = known.invoke(input)
+
     val deleted = mutableListOf<String>()
     var onDelete: (String) -> Unit = {}
     override suspend fun delete(id: String) {

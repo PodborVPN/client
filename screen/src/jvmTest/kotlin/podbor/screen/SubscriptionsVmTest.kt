@@ -120,6 +120,46 @@ class SubscriptionsVmTest : FunSpec({
         }
     }
 
+    test("вставил ту, что уже в списке — вопрос «обновить?», анализа нет; «обновить» — анализ вставленного") {
+        vmTest {
+            val vm = vm(shelf = two())
+            val port = FakePort()
+            port.known = { Known.Saved(other) }
+            port.analysis = { kotlinx.coroutines.awaitCancellation() }
+            vm.attach(port)
+            runCurrent()
+            vm.changeSubscription()
+            vm.input(arrow.core.Either.Right(SubscriptionInput.Link("https://a.example/s")))
+            runCurrent()
+            vm.duplicate.value shouldBe other
+            port.analyses shouldBe 0
+            vm.page.value shouldBe Page.AddSubscription
+            vm.refreshDuplicate()
+            runCurrent()
+            vm.duplicate.value shouldBe null
+            port.analyses shouldBe 1
+            vm.page.value shouldBe Page.Scanning(null)
+        }
+    }
+
+    test("вопрос «обновить?» — отмена: ничего не делаем, страница прежняя") {
+        vmTest {
+            val vm = vm(shelf = two())
+            val port = FakePort()
+            port.known = { Known.Saved(other) }
+            vm.attach(port)
+            runCurrent()
+            vm.changeSubscription()
+            vm.input(arrow.core.Either.Right(SubscriptionInput.Text("vless://b")))
+            runCurrent()
+            vm.dismissDuplicate()
+            runCurrent()
+            vm.duplicate.value shouldBe null
+            port.analyses shouldBe 0
+            vm.page.value shouldBe Page.AddSubscription
+        }
+    }
+
     test("переанализ — шторки нет, анализ сохранённой подписки по её id") {
         vmTest {
             val vm = vm(shelf = two())

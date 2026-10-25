@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -217,17 +218,53 @@ class MainViewModel(
         want.compareAndSet(w, Want.Idle)
     }
 
-    /** Текст подписки разобран платформой: не принялся — словами; иначе анализ. Посреди анализа — ничего. */
+    /**
+     * Текст подписки разобран платформой: не принялся — словами; уже есть в списке — вопрос «обновить?» ([duplicate]);
+     * иначе анализ. Посреди анализа — ничего.
+     */
     fun input(parsed: Either<InputError, SubscriptionInput>) {
         if (scan.value is ScanPhase.Running) return
         skipped.value = null
         when (parsed) {
             is Either.Left -> scan.value = ScanPhase.Failed(parsed.value)
-            is Either.Right -> {
-                scan.value = ScanPhase.Running(null)
-                analysis.value = Analysis(Source.Pasted(parsed.value), ++analyses)
+            is Either.Right -> viewModelScope.launch {
+                when (val known = service.filterNotNull().first().known(parsed.value)) {
+                    Known.New -> analyzePasted(parsed.value)
+                    is Known.Saved -> asking.value = Repeat(known.card, parsed.value)
+                }
             }
         }
+    }
+
+    /** Вопрос «обновить?» и то, что вставили: одним значением, чтобы не разошлись; null — вопроса нет. */
+    private val asking = MutableStateFlow<Repeat?>(null)
+
+    /** Вставленная подписка уже есть в списке — какая (вопрос «обновить?»); null — вопроса нет. */
+    val duplicate: StateFlow<SubscriptionCard?> = asking
+        .map { r ->
+            when (r) {
+                null -> null
+                else -> r.card
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** «обновить»: вставленное — анализом, как новое (запись та же, текст свежий). */
+    fun refreshDuplicate() {
+        when (val r = asking.getAndUpdate { null }) {
+            null -> Unit
+            else -> analyzePasted(r.input)
+        }
+    }
+
+    fun dismissDuplicate() {
+        asking.value = null
+    }
+
+    private fun analyzePasted(input: SubscriptionInput) {
+        if (scan.value is ScanPhase.Running) return
+        scan.value = ScanPhase.Running(null)
+        analysis.value = Analysis(Source.Pasted(input), ++analyses)
     }
 
     /** Анализ в сервисе (VPN гаснет на его время): доски по ходу — в [scan], пропущенные ссылки — в [skipped]. */
@@ -446,6 +483,9 @@ class MainViewModel(
 }
 
 private data class Analysis(val source: Source, val n: Int)
+
+/** Повторная вставка: какая подписка уже есть и что вставили. */
+private data class Repeat(val card: SubscriptionCard, val input: SubscriptionInput)
 
 /** Что анализировать: вставленное человеком или сохранённую подписку по id. */
 private sealed interface Source {

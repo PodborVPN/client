@@ -14,6 +14,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import podbor.app.ui.PodborTheme
+import podbor.app.ui.RepeatDialog
 import podbor.app.ui.SubscriptionScreen
 import podbor.app.ui.SubscriptionSheet
 import podbor.screen.Analyzed
@@ -115,6 +116,18 @@ class SubscriptionListUiTest {
     fun confirmWithoutVpnSaysNothingAboutIt() {
         showSheet(SubSheet.Confirm(other, stopsVpn = false))
         compose.onNodeWithText("VPN выключится").assertDoesNotExist()
+    }
+
+    @Test
+    fun repeatPasteAsksToRefresh() {
+        compose.setContent {
+            PodborTheme { RepeatDialog(other, onRefresh = { calls += "refresh" }, onDismiss = { calls += "dismiss" }) }
+        }
+        compose.onNodeWithText("Эта подписка уже есть в списке").assertExists()
+        compose.onNodeWithText("«Второй» — обновить её и проверить заново?").assertExists()
+        compose.onNodeWithText("обновить").performClick()
+        compose.onNodeWithText("отмена").performClick()
+        assertEquals(listOf("refresh", "dismiss"), calls)
     }
 
     @Test

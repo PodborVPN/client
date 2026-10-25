@@ -35,9 +35,11 @@ class SubscriptionFragment : Fragment() {
                 val subs by screen.vm.subscriptions.collectAsStateWithLifecycle()
                 val skipped by screen.vm.skipped.collectAsStateWithLifecycle()
                 val sheet by screen.vm.sheet.collectAsStateWithLifecycle()
+                val duplicate by screen.vm.duplicate.collectAsStateWithLifecycle()
                 PodborTheme {
                     // Поверх обеих страниц: ничего не подошло — на «Добавь подписку», часть — на анализе.
                     skipped?.let { s -> key(s) { SkippedSheet(s, onDismiss = screen.vm::dismissSkipped) } }
+                    duplicate?.let { RepeatDialog(it, onRefresh = screen.vm::refreshDuplicate, onDismiss = screen.vm::dismissDuplicate) }
                     // Шторка подписки — одна на карточку: шаги внутри (подтверждение, «обновляю») не пересоздают её.
                     sheet?.let { s ->
                         key(s.card().id) {

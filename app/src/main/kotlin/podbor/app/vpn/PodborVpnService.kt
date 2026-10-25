@@ -429,6 +429,8 @@ class PodborVpnService : VpnService(), ServicePort {
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard> = desk.analyze(input, onSkipped, onBoard)
 
+    override suspend fun known(input: SubscriptionInput) = desk.known(input)
+
     override suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit) =
         desk.reanalyze(id, onSkipped, onBoard)
 
