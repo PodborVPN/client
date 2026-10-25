@@ -121,6 +121,13 @@ class PulseTest : FunSpec({
         p.book.past shouldBe mapOf("sub2" to Traffic(0, 5_000))
     }
 
+    test("switchedTo: выбрали подписку — её счёт текущий сразу, до первого отсчёта; прежний — в прошлых") {
+        val book = TrafficBook(vpn = Tally("sub1", Traffic(0, 9)), past = mapOf("sub2" to Traffic(0, 5)))
+        book.switchedTo("sub2") shouldBe TrafficBook(vpn = Tally("sub2", Traffic(0, 5)), past = mapOf("sub1" to Traffic(0, 9)))
+        book.switchedTo("sub1") shouldBe book
+        book.switchedTo("sub3") shouldBe TrafficBook(vpn = Tally("sub3", Traffic.Zero), past = mapOf("sub1" to Traffic(0, 9), "sub2" to Traffic(0, 5)))
+    }
+
     test("without: счёт удалённой подписки забыт — и текущей, и прошлой") {
         val book = TrafficBook(network = Tally("wifi", Traffic(1, 1)), vpn = Tally("sub1", Traffic(0, 9)), past = mapOf("sub2" to Traffic(0, 5)))
         book.without("sub2") shouldBe TrafficBook(network = Tally("wifi", Traffic(1, 1)), vpn = Tally("sub1", Traffic(0, 9)))

@@ -95,6 +95,7 @@ import podbor.app.sub.subscriptionKey
 import podbor.app.sub.Subscription
 import podbor.screen.Picked
 import podbor.core.without
+import podbor.core.switchedTo
 import podbor.driver.noteLine
 import podbor.core.EpochKind
 import podbor.core.Pulse
@@ -434,7 +435,22 @@ class PodborVpnService : VpnService(), ServicePort {
         desk.reanalyze(id, onSkipped, onBoard)
 
     /** Выбор подписки: см. [Desk.select]; уведомление о сроке — уже по новой текущей. */
-    override suspend fun select(id: String): Picked = desk.select(id).also { expiry.check() }
+    override suspend fun select(id: String): Picked = desk.select(id).also { picked ->
+        when (picked) {
+            Picked.Ready -> switchTraffic()
+            is Picked.Expired -> Unit
+        }
+        expiry.check()
+    }
+
+    /** Текущая подписка сменилась: «через VPN» — её счёт сразу, а не прежней до первого отсчёта. */
+    private suspend fun switchTraffic() {
+        val current = subscriptions.current() ?: return
+        val key = subscriptionKey(current, salt)
+        pulseState.update { it.copy(book = it.book.switchedTo(key)) }
+        books.save(pulseState.value.book)
+        pulseNow.update { it.copy(vpn = pulseState.value.book.vpn) }
+    }
 
     override suspend fun delete(id: String) = desk.delete(id)
 

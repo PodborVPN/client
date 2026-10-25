@@ -53,6 +53,12 @@ data class Tally(val key: String, val total: Traffic)
 @Serializable
 data class TrafficBook(val network: Tally? = null, val vpn: Tally? = null, val past: Map<String, Traffic> = emptyMap())
 
+/**
+ * Выбрали подписку [subscription]: её счёт — текущий сразу, не дожидаясь первого отсчёта Xray (иначе «через VPN»
+ * показывал бы счёт прежней); прежний — в прошлых. То же, что первый отсчёт на ней, только без трафика.
+ */
+fun TrafficBook.switchedTo(subscription: String): TrafficBook = vpnAdded(subscription, Traffic.Zero)
+
 /** Итоги без подписки [subscription] — она удалена: ни текущего, ни прошлого счёта. */
 fun TrafficBook.without(subscription: String): TrafficBook =
     copy(vpn = if (vpn != null && vpn.key == subscription) null else vpn, past = past - subscription)
