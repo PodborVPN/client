@@ -65,6 +65,43 @@ class SubscriptionsVmTest : FunSpec({
         }
     }
 
+    test("смахнул «обновляю…», а подписка кончилась — шторка «кончилась» не всплывает сама") {
+        vmTest {
+            val vm = vm(shelf = two())
+            val port = FakePort()
+            val gate = CompletableDeferred<Picked>()
+            port.picked = { gate.await() }
+            vm.attach(port)
+            runCurrent()
+            vm.changeSubscription()
+            vm.pick(other)
+            runCurrent()
+            vm.closeSheet()
+            gate.complete(Picked.Expired(Support.None))
+            runCurrent()
+            vm.sheet.value shouldBe null
+        }
+    }
+
+    test("пока шёл выбор, открыл шторку другой карточки — результат первой её не заменяет; выбор состоялся — главный") {
+        vmTest {
+            val vm = vm(shelf = two())
+            val port = FakePort()
+            val gate = CompletableDeferred<Picked>()
+            port.picked = { gate.await() }
+            vm.attach(port)
+            runCurrent()
+            vm.changeSubscription()
+            vm.pick(other)
+            runCurrent()
+            vm.openCard(CARD)
+            gate.complete(Picked.Ready)
+            runCurrent()
+            vm.page.value shouldBe Page.Main
+            port.opens shouldBe 1
+        }
+    }
+
     test("удаление текущей при поднятом VPN — подтверждение «VPN выключится»; при выключенном и у прочей — без") {
         vmTest {
             val vm = vm(shelf = two())

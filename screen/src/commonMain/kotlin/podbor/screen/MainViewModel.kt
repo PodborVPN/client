@@ -341,7 +341,8 @@ class MainViewModel(
                     scan.value = ScanPhase.Idle
                     want.value = Want.Open(nowMs())
                 }
-                is Picked.Expired -> sheet.value = SubSheet.Ended(card, picked.support)
+                // Только поверх своей «обновляю…»: смахнутая или сменённая шторка — человек уже ушёл, не всплываем.
+                is Picked.Expired -> sheet.update { if (it == SubSheet.Picking(card)) SubSheet.Ended(card, picked.support) else it }
             }
         }
     }
