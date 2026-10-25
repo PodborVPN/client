@@ -30,7 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import podbor.app.sub.Tone
-import podbor.app.sub.analyzedDetail
+import podbor.app.sub.Fact
+import podbor.app.sub.factRows
 import podbor.app.sub.cardWords
 import podbor.screen.SubSheet
 import podbor.screen.SubscriptionCard
@@ -136,8 +137,10 @@ private fun ColumnScope.CardBody(
     onAskDelete: (SubscriptionCard) -> Unit,
 ) {
     val card = sheet.card
-    Fact("анализ", analyzedDetail(card.analyzed, nowMs))
-    card.note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodyMedium) }
+    factRows(card, nowMs).forEach { FactRow(it) }
+    // Сведения провайдера — ниже и мельче: главное — как подписка ведёт себя здесь.
+    if (card.note.lines.isNotEmpty()) Spacer(Modifier.height(Space.m))
+    card.note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
     Spacer(Modifier.height(Space.l))
     if (sheet.current) {
         PrimaryButton("проанализировать заново", { onReanalyze(card) }, Modifier.fillMaxWidth())
@@ -191,10 +194,17 @@ fun RepeatDialog(card: SubscriptionCard, onRefresh: () -> Unit, onDismiss: () ->
     )
 }
 
+/** Строка факта: что — слева серым, значение — справа, цветом тона (обычное — цветом текста). */
 @Composable
-private fun Fact(key: String, value: String) {
+private fun FactRow(f: Fact) {
     Row(Modifier.fillMaxWidth().padding(vertical = Space.xs)) {
-        Text(key, color = Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(value, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium)
+        Text(f.key, color = Muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(f.value.text, color = valueColorOf(f.value.tone), style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+private fun valueColorOf(t: Tone): Color = when (t) {
+    Tone.Plain -> PodborColors.Text
+    Tone.Warn -> PodborColors.Accent
+    Tone.Bad -> PodborColors.Fail
 }

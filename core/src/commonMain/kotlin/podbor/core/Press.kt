@@ -76,14 +76,17 @@ private fun press(p: Letter.Pressed): Pair<PressState, List<Deed>> {
  */
 fun memoryKey(os: OsNetwork, scenario: Scenario, service: ServiceId): MemoryKey =
     MemoryKey(
-        operator = when (os) {
-            is OsNetwork.Cellular -> os.operator
-            OsNetwork.Wifi -> "wifi"
-            OsNetwork.None -> "none"
-        },
+        operator = memoryOperator(os),
         scenario = if (scenario == Scenario.SuspectWhitelist) Scenario.MobileWhitelist else scenario,
         service = service,
     )
+
+/** Сеть в ключе памяти: оператор SIM с данными, «wifi» для Wi-Fi, «none» без сети. */
+fun memoryOperator(os: OsNetwork): String = when (os) {
+    is OsNetwork.Cellular -> os.operator
+    OsNetwork.Wifi -> "wifi"
+    OsNetwork.None -> "none"
+}
 
 private fun PressState.Running.key(scenario: Scenario): MemoryKey = memoryKey(pressed.os, scenario, pressed.service)
 

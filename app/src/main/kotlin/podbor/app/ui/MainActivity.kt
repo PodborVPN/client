@@ -58,6 +58,19 @@ import podbor.app.share.writeShare
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.subscriptionsOf
+import android.net.ConnectivityManager
+import podbor.app.net.AndroidStore
+import podbor.app.net.Telephony
+import podbor.app.net.UnderlyingNetwork
+import podbor.app.sub.FilePassportStore
+import podbor.app.sub.FileTrafficBookStore
+import podbor.app.sub.installSalt
+import podbor.app.sub.subscriptionKey
+import podbor.core.HARDCODED_SERVICES
+import podbor.core.Passport
+import podbor.core.of
+import podbor.core.subscriptionFacts
+import podbor.screen.Subscriptions
 import podbor.app.vpn.EXTRA_CHOOSE_SUBSCRIPTION
 import podbor.app.vpn.PodborVpnService
 import podbor.app.net.DnsFixes
@@ -97,10 +110,27 @@ class MainActivity : FragmentActivity() {
                     BuildConfig.VERSION_NAME, BuildConfig.SELF_DISTRIBUTED,
                     PrefsUpdateMemory(getSharedPreferences(PREFS, MODE_PRIVATE)), System::currentTimeMillis,
                     createSavedStateHandle(),
-                    { subscriptionsOf(store.load(), System.currentTimeMillis()) },
+                    { shelfNow(store) },
                 )
             }
         }
+    }
+
+    /**
+     * Подписки для экрана с тем, как каждая ведёт себя здесь: паспорт, память пар на нынешней сети, итоги «через VPN».
+     * Файлы — на пуле IO; чего нет — пусто.
+     */
+    private suspend fun shelfNow(store: SubscriptionStore): Subscriptions = withContext(Dispatchers.IO) {
+        val os = Telephony(this@MainActivity).osNetworkLight(UnderlyingNetwork(getSystemService(ConnectivityManager::class.java)).transport())
+        val passport = FilePassportStore(filesDir).load() ?: Passport(emptyMap(), 0)
+        val memory = AndroidStore(filesDir).loadMemory()
+        val book = FileTrafficBookStore(filesDir).load()
+        val salt = installSalt(noBackupFilesDir)
+        subscriptionsOf(
+            store.load(), System.currentTimeMillis(),
+            factsOf = { s -> subscriptionFacts(s.servers.toSet(), passport, memory, os, HARDCODED_SERVICES.toList()) },
+            viaOf = { s -> book.of(subscriptionKey(s, salt)) },
+        )
     }
 
     /** Метка открытия — для замеров в logcat. */

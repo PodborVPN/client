@@ -1,6 +1,8 @@
 package podbor.screen
 
 import arrow.core.Nel
+import podbor.core.SubscriptionFacts
+import podbor.core.Traffic
 import kotlinx.serialization.Serializable
 
 /** Анализ подписки: не было; прошёл целиком; прерван — проверено [Interrupted.done] из [Interrupted.total]. */
@@ -19,7 +21,10 @@ sealed interface Term {
     data object OutOfTraffic : Term
 }
 
-/** Подписка в списке глазами экрана — без ссылки и текста (секрет): имя, серверов, анализ, срок, сведения провайдера. */
+/**
+ * Подписка в списке глазами экрана — без ссылки и текста (секрет): имя, серверов, анализ, срок, сведения провайдера;
+ * как она ведёт себя на этом телефоне ([facts]) и сколько прошло через VPN на ней ([viaPodbor]).
+ */
 data class SubscriptionCard(
     val id: String,
     val title: String,
@@ -27,6 +32,8 @@ data class SubscriptionCard(
     val analyzed: Analyzed,
     val term: Term,
     val note: SubscriptionNote,
+    val facts: SubscriptionFacts = SubscriptionFacts.Empty,
+    val viaPodbor: Traffic = Traffic.Zero,
 )
 
 /**

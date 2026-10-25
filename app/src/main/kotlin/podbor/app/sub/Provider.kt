@@ -2,6 +2,8 @@ package podbor.app.sub
 
 import arrow.core.Either
 import arrow.core.toNonEmptyListOrNone
+import podbor.core.SubscriptionFacts
+import podbor.core.Traffic
 import podbor.screen.SubscriptionCard
 import podbor.screen.Subscriptions
 import podbor.screen.Term
@@ -119,18 +121,33 @@ fun termOf(p: ProviderInfo, nowMs: Long): Term {
 }
 
 /** Карточка подписки для экрана — без ссылки и текста. Имени от провайдера нет — по виду подписки. */
-fun cardOf(s: Subscription, nowMs: Long): SubscriptionCard = SubscriptionCard(
+fun cardOf(
+    s: Subscription,
+    nowMs: Long,
+    facts: SubscriptionFacts = SubscriptionFacts.Empty,
+    viaPodbor: Traffic = Traffic.Zero,
+): SubscriptionCard = SubscriptionCard(
     id = s.id,
     title = s.provider.title ?: if (s.link != null) "подписка без имени" else "конфиги текстом",
     servers = s.servers.size,
     analyzed = s.analyzed,
     term = termOf(s.provider, nowMs),
     note = noteOf(s, nowMs),
+    facts = facts,
+    viaPodbor = viaPodbor,
 )
 
-/** Подписки глазами экрана: пусто — нет; текущей нет в списке — не выбрана; иначе текущая первой и прочие по порядку. */
-fun subscriptionsOf(shelf: Shelf, nowMs: Long): Subscriptions {
-    val cards = shelf.items.map { cardOf(it, nowMs) }
+/**
+ * Подписки глазами экрана: пусто — нет; текущей нет в списке — не выбрана; иначе текущая первой и прочие по порядку.
+ * [factsOf] и [viaOf] — как подписка ведёт себя здесь и сколько прошло через VPN на ней.
+ */
+fun subscriptionsOf(
+    shelf: Shelf,
+    nowMs: Long,
+    factsOf: (Subscription) -> SubscriptionFacts = { SubscriptionFacts.Empty },
+    viaOf: (Subscription) -> Traffic = { Traffic.Zero },
+): Subscriptions {
+    val cards = shelf.items.map { cardOf(it, nowMs, factsOf(it), viaOf(it)) }
     return cards.toNonEmptyListOrNone().fold({ Subscriptions.None }) { all ->
         when (val current = all.firstOrNull { it.id == shelf.currentId }) {
             null -> Subscriptions.Unchosen(all)
@@ -151,7 +168,7 @@ internal fun ago(ms: Long): String {
 }
 
 /** Байты в ГБ: до 10 — с десятой, дальше — целыми. */
-private fun gb(bytes: Long): String {
+internal fun gb(bytes: Long): String {
     val v = bytes / 1_073_741_824.0
     return if (v < 10) "%.1f ГБ".format(java.util.Locale.ROOT, v).replace('.', ',') else "${v.toLong()} ГБ"
 }

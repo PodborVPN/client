@@ -6,6 +6,14 @@ import podbor.app.sub.Tone
 import podbor.app.sub.Word
 import podbor.app.sub.analyzedDetail
 import podbor.app.sub.cardWords
+import podbor.app.sub.Fact
+import podbor.app.sub.factRows
+import podbor.core.Instagram
+import podbor.core.LastWorked
+import podbor.core.SubscriptionFacts
+import podbor.core.Telegram
+import podbor.core.Traffic
+import podbor.core.Worked
 import podbor.screen.Analyzed
 import podbor.screen.Announce
 import podbor.screen.SubscriptionCard
@@ -35,6 +43,26 @@ class CardWordsTest : FunSpec({
         cardWords(card(term = Term.Expired(0)), 3 * DAY, ZoneOffset.UTC).last() shouldBe Word("кончилась 3 дн назад", Tone.Bad)
         cardWords(card(term = Term.OutOfTraffic), 0, ZoneOffset.UTC).last() shouldBe Word("трафик кончился", Tone.Bad)
     }
+    test("шторка: как подписка ведёт себя здесь — сервисы, белые списки, ответили, через Podbor, анализ") {
+        val facts = SubscriptionFacts(
+            worked = listOf(Worked(Telegram, LastWorked.At(0)), Worked(Instagram, LastWorked.Never)),
+            ruEntries = 16, likelyWhite = 23, answered = 61, checked = 79,
+        )
+        val c = card(analyzed = Analyzed.Done(0)).copy(facts = facts, viaPodbor = Traffic(up = 200 * 1_048_576L, down = 3 * 1_073_741_824L))
+        factRows(c, 2 * 3_600_000L) shouldBe listOf(
+            Fact("Телега здесь", Word("работала 2 ч назад", Tone.Plain)),
+            Fact("Инста здесь", Word("ещё не работала", Tone.Plain)),
+            Fact("белые списки", Word("вероятно 23 · входов в РФ 16", Tone.Plain)),
+            Fact("ответили", Word("61 из 79", Tone.Plain)),
+            Fact("через Podbor", Word("3,2 ГБ", Tone.Plain)),
+            Fact("анализ", Word("2 ч назад", Tone.Plain)),
+        )
+    }
+    test("шторка: без анализа и трафика — только сервисы и анализ") {
+        val c = card().copy(facts = SubscriptionFacts.Empty.copy(worked = listOf(Worked(Telegram, LastWorked.Never))))
+        factRows(c, 0) shouldBe listOf(Fact("Телега здесь", Word("ещё не работала", Tone.Plain)), Fact("анализ", Word("не было", Tone.Plain)))
+    }
+
     test("анализ в шторке: не было; давность; прерван — сколько из скольких") {
         analyzedDetail(Analyzed.Never, 0) shouldBe "не было"
         analyzedDetail(Analyzed.Done(0), 30_000) shouldBe "только что"
