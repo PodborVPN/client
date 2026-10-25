@@ -111,6 +111,22 @@ class PulseTest : FunSpec({
         p.view(tg, 2_000).network shouldBe Tally("wifi", Traffic(0, 9_000))
     }
 
+    test("счёт подписки переживает переключение: вернулся — прежний итог копится дальше") {
+        val p = fold(
+            at(0, 0), at(1_000, 10_000),
+            at(2_000, 0, epoch = 2, tun = Traffic.Zero, sub = "sub2"), at(3_000, 5_000, epoch = 2, sub = "sub2"),
+            at(4_000, 0, epoch = 3, tun = Traffic.Zero), at(5_000, 3_000, epoch = 3),
+        )
+        p.view(tg, 5_000).vpn shouldBe Tally("sub1", Traffic(0, 13_000))
+        p.book.past shouldBe mapOf("sub2" to Traffic(0, 5_000))
+    }
+
+    test("without: счёт удалённой подписки забыт — и текущей, и прошлой") {
+        val book = TrafficBook(network = Tally("wifi", Traffic(1, 1)), vpn = Tally("sub1", Traffic(0, 9)), past = mapOf("sub2" to Traffic(0, 5)))
+        book.without("sub2") shouldBe TrafficBook(network = Tally("wifi", Traffic(1, 1)), vpn = Tally("sub1", Traffic(0, 9)))
+        book.without("sub1") shouldBe TrafficBook(network = Tally("wifi", Traffic(1, 1)), vpn = null, past = mapOf("sub2" to Traffic(0, 5)))
+    }
+
     test("resumedKeepsStoredBook: итоги, сохранённые прошлым процессом, копятся дальше") {
         val stored = TrafficBook(network = Tally("wifi", Traffic(5, 50_000)), vpn = Tally("sub1", Traffic(5, 40_000)))
         val p = listOf(at(0, 0), at(1_000, 1_000)).fold(Pulse.resumed(stored)) { acc, x -> acc.after(x) }

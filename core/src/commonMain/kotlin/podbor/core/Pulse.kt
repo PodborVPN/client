@@ -46,9 +46,16 @@ enum class EpochKind { Session, Scan }
 @Serializable
 data class Tally(val key: String, val total: Traffic)
 
-/** Итоги, что живут дольше процесса: «на этой сети» (приложения + пробы) и «на этой подписке» (через VPN). */
+/**
+ * Итоги, что живут дольше процесса: «на этой сети» (приложения + пробы) и «на этой подписке» (через VPN); [past] — итоги
+ * VPN прочих подписок, к которым можно вернуться: переключение не обнуляет счёт (поточечная сумма по ключу подписки).
+ */
 @Serializable
-data class TrafficBook(val network: Tally? = null, val vpn: Tally? = null)
+data class TrafficBook(val network: Tally? = null, val vpn: Tally? = null, val past: Map<String, Traffic> = emptyMap())
+
+/** Итоги без подписки [subscription] — она удалена: ни текущего, ни прошлого счёта. */
+fun TrafficBook.without(subscription: String): TrafficBook =
+    copy(vpn = if (vpn != null && vpn.key == subscription) null else vpn, past = past - subscription)
 
 /** Точка счётчика одного выхода. */
 data class PulsePoint(val monoMs: Long, val traffic: Traffic)
@@ -110,7 +117,17 @@ fun Pulse.after(s: PulseSample): Pulse {
     val probeKeys = s.inbound.keys.filter { it.startsWith(PROBE_INBOUND_PREFIX) }
     val probes = probeKeys.fold(Traffic.Zero) { sum, k -> sum + grown(s, k) }
     val marks = marks + (listOf(TUN_INBOUND) + probeKeys).filter { it in s.inbound }.map { k -> k to Mark(s.epoch, s.inbound.getValue(k)) }
-    return Pulse(kept + lanes, marks, TrafficBook(network = added(book.network, s.network, apps + probes), vpn = added(book.vpn, s.subscription, apps)))
+    return Pulse(kept + lanes, marks, book.copy(network = added(book.network, s.network, apps + probes)).vpnAdded(s.subscription, apps))
+}
+
+/**
+ * Прирост VPN на подписке [key]: та же (или ключ пуст) — копится в текущий; другая — текущий уходит в [TrafficBook.past],
+ * новая продолжает свой прошлый итог.
+ */
+private fun TrafficBook.vpnAdded(key: String, t: Traffic): TrafficBook = when {
+    key.isEmpty() || (vpn != null && vpn.key == key) -> copy(vpn = added(vpn, key, t))
+    vpn == null -> copy(vpn = Tally(key, past.getOrElse(key) { Traffic.Zero } + t), past = past - key)
+    else -> copy(vpn = Tally(key, past.getOrElse(key) { Traffic.Zero } + t), past = past - key + (vpn.key to vpn.total))
 }
 
 /**
