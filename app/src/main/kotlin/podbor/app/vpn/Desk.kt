@@ -322,10 +322,12 @@ class Desk(
     ): Either<InputError, ScanBoard> =
         withContext(io) { scans.withLock { analyzeLocked(input, onSkipped, onBoard) } }
 
+    /** [savedLink] — ссылка сохранённой подписки, когда анализ идёт по её тексту: запись в списке остаётся той же. */
     private suspend fun analyzeLocked(
         input: SubscriptionInput,
         onSkipped: (Skipped) -> Unit,
         onBoard: (ScanBoard) -> Unit,
+        savedLink: String? = null,
     ): Either<InputError, ScanBoard> = either {
         val got = fetchText(input, scan.download, ::whitelistNow, tunnel(), scan.proxy).bind()
         val text = got.body
@@ -342,7 +344,9 @@ class Desk(
                 val live = scan.warm(this, text).mapLeft { InputError.ScanFailed }.bind()
                 val link = (input as? SubscriptionInput.Link)?.url
                 // С подъёма Xray анализа подписка в списке и текущая: человек её вставил — значит, выбрал.
-                val id = putCurrent(Subscription(link, text, servers = keys).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it })
+                val id = putCurrent(
+                    Subscription(link ?: savedLink, text, servers = keys).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it },
+                )
                 val lists = scan.lists()
                 val hints = hintsBy(lists, live.warm.servers) ?: live.warm.servers.associate { it.key to WhiteHint.Unlikely }
                 val sni = lists?.let { l -> live.warm.servers.filter { sniWhite(l, it.sni) }.map { it.key }.toSet() }.orEmpty()
@@ -392,10 +396,18 @@ class Desk(
     }
 
     /** Переанализ сохранённой подписки [id]: вход — её ссылка, без ссылки — текст; дальше как [analyze]. */
-    suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> {
-        val s = scan.subscriptions.load().items.firstOrNull { it.id == id } ?: return Either.Left(InputError.Empty)
-        return analyze(s.link?.let { SubscriptionInput.Link(it) } ?: SubscriptionInput.Text(s.text), onSkipped, onBoard)
-    }
+    suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
+        withContext(io) {
+            scans.withLock {
+                val s = scan.subscriptions.load().items.firstOrNull { it.id == id } ?: return@withLock Either.Left(InputError.Empty)
+                val link = s.link ?: return@withLock analyzeLocked(SubscriptionInput.Text(s.text), onSkipped, onBoard)
+                // Ссылка не скачалась (белые списки, VPN выключен) — анализ по сохранённому тексту, запись та же.
+                when (val out = analyzeLocked(SubscriptionInput.Link(link), onSkipped, onBoard)) {
+                    is Either.Left -> if (out.value is InputError.Download) analyzeLocked(SubscriptionInput.Text(s.text), onSkipped, onBoard, link) else out
+                    is Either.Right -> out
+                }
+            }
+        }
 
     /**
      * Выбор подписки [id]: сначала — свежий текст по её ссылке (основная, затем запасная; серверов 0 — как не скачалась:
@@ -403,6 +415,8 @@ class Desk(
      * Иначе — текущая, а сессия на прежней гасится: экран поднимет VPN на новой.
      */
     suspend fun select(id: String): Picked = withContext(io) {
+        // Такой подписки уже нет (удалили в другом окне) — ничего не выбираем и VPN не трогаем.
+        if (scan.subscriptions.load().items.none { it.id == id }) return@withContext Picked.Ready
         val picked = scans.withLock {
             val shelf = scan.subscriptions.load()
             val s = shelf.items.firstOrNull { it.id == id } ?: return@withLock Picked.Ready

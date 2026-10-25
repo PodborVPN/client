@@ -442,6 +442,30 @@ class ScanDeskTest : FunSpec({
     suspend fun ScanStand.twoSubscriptions(b: Subscription = Subscription("https://b.example/s", "vless://b", id = "B")) =
         subscriptions.save(Shelf(listOf(Subscription(null, "vless://a", id = "A"), b), currentId = "A"))
 
+    test("переанализ по ссылке, а ссылка не скачалась — анализ по сохранённому тексту, та же запись") {
+        runTest {
+            val s = stand(download = { null })
+            s.twoSubscriptions()
+            s.desk.reanalyze("B", {}, {}).shouldBeInstanceOf<Either.Right<ScanBoard>>()
+            val shelf = s.subscriptions.load()
+            shelf.items.map { it.id } shouldBe listOf("A", "B")
+            shelf.current().shouldNotBeNull().id shouldBe "B"
+        }
+    }
+
+    test("выбор несуществующей подписки — ничего: текущая прежняя, сессия цела") {
+        runTest {
+            val s = stand()
+            s.twoSubscriptions()
+            s.start()
+            s.up()
+            s.desk.select("Z") shouldBe Picked.Ready
+            runCurrent()
+            s.host.state.value.shouldBeInstanceOf<SessionState.Up<*>>()
+            s.subscriptions.load().currentId shouldBe "A"
+        }
+    }
+
     test("known: та же ссылка или тот же текст — уже в списке (её карточка); иное — новая") {
         runTest {
             val s = stand()

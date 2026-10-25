@@ -74,5 +74,5 @@ private fun workedWords(last: LastWorked, nowMs: Long): String = when (last) {
 fun analyzedDetail(a: Analyzed, nowMs: Long): String = when (a) {
     Analyzed.Never -> "не было"
     is Analyzed.Done -> ago(nowMs - a.atMs)
-    is Analyzed.Interrupted -> "прерван · ${a.done} из ${a.total}"
+    is Analyzed.Interrupted -> "прерван · ${a.done} из ${a.total} · ${ago(nowMs - a.atMs)}"
 }

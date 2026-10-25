@@ -66,6 +66,6 @@ class CardWordsTest : FunSpec({
     test("анализ в шторке: не было; давность; прерван — сколько из скольких") {
         analyzedDetail(Analyzed.Never, 0) shouldBe "не было"
         analyzedDetail(Analyzed.Done(0), 30_000) shouldBe "только что"
-        analyzedDetail(Analyzed.Interrupted(0, 5, 8), 0) shouldBe "прерван · 5 из 8"
+        analyzedDetail(Analyzed.Interrupted(0, 5, 8), 2 * 3_600_000L) shouldBe "прерван · 5 из 8 · 2 ч назад"
     }
 })

@@ -87,7 +87,7 @@ class SubscriptionListUiTest {
     @Test
     fun otherSheetHasPickReanalyzeDelete() {
         showSheet(SubSheet.Card(other, current = false))
-        compose.onNodeWithText("прерван · 5 из 8").assertExists()
+        compose.onNodeWithText("прерван · 5 из 8 · только что").assertExists()
         compose.onNodeWithText("обновлена 2 ч назад").assertExists()
         compose.onNodeWithText("выбрать").performClick()
         compose.onNodeWithText("проанализировать заново").performClick()
