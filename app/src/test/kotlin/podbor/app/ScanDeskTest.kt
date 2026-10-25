@@ -137,6 +137,8 @@ private class ScanStand(
     }
     /** Что сервис узнал об удалённых подписках: запись и сколько серверов забыто. */
     val forgotten = mutableListOf<Pair<Subscription, Int>>()
+    /** Файл подписок в каждый миг стопа сессии. */
+    val atStop = mutableListOf<String>()
     private val lock = Mutex()
     private var busy = busyTries
     /** Замок «Xray один на процесс»; первые [busyTries] tryLock — заняты (тестовый двойник перехвата). */
@@ -213,6 +215,8 @@ private class ScanStand(
             memory = memory,
             forgot = { s, n -> forgotten += s to n },
             stopSession = {
+                // Что на диске в миг стопа: сессия, поднятая следом (always-on), возьмёт именно это.
+                atStop += dir.resolve("subscriptions.json").let { if (it.exists()) it.readText() else "" }
                 host.stop(++startId)
                 if (restarts > 0) { restarts--; host.start(++startId) }
             },
@@ -442,6 +446,19 @@ class ScanDeskTest : FunSpec({
             s.host.state.value shouldBe SessionState.Down
             s.subscriptions.load() shouldBe Shelf(listOf(Subscription("https://b.example/s", "vless://b", id = "B")), currentId = null)
             s.xray.unlock()
+        }
+    }
+
+    test("удаление текущей при поднятом VPN — к стопу её уже нет на диске: перезапуск сессии на неё не встанет") {
+        runTest {
+            val s = stand()
+            s.twoSubscriptions()
+            s.start()
+            s.up()
+            s.desk.delete("A")
+            runCurrent()
+            s.atStop.size shouldBe 1
+            s.atStop.single().contains("\"A\"") shouldBe false
         }
     }
 

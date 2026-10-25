@@ -55,6 +55,13 @@ class StoresTest : FunSpec({
         shelf.currentId shouldBe only.id
         dir.resolve("subscription.json").exists() shouldBe true
     }
+    test("переезд закрепляется сразу: два чтения подряд — тот же id") {
+        val dir = tmp()
+        dir.resolve("subscription.json").writeText("""{"link":null,"text":"vless://x"}""")
+        val store = SubscriptionStore(dir)
+        store.load().currentId shouldBe store.load().currentId
+        SubscriptionStore(dir).load().currentId shouldBe store.load().currentId
+    }
     test("битый новый файл при живом старом — старая подписка в списке") {
         val dir = tmp()
         dir.resolve("subscription.json").writeText("""{"link":null,"text":"vless://x"}""")

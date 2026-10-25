@@ -389,18 +389,20 @@ class Desk(
      * Ленты — [ScanPorts.forgot].
      */
     suspend fun delete(id: String): Unit = withContext(io) {
-        val shelf = scan.subscriptions.load()
-        val gone = shelf.items.firstOrNull { it.id == id } ?: return@withContext
-        if (shelf.currentId == id) stopSessionIfAny()
-        scans.withLock {
-            val rest = scan.subscriptions.load().without(id)
+        val wasCurrent = scans.withLock {
+            val shelf = scan.subscriptions.load()
+            val gone = shelf.items.firstOrNull { it.id == id } ?: return@withLock false
+            // Сначала — с диска: сессия, поднятая следом за стопом (always-on, выкл→вкл), найдёт «нет подписки».
+            val rest = shelf.without(id)
             scan.subscriptions.save(rest)
             val keep = rest.items.flatMap { s -> s.servers.ifEmpty { scan.serverKeys(s.text) } }.toSet()
             val was = scan.passports.load()
             if (was != null) scan.passports.save(was.keptOnly(keep))
             scan.memory.saveMemory(scan.memory.loadMemory().keptOnly(keep))
             scan.forgot(gone, was?.servers?.keys?.count { it !in keep } ?: 0)
+            shelf.currentId == id
         }
+        if (wasCurrent) stopSessionIfAny()
     }
 
     /** Сессия поднята или поднимается — гасим и ждём, пока хост исполнит стоп; нет её — ничего. */

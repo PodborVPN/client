@@ -70,10 +70,13 @@ class SubscriptionStore(
 
     suspend fun current(): Subscription? = load().current()
 
+    /** Переезд — сразу на диск: иначе каждое чтение давало бы новый id, и экран со службой видели бы разные. */
     private fun migrated(): Shelf {
         val old = readJson(single) { json.decodeFromString(Subscription.serializer(), it) } ?: return Shelf()
         val s = old.copy(id = newSubscriptionId())
-        return Shelf(listOf(s), s.id)
+        val shelf = Shelf(listOf(s), s.id)
+        writeAtomic(file, "подписки", json.encodeToString(Shelf.serializer(), shelf), warn)
+        return shelf
     }
 }
 
