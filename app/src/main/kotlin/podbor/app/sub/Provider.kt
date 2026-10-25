@@ -139,7 +139,8 @@ fun subscriptionsOf(shelf: Shelf, nowMs: Long): Subscriptions {
     }
 }
 
-private fun ago(ms: Long): String {
+/** Давность словами: «только что», «N мин назад», «N ч назад», «N дн назад». */
+internal fun ago(ms: Long): String {
     val min = (ms / 60_000).coerceAtLeast(0)
     return when {
         min < 1 -> "только что"

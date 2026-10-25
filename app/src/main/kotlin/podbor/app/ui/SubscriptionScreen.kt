@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import podbor.screen.InputError
+import podbor.screen.SubscriptionCard
+import podbor.screen.Subscriptions
 import podbor.screen.Support
 import podbor.app.sub.wordsOf
 
@@ -37,7 +39,15 @@ import podbor.app.sub.wordsOf
  * ([onSupport]). Минималистично, как главный.
  */
 @Composable
-fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -> Unit, onSupport: (String) -> Unit) {
+fun SubscriptionScreen(
+    error: InputError?,
+    onInput: (String) -> Unit,
+    onQr: () -> Unit,
+    onSupport: (String) -> Unit,
+    subscriptions: Subscriptions = Subscriptions.None,
+    nowMs: Long = 0,
+    onCard: (SubscriptionCard) -> Unit = {},
+) {
     val context = LocalContext.current
     Column(
         Modifier
@@ -77,6 +87,7 @@ fun SubscriptionScreen(error: InputError?, onInput: (String) -> Unit, onQr: () -
                 }
             }
         }
+        SubscriptionList(subscriptions, nowMs, onCard, Modifier.weight(1f))
     }
 }
 

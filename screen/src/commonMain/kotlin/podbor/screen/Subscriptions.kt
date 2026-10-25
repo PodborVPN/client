@@ -63,6 +63,14 @@ sealed interface SubSheet {
     data class Ended(val card: SubscriptionCard, val support: Support) : SubSheet
 }
 
+/** Чья шторка: карточка подписки на любом шаге. */
+fun SubSheet.card(): SubscriptionCard = when (this) {
+    is SubSheet.Card -> card
+    is SubSheet.Confirm -> card
+    is SubSheet.Picking -> card
+    is SubSheet.Ended -> card
+}
+
 /** Выбор подписки после её обновления: можно ехать; провайдер говорит, что она кончилась ([Expired.support] — к нему). */
 sealed interface Picked {
     data object Ready : Picked
