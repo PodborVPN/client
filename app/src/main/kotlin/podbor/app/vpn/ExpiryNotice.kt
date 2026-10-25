@@ -6,11 +6,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import podbor.app.sub.Reminded
 import podbor.app.sub.SubscriptionStore
+import podbor.app.sub.current
 import podbor.app.sub.expiryWords
 import podbor.app.sub.reminderDay
 import podbor.app.ui.MainActivity
@@ -21,6 +23,9 @@ private const val CHANNEL = "subscription"
 private const val NOTIFICATION_ID = 2
 private const val EXPIRE_S = "expire_s"
 private const val DAY = "day"
+
+/** Экран Podbor с этим флагом открывает страницу подписок — «Сменить» из уведомления о сроке. */
+const val EXTRA_CHOOSE_SUBSCRIPTION = "choose_subscription"
 
 /**
  * Напоминание о конце срока подписки уведомлением ([reminderDay]: за 3, 2, 1 и 0 дней, по разу на день срока). Тап —
@@ -35,7 +40,8 @@ class ExpiryNotice(
     private val prefs by lazy { context.getSharedPreferences("expiry", Context.MODE_PRIVATE) }
 
     suspend fun check(): Unit = withContext(Dispatchers.IO) {
-        val p = subscriptions.current()?.provider ?: return@withContext
+        val shelf = subscriptions.load()
+        val p = shelf.current()?.provider ?: return@withContext
         val expireS = p.expireS ?: return@withContext
         val last = prefs.getLong(EXPIRE_S, -1).takeIf { it >= 0 }?.let { Reminded(it, prefs.getInt(DAY, -1)) }
         val day = reminderDay(expireS, nowMs(), ZoneId.systemDefault(), last) ?: return@withContext
@@ -48,16 +54,20 @@ class ExpiryNotice(
             Support.None -> Intent(context, MainActivity::class.java)
         }
         val tap = PendingIntent.getActivity(context, 1, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        nm.notify(
-            NOTIFICATION_ID,
-            Notification.Builder(context, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setContentIntent(tap)
-                .setAutoCancel(true)
-                .build(),
-        )
+        val builder = Notification.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .addAction(Notification.Action.Builder(null as Icon?, "Продлить", tap).build())
+        // Есть на что сменить — страница подписок; одна подписка — менять не на что.
+        if (shelf.items.size > 1) {
+            val choose = Intent(context, MainActivity::class.java).putExtra(EXTRA_CHOOSE_SUBSCRIPTION, true)
+            val change = PendingIntent.getActivity(context, 2, choose, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            builder.addAction(Notification.Action.Builder(null as Icon?, "Сменить", change).build())
+        }
+        nm.notify(NOTIFICATION_ID, builder.build())
         prefs.edit().putLong(EXPIRE_S, expireS).putInt(DAY, day).apply()
     }
 }

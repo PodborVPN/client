@@ -14,6 +14,8 @@ import podbor.app.sub.ProviderInfo
 import podbor.app.sub.Subscription
 import podbor.app.sub.SubscriptionStore
 import podbor.app.vpn.ExpiryNotice
+import podbor.app.vpn.EXTRA_CHOOSE_SUBSCRIPTION
+import podbor.app.sub.Shelf
 import java.nio.file.Files
 
 /** Уведомление о конце срока: один раз на день срока, тап — поддержка провайдера. Robolectric, без телефона. */
@@ -42,6 +44,30 @@ class ExpiryNoticeTest {
         nm.cancelAll()
         notice.check()
         assertEquals(0, shadowOf(nm).allNotifications.size)
+    }
+
+    /** Подписка, что кончается через два дня; [others] — сколько ещё подписок в списке. */
+    private fun expiring(others: Int): SubscriptionStore = runBlocking {
+        val now = System.currentTimeMillis()
+        val store = SubscriptionStore(Files.createTempDirectory("expiry").toFile())
+        val current = Subscription("https://a.b/s", "vless://a", id = "A", provider = ProviderInfo(expireS = now / 1000 + 2 * 86_400 + 3_600))
+        store.save(Shelf(listOf(current) + List(others) { Subscription(null, "vless://$it", id = "o$it") }, currentId = "A"))
+        store
+    }
+
+    @Test
+    fun withOtherSubscriptionsOffersRenewAndChange() = runBlocking {
+        ExpiryNotice(app, expiring(others = 1)) { System.currentTimeMillis() }.check()
+        val n = shadowOf(nm).allNotifications.single()
+        assertEquals(listOf("Продлить", "Сменить"), n.actions.map { it.title.toString() })
+        val change = shadowOf(n.actions[1].actionIntent).savedIntent
+        assertEquals(true, change.getBooleanExtra(EXTRA_CHOOSE_SUBSCRIPTION, false))
+    }
+
+    @Test
+    fun singleSubscriptionOffersOnlyRenew() = runBlocking {
+        ExpiryNotice(app, expiring(others = 0)) { System.currentTimeMillis() }.check()
+        assertEquals(listOf("Продлить"), shadowOf(nm).allNotifications.single().actions.map { it.title.toString() })
     }
 
     @Test

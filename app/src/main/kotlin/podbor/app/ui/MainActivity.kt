@@ -58,6 +58,7 @@ import podbor.app.share.writeShare
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
 import podbor.app.sub.subscriptionsOf
+import podbor.app.vpn.EXTRA_CHOOSE_SUBSCRIPTION
 import podbor.app.vpn.PodborVpnService
 import podbor.app.net.DnsFixes
 import podbor.core.networkKey
@@ -208,6 +209,7 @@ class MainActivity : FragmentActivity() {
         showPages()
         bridge()
         if (savedInstanceState == null) {
+            choose(intent)
             opening("холодный старт")
             shared(intent)
         } else {
@@ -215,10 +217,16 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    /** singleTask: «поделиться → Podbor» при открытом экране приходит сюда. */
+    /** singleTask: «поделиться → Podbor» и «Сменить» из уведомления при открытом экране приходят сюда. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        choose(intent)
         shared(intent)
+    }
+
+    /** «Сменить» из уведомления о сроке — сразу страница подписок. */
+    private fun choose(intent: Intent) {
+        if (intent.getBooleanExtra(EXTRA_CHOOSE_SUBSCRIPTION, false)) vm.changeSubscription()
     }
 
     /** Возврат из открытого вопроса (окно системы, шторка) — не новое открытие. */
