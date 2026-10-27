@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.1](https://github.com/PodborVPN/client/compare/v0.15.0...v0.15.1) (2026-10-25)
+
+
+### Исправлено
+
+* подписки — переанализ без сети по сохранённому тексту, выбор удалённой не трогает VPN, давность прерванного анализа ([7107d78](https://github.com/PodborVPN/client/commit/7107d78f46fe567f0db3245a02ae86e29d0f59bc))
+* подписки — после выбора «через VPN» сразу её счёт, а не прежней ([828744b](https://github.com/PodborVPN/client/commit/828744b280fd789f45f68d3c6b2107a27f94a90d))
+* подписки — формат файла закреплён, повторная вставка хранит отметку анализа, список — по последнему использованию ([956c9fd](https://github.com/PodborVPN/client/commit/956c9fd20a0ac9e99f1aa6f7e562d969e58786d9))
+* уведомление о сроке снимается и по кнопкам «Продлить» и «Сменить» ([0b49c86](https://github.com/PodborVPN/client/commit/0b49c866dfbfb6aee339f0401ce06f12ae662507))
+* экран — результат выбора подписки не всплывает над смахнутой шторкой ([38476e5](https://github.com/PodborVPN/client/commit/38476e52d06455095193047f3b6b142eeb98d5fb))
+
+
+### Быстрее
+
+* APK втрое меньше — R8 и сжатая библиотека Xray (52,7 → 21,5 МБ) ([af45bbb](https://github.com/PodborVPN/client/commit/af45bbbadb68ae7f010f3e511dce38c26f04559b))
+
 ## [0.15.0](https://github.com/PodborVPN/client/compare/v0.14.0...v0.15.0) (2026-10-25)
 
 
