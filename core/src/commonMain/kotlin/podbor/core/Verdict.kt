@@ -13,6 +13,7 @@ sealed interface Verdict {
     @Serializable data class TelegramDc(val ok: Int) : Verdict
     /** Рукопожатие прошло; cdnOk/wwwOk — ответили ли CDN и www Инстаграма. */
     @Serializable data class Instagram(val cdnOk: Boolean, val wwwOk: Boolean) : Verdict
+    @Serializable data class Https(val answered: Boolean) : Verdict
 }
 
 @Serializable
@@ -23,5 +24,6 @@ fun Verdict.kind(): VerdictKind = when (this) {
     Verdict.Unreachable -> VerdictKind.Unreachable
     Verdict.TlsSilence -> VerdictKind.TlsSilence
     is Verdict.TelegramDc -> if (ok >= 2) VerdictKind.Fits else VerdictKind.ServiceDead
+    is Verdict.Https -> if (answered) VerdictKind.Fits else VerdictKind.ServiceDead
     is Verdict.Instagram -> if (cdnOk && wwwOk) VerdictKind.Fits else VerdictKind.ServiceDead
 }

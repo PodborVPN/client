@@ -22,7 +22,12 @@ class TraceExit(
     private val url: String = "https://www.cloudflare.com/cdn-cgi/trace",
     private val deadlineMs: Int = PROBE_DEADLINE_MS.toInt(),
 ) {
-    suspend fun measure(port: Int): Exit = coroutineScope {
+    suspend fun measure(port: Int): Exit = body(port)?.let(::exitOfTrace) ?: Exit.Unknown
+
+    /** Сетевая проба: геолокация в ответе может отсутствовать. */
+    suspend fun responds(port: Int): Boolean = body(port)?.let { traceFields(it)["ip"]?.let(::exitIpOf) } != null
+
+    private suspend fun body(port: Int): String? = coroutineScope {
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port))
         val connection = URI.create(url).toURL().openConnection(proxy) as HttpURLConnection
         connection.connectTimeout = deadlineMs
@@ -33,7 +38,7 @@ class TraceExit(
         try {
             Either.catch {
                 runInterruptible(Dispatchers.IO) {
-                    if (connection.responseCode != 200) Exit.Unknown
+                    if (connection.responseCode != 200) null
                     else connection.inputStream.use { stream ->
                         val out = ByteArrayOutputStream()
                         val buffer = ByteArray(512)
@@ -42,10 +47,10 @@ class TraceExit(
                             if (read < 0) break
                             out.write(buffer, 0, read)
                         }
-                        if (out.size() > 4096) Exit.Unknown else exitOfTrace(out.toString("UTF-8"))
+                        if (out.size() > 4096) null else out.toString("UTF-8")
                     }
                 }
-            }.getOrElse { Exit.Unknown }.also { currentCoroutineContext().ensureActive() }
+            }.getOrElse { null }.also { currentCoroutineContext().ensureActive() }
         } finally {
             watchdog.cancel()
             connection.disconnect()
@@ -54,8 +59,14 @@ class TraceExit(
 }
 
 internal fun exitOfTrace(body: String): Exit {
-    val fields = body.lineSequence().map { it.trim().split('=', limit = 2) }.filter { it.size == 2 }.associate { it[0] to it[1] }
+    val fields = traceFields(body)
     val ip = fields["ip"]?.let(::exitIpOf) ?: return Exit.Unknown
     val country = fields["loc"] ?: return Exit.Unknown
     return if (knownCountry(country) && country != "XX" && country != "ZZ") Exit.At(ip, country) else Exit.Unknown
 }
+
+
+private fun traceFields(body: String): Map<String, String> = body.lineSequence()
+    .map { it.trim().split('=', limit = 2) }
+    .filter { it.size == 2 }
+    .associate { it[0] to it[1] }

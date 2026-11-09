@@ -66,7 +66,7 @@ import podbor.app.sub.FilePassportStore
 import podbor.app.sub.FileTrafficBookStore
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
-import podbor.core.HARDCODED_SERVICES
+import podbor.core.VPN_SERVICES
 import podbor.core.Passport
 import podbor.core.of
 import podbor.core.subscriptionFacts
@@ -131,7 +131,7 @@ class MainActivity : FragmentActivity() {
         val salt = installSalt(noBackupFilesDir)
         subscriptionsOf(
             store.load(), System.currentTimeMillis(),
-            factsOf = { s -> subscriptionFacts(s.servers.toSet(), passport, memory, os, HARDCODED_SERVICES.toList()) },
+            factsOf = { s -> subscriptionFacts(s.servers.toSet(), passport, memory, os, VPN_SERVICES.toList()) },
             viaOf = { s -> book.of(subscriptionKey(s, salt)) },
         )
     }

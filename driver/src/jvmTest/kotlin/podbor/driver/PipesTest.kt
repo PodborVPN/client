@@ -59,6 +59,7 @@ private fun prober(
     if (spec == silent) awaitCancellation()
     delay(delayMs(spec, server.id))
     when (spec) {
+        ProbeSpec.Https -> Verdict.Https(false)
         ProbeSpec.Telegram -> classify(if (server.id in tg) 3 else 0, Reach.Up)
         ProbeSpec.Instagram -> Verdict.Instagram(cdnOk = server.id in insta, wwwOk = server.id in insta)
     }

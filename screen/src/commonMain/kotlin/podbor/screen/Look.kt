@@ -8,7 +8,8 @@ import podbor.core.Relocation
 import podbor.core.CardStatus
 import podbor.core.ExitRef
 import podbor.core.ExitState
-import podbor.core.HARDCODED_SERVICES
+import podbor.core.VPN_SERVICES
+import podbor.core.Web
 import podbor.core.NetworkCard
 import podbor.core.PairPulse
 import podbor.core.PulseView
@@ -94,7 +95,7 @@ fun rowsOf(
     board: Board,
     link: Link,
     origin: Map<ServiceId, ExitOrigin>,
-    services: Set<Service> = HARDCODED_SERVICES,
+    services: Set<Service> = VPN_SERVICES,
     pulse: PulseView = PulseView.Empty,
 ): List<ServiceRow> = when (link) {
     Link.Starting -> listOf(plain("поднимаю VPN…"))
@@ -120,7 +121,7 @@ fun rowsOf(
             val from = origin.getOrElse(card.service) { ExitOrigin.Chosen }
             val pair = pulse.pairs.getOrElse(card.service) { PairPulse.Unseen }
             rowOf(card, services.find { it.id == card.service }, from, repeats)
-                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = miniOf(card.status, from, pair), service = card.service)
+                .copy(stopwatch = card.stopwatch, pulse = pulseOf(card.status, pair), mini = if (card.service == Web.id) webMini(card.status, from, pair) else miniOf(card.status, from, pair), service = card.service)
         }
     }
 }
@@ -276,4 +277,13 @@ fun networkTraffic(pulse: PulseView, card: NetworkCard): String? = when (val t =
 fun vpnTraffic(pulse: PulseView): String? = when (val t = pulse.vpn) {
     null -> null
     else -> trafficLine(t.total)
+}
+
+
+private fun webMini(status: CardStatus, origin: ExitOrigin, pulse: PairPulse): Note = when (status) {
+    is CardStatus.Found, is CardStatus.Works -> Note("HTTPS отвечает", Tone.Ok)
+    is CardStatus.Checking, CardStatus.Searching -> Note("проверяю HTTPS…", Tone.Warn)
+    is CardStatus.Dead, is CardStatus.NotFound -> Note("не нашёл выход для веба", Tone.Fail)
+    CardStatus.Unknown -> Note("HTTPS не проверен", Tone.Muted)
+    is CardStatus.Unlisted -> miniOf(status, origin, pulse)
 }

@@ -27,7 +27,7 @@ data class Board(val network: NetworkCard, val button: Button, val cards: List<S
 fun board(services: Set<Service>, screens: Map<ServiceId, Screen>): Board {
     val sorted = services.sortedBy { it.id.id }
     val own = sorted.mapNotNull { screens[it.id] }
-    val shown = listOfNotNull(screens[GENERAL_FOLLOWS]) + own
+    val shown = listOfNotNull(screens[generalServiceOf(services)]) + own
     val network = if (shown.isEmpty()) NetworkCard.Measuring(OsNetwork.None) else shown.first().network
     return Board(network, buttonOf(own.map { it.button }), sorted.map { cardOf(it, screens) }, overall(own.map { it.stopwatch }))
 }

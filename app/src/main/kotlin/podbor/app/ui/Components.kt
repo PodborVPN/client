@@ -155,6 +155,7 @@ internal fun PodborSheet(
 internal fun glyphOf(service: ServiceId): Int? = when (service.id) {
     "tg" -> R.drawable.ic_svc_telegram
     "insta" -> R.drawable.ic_svc_instagram
+    "web" -> R.drawable.ic_globe
     else -> null
 }
 

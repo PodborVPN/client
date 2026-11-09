@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import podbor.core.ChosenOn
-import podbor.core.GENERAL_FOLLOWS
+import podbor.core.generalServiceOf
+import podbor.core.Web
 import podbor.core.OsNetwork
 import podbor.core.ServerId
 import podbor.core.Service
@@ -51,6 +52,7 @@ class Exits(
     private val services: Set<Service>,
     private val tagOf: (ServerId, ServiceId) -> String = { server, _ -> server.tag },
 ) {
+    private val generalService = generalServiceOf(services)
     private val lock = Mutex()
     private val current = MutableStateFlow(ExitsState(general = Route.Free, pinned = emptyMap()))
     val state: StateFlow<ExitsState> = current.asStateFlow()
@@ -61,11 +63,19 @@ class Exits(
      */
     suspend fun make(service: ServiceId, server: ServerId, on: ChosenOn): Either<EngineError, Unit> = lock.withLock {
         either {
-            api.setExit(balancerOf(service), tagOf(server, service)).bind()
-            current.update { it.copy(pinned = it.pinned + (service to Pin(server, on.withoutTower()))) }
-            if (service == GENERAL_FOLLOWS) {
-                api.setExit(EXIT_BALANCER, server.tag).bind()
-                current.update { it.copy(general = Route.Fixed(server)) }
+            val pin = Pin(server, on.withoutTower())
+            if (service == Web.id) {
+                api.setExit(EXIT_BALANCER, tagOf(server, service)).bind()
+                current.update { it.copy(general = Route.Fixed(server), pinned = it.pinned + (service to pin)) }
+            } else {
+                api.setExit(balancerOf(service), tagOf(server, service)).bind()
+                current.update { it.copy(pinned = it.pinned + (service to pin)) }
+                if (service == generalService) {
+                    api.setExit(EXIT_BALANCER, server.tag).bind()
+                    current.update { it.copy(general = Route.Fixed(server)) }
+                }
+            }
+            if (service == generalService) {
                 unpinned().forEach { api.setExit(balancerOf(it), tagOf(server, it)).bind() }
             }
         }
@@ -84,7 +94,7 @@ class Exits(
     /** Где подобран выход, куда сейчас указывает балансер сервиса: свой — у своего закрепления, иначе — у общего. */
     fun chosenOn(service: ServiceId): ChosenOn = state.value.let { s ->
         val own = s.pinned[service]
-        val general = s.pinned[GENERAL_FOLLOWS]
+        val general = s.pinned[generalService]
         when {
             own != null -> own.on
             s.general is Route.Fixed && general != null -> general.on
@@ -98,12 +108,12 @@ class Exits(
      */
     suspend fun clear(service: ServiceId): Either<EngineError, Unit> = lock.withLock {
         either {
-            current.update { it.copy(pinned = it.pinned - service) }
-            val moved = if (service == GENERAL_FOLLOWS) {
+            val moved = if (service == generalService) {
                 api.clearExit(EXIT_BALANCER).bind()
-                current.update { it.copy(general = Route.Free) }
-                (unpinned() + service).distinct().sortedBy { it.id }
+                current.update { it.copy(general = Route.Free, pinned = it.pinned - service) }
+                (unpinned() + service).distinct().filterNot { it == Web.id }.sortedBy { it.id }
             } else {
+                current.update { it.copy(pinned = it.pinned - service) }
                 listOf(service)
             }
             val general = state.value.general

@@ -1,7 +1,7 @@
 package podbor.driver
 
 import podbor.core.ExitState
-import podbor.core.HARDCODED_SERVICES
+import podbor.core.VPN_SERVICES
 import podbor.core.HistoryEvent
 import podbor.core.Letter
 import podbor.core.Mood
@@ -22,7 +22,7 @@ import podbor.core.render
  * влезает в шторку. Незаконченный прогон (замер ещё идёт или оборван) — не событие.
  */
 fun historyOf(rows: List<Row>, service: ServiceId, limit: Int): List<HistoryEvent> =
-    when (val svc = HARDCODED_SERVICES.firstOrNull { it.id == service }) {
+    when (val svc = VPN_SERVICES.firstOrNull { it.id == service }) {
         null -> emptyList()
         else -> historyOf(rows, svc, limit)
     }

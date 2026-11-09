@@ -60,7 +60,7 @@ import podbor.app.xray.WhiteHolder
 import podbor.app.xray.geoDir
 import podbor.app.xray.registerOwnerFinder
 import podbor.core.Board
-import podbor.core.HARDCODED_SERVICES
+import podbor.core.VPN_SERVICES
 import podbor.core.ScanBoard
 import podbor.core.ServerId
 import podbor.core.ServiceId
@@ -243,8 +243,9 @@ class PodborVpnService : VpnService(), ServicePort {
     private val desk by lazy {
         Desk(
             host = host,
+            services = VPN_SERVICES,
             os = { Telephony(this).osNetwork(underlying.transport()) },
-            detect = { os, onBoard -> detectLine(line, clock, tape, os, HARDCODED_SERVICES, onBoard) },
+            detect = { os, onBoard -> detectLine(line, clock, tape, os, VPN_SERVICES, onBoard) },
             xray = xray,
             scan = ScanPorts(
                 download = { url -> underlying.download(url, device) },
@@ -529,7 +530,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 val facts = passports.load()?.servers.orEmpty()
                 s.live.driver.exits.state.map { exits ->
                     val general = exits.general.serverOrNull()
-                    val routes = HARDCODED_SERVICES.mapNotNull { service ->
+                    val routes = VPN_SERVICES.mapNotNull { service ->
                         val id = exits.pinned[service.id]?.server ?: general
                         val server = servers[id] ?: return@mapNotNull null
                         val country = (facts[server.key]?.exit as? Exit.At)?.country.orEmpty()
@@ -557,8 +558,8 @@ class PodborVpnService : VpnService(), ServicePort {
         val opts = ConfigOpts(
             assetDir = geoDir(this@PodborVpnService).absolutePath,
             tun = tun,
-            services = HARDCODED_SERVICES,
-            uids = HARDCODED_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
+            services = VPN_SERVICES,
+            uids = VPN_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
             socks = SocksIn.Locked(LOCAL_SOCKS),
             api = ApiListen.Unix(apiSocket.path),
             // Журнал соединений — только у сессии с TUN: там ходят приложения; лог прошлой сессии свёрнут — с нуля.
@@ -570,12 +571,16 @@ class PodborVpnService : VpnService(), ServicePort {
         )
         // Загрузка базы не захватывается снимком: поздно готовая база доступна следующим измерениям.
         val fallback = TraceExit()
+        val webProbe = TraceExit("https://1.1.1.1/cdn-cgi/trace")
         val channel = xrayChannel { UdsChannelBuilder.forPath(apiSocket.path, LocalSocketAddress.Namespace.FILESYSTEM).build() }
         val driver = Driver(
             converter = LibXrayConverter(LibXrayInvoke),
             engine = LibXrayEngine(LibXrayInvoke).reporting { log("Xray остановлен") },
             api = xrayApiOn(channel).reporting { log("API Xray: $it") },
-            prober = ProberImpl(TelegramProbeImpl(auth = LOCAL_SOCKS), InstagramProbeImpl(), SocketTcpReach()),
+            prober = ProberImpl(
+                TelegramProbeImpl(auth = LOCAL_SOCKS), InstagramProbeImpl(), SocketTcpReach(),
+                https = webProbe::responds,
+            ),
             exitProbe = ExitProbeImpl(),
             gate = EndpointGate(),
             resolver = underlying.resolver,
@@ -655,7 +660,7 @@ class PodborVpnService : VpnService(), ServicePort {
                         context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
                         watching = watching,
                         effective = {
-                            HARDCODED_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull()?.let { s.id to tagOf(it, s.id) } }.toMap()
+                            VPN_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull()?.let { s.id to tagOf(it, s.id) } }.toMap()
                         },
                         pulse = pulseState,
                         tape = tape,

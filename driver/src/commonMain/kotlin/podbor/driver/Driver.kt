@@ -29,7 +29,10 @@ import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.ExitFilter
 import podbor.core.knownCountry
-import podbor.core.GENERAL_FOLLOWS
+import podbor.core.generalServiceOf
+import podbor.core.Web
+import podbor.core.kind
+import podbor.core.VerdictKind
 import podbor.core.LINE_FRESH_MS
 import podbor.core.Letter
 import podbor.core.Memory
@@ -74,7 +77,10 @@ private const val OPEN_TIMEOUT_MS = 10_000L
 const val SCAN_TIMEOUT_MS = Long.MAX_VALUE
 
 /** Порядок сервисов в прогонах: общий выход (GENERAL_FOLLOWS) первым, прочие — по id. */
-private val SERVICE_ORDER = compareBy<Service>({ it.id != GENERAL_FOLLOWS }, { it.id.id })
+private fun serviceOrder(services: Set<Service>): Comparator<Service> {
+    val general = generalServiceOf(services)
+    return compareBy({ it.id != general }, { it.id.id })
+}
 
 /** Сводный экран при открытии и раунды линии, которые можно отдать следующему нажатию. */
 data class Opening(val board: Board, val prior: Prior)
@@ -249,7 +255,7 @@ class Driver(
         sniWhite: Set<String> = emptySet(),
         onBoard: (ScanBoard) -> Unit = {},
     ): ScanBoard = coroutineScope {
-        val ordered = services.sortedWith(SERVICE_ORDER)
+        val ordered = services.sortedWith(serviceOrder(services))
         val scan = Letter.Scan(clock.nowMs(), os, warm.servers, ordered.map { it.id }, hints, prior, store.loadMemory(), sniWhite, confirmFits = true)
         val lines = Job(coroutineContext[Job])
         val hub = LineHub(line, clock, CoroutineScope(coroutineContext + lines))
@@ -356,6 +362,12 @@ class Driver(
                 .mapNotNull { success -> warm.servers.find { it.key == success.serverKey } }
                 .firstOrNull { !memory.isBlocked(it.endpoint, now) }
             if (server == null) return@mapNotNull null
+            if (service.id == Web.id) {
+                val verdict = gate.withEndpoint(server.endpoint) {
+                    prober.probe(service.probe, server, socksPortOf(server.id, warm.servers, opts))
+                }
+                if (verdict.kind() != VerdictKind.Fits) return@mapNotNull null
+            }
             exits.make(service.id, server.id, ChosenOn.Network(os)).fold(
                 { e -> tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: setExit $e")); null },
                 { tape.write(noteLine("recall ${service.id.id} ${server.id.tag}: из памяти сети")); service.id to server },
@@ -411,15 +423,16 @@ class Driver(
         val lines = Job(coroutineContext[Job])
         val hub = LineHub(line, clock, CoroutineScope(coroutineContext + lines))
         val lead = CompletableDeferred<Unit>()
-        if (services.none { it.id == GENERAL_FOLLOWS }) lead.complete(Unit)
-        services.sortedWith(SERVICE_ORDER)
+        val generalService = generalServiceOf(opts.services)
+        if (services.none { it.id == generalService }) lead.complete(Unit)
+        services.sortedWith(serviceOrder(services))
             .map { s -> Triple(s, snapshot(s.id), Channel<Letter>(Channel.UNLIMITED).also(hub::subscribe)) }
             .map { (s, snap, inbox) ->
                 async {
                     try {
                         s.id to pipe(s, snap, hub, inbox, lead)
                     } finally {
-                        if (s.id == GENERAL_FOLLOWS) lead.complete(Unit)
+                        if (s.id == generalService) lead.complete(Unit)
                     }
                 }
             }
@@ -440,7 +453,7 @@ class Driver(
         lead: CompletableDeferred<Unit>,
     ): suspend CoroutineScope.(Deed, SendChannel<Letter>) -> Unit {
         val byId = servers.associateBy { it.id }
-        val general = service.id == GENERAL_FOLLOWS
+        val general = service.id == generalServiceOf(opts.services)
         return { deed, inbox ->
             when (deed) {
                 Deed.ProbeLine -> hub.request()
@@ -515,8 +528,8 @@ suspend fun detectLine(
     onBoard: (Board) -> Unit = {},
 ): Opening {
     val opened = Letter.Opened(clock.nowMs(), os, Vpn.Off)
-    fun boardOf(screen: Screen) = board(services, mapOf(GENERAL_FOLLOWS to screen))
-    val run = act(opened, OpenMachine(opened, emptyList(), GENERAL_FOLLOWS), OPEN_TIMEOUT_MS, { deed, inbox ->
+    fun boardOf(screen: Screen) = board(services, mapOf(generalServiceOf(services) to screen))
+    val run = act(opened, OpenMachine(opened, emptyList(), generalServiceOf(services)), OPEN_TIMEOUT_MS, { deed, inbox ->
         when (deed) {
             Deed.ProbeLine -> launch { inbox.send(Letter.LineObserved(clock.nowMs(), line.observe())) }
             // Машина с Vpn.Off других дел не даёт: пробовать и выставлять нечего.

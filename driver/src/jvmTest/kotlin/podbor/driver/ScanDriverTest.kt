@@ -45,6 +45,7 @@ private fun scanProber(hang: String? = null) = Prober { spec, server, _ ->
     val host = server.endpoint.host
     if (host == hang) awaitCancellation()
     when (spec) {
+        ProbeSpec.Https -> Verdict.Https(false)
         ProbeSpec.Telegram -> classify(if (host in setOf("10.0.0.1", "10.0.0.2")) 3 else 0, Reach.Up)
         ProbeSpec.Instagram -> Verdict.Instagram(cdnOk = host == "10.0.0.1", wwwOk = host == "10.0.0.1")
     }

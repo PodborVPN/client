@@ -6,6 +6,7 @@ import kotlinx.serialization.json.jsonObject
 import podbor.core.Server
 import podbor.core.Service
 import podbor.core.ServiceId
+import podbor.core.Web
 import podbor.core.ServerId
 
 /**
@@ -215,7 +216,7 @@ private fun rest(servers: List<Server>): Target = if (servers.isEmpty()) Target.
 
 private fun balancersOf(servers: List<Server>, opts: ConfigOpts): List<BalancerConf>? =
     if (servers.isEmpty()) null
-    else listOf(BalancerConf(EXIT_BALANCER, servers.map { it.id.tag })) +
+    else listOf(BalancerConf(EXIT_BALANCER, if (opts.services.any { it.id == Web.id }) listOf(BLOCK) else servers.map { it.id.tag })) +
         sortedServices(opts).map { svc -> BalancerConf(balancerOf(svc.id), servers.map { exitTagOf(opts)(it.id, svc.id) }) }
 
 private fun sortedServices(opts: ConfigOpts): List<Service> = opts.services.sortedBy { it.id.id }

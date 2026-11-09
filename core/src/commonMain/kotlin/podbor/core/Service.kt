@@ -18,6 +18,7 @@ data class Match(val domains: Set<String>, val ips: Set<String>, val apps: Set<S
 sealed interface ProbeSpec {
     data object Telegram : ProbeSpec
     data object Instagram : ProbeSpec
+    data object Https : ProbeSpec
 }
 
 /** label — в карточке («TG»), title — в словах экрана («Телега»), titleAcc — он же в винительном («проверяю Телегу…»). */
@@ -92,3 +93,12 @@ val HARDCODED_SERVICES: Set<Service> = setOf(Telegram, Instagram)
 
 /** Чью сеть показывает общая карточка «сеть»: сервис, за которым идёт общий выход (как в Лентах v1). */
 val GENERAL_FOLLOWS: ServiceId = Telegram.id
+
+
+val Web = service(ServiceId("web"), "Общий выход", "HTTPS", probe = ProbeSpec.Https)
+
+val VPN_SERVICES: Set<Service> = HARDCODED_SERVICES + Web
+
+/** Конфиги с отдельной пробой назначают общий выход по HTTPS. */
+fun generalServiceOf(services: Set<Service>): ServiceId =
+    if (services.any { it.id == Web.id }) Web.id else GENERAL_FOLLOWS

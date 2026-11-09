@@ -60,7 +60,7 @@ import podbor.screen.tagOf
 import podbor.core.Board
 import podbor.core.Button
 import podbor.core.CardStatus
-import podbor.core.GENERAL_FOLLOWS
+import podbor.core.generalServiceOf
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.OsNetwork
 import podbor.core.Passport
@@ -597,7 +597,7 @@ class Desk(
         val dead = board.cards.filter { it.status is CardStatus.Dead }.map { it.service }.toSet()
         val drop = recalled().filter { it in dead }
         val general = live.driver.exits.state.value.general.serverOrNull()
-        if (GENERAL_FOLLOWS in drop && general != null) {
+        if (generalServiceOf(services) in drop && general != null) {
             board.cards
                 .filter { it.status is CardStatus.Works && !live.driver.exits.pinned(it.service) }
                 .forEach { live.driver.pinExit(it.service, general) }

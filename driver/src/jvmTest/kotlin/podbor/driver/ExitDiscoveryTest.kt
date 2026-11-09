@@ -7,6 +7,16 @@ import kotlinx.coroutines.runBlocking
 import podbor.core.Exit
 
 class ExitDiscoveryTest : FunSpec({
+    test("сетевой ответ HTTPS не требует страны выхода") {
+        val body = "ip=203.0.113.8\nloc=XX\n"
+        val reply = "HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
+        fakeExitServer(reply).use { socks ->
+            val trace = TraceExit("http://example.com/cdn-cgi/trace")
+            runBlocking { trace.responds(socks.localPort) } shouldBe true
+            runBlocking { trace.measure(socks.localPort) } shouldBe Exit.Unknown
+        }
+    }
+
     test("запасное измерение идёт через SOCKS кандидата и разбирает HTTP-ответ") {
         val body = "ip=203.0.113.8\nloc=NL\n"
         fakeExitServer("HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body").use { socks ->

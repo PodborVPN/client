@@ -3,6 +3,7 @@ package podbor.driver
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import podbor.core.ProbeSpec
+import podbor.core.Reach
 import podbor.core.Server
 import podbor.core.Verdict
 
@@ -14,6 +15,7 @@ class ProberImpl(
     private val telegram: TelegramProbe,
     private val instagram: InstagramProbe,
     private val reach: TcpReach,
+    private val https: suspend (Int) -> Boolean = { false },
 ) : Prober {
     override suspend fun probe(spec: ProbeSpec, server: Server, socksPort: Int): Verdict = coroutineScope {
         val tcp = async { reach.reach(server.endpoint, PROBE_DEADLINE_MS) }
@@ -21,6 +23,10 @@ class ProberImpl(
             ProbeSpec.Telegram -> {
                 val answered = async { telegram.probe(socksPort) }
                 classify(answered.await(), tcp.await())
+            }
+            ProbeSpec.Https -> {
+                val answered = async { https(socksPort) }.await()
+                if (answered || tcp.await() == Reach.Up) Verdict.Https(answered) else Verdict.Unreachable
             }
             ProbeSpec.Instagram -> {
                 val answer = async { instagram.probe(socksPort) }
