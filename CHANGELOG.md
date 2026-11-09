@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.0](https://github.com/PodborVPN/client/compare/v0.15.1...v0.16.0) (2026-11-09)
+
+
+### Новое
+
+* подобрать общий выход по пробе HTTPS ([54776cb](https://github.com/PodborVPN/client/commit/54776cbb7e6c797276279662a77790018d6ada95))
+* фильтр стран выхода VPN ([2dd6ff9](https://github.com/PodborVPN/client/commit/2dd6ff9f94c61d9ab4bb44178d1065a13811745f))
+
 ## [0.15.1](https://github.com/PodborVPN/client/compare/v0.15.0...v0.15.1) (2026-10-25)
 
 
