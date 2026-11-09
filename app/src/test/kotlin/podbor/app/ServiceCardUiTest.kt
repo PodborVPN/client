@@ -59,6 +59,19 @@ class ServiceCardUiTest {
     )
 
     @Test
+    fun showsMeasuredRouteAndPodborNumberInsteadOfProviderLabel() {
+        val label = "Марс " + '#' + 999
+        val route = podbor.screen.ServerRoute(podbor.core.ServerId("s042"), podbor.core.Entry.Ru, "AE")
+        compose.setContent {
+            PodborTheme {
+                ServiceLine(rows.first().copy(name = label), onTap = {}, route = route)
+            }
+        }
+        compose.onNodeWithText("🇷🇺 → 🇦🇪  " + '#' + 42).assertExists()
+        compose.onNodeWithText(label).assertDoesNotExist()
+    }
+
+    @Test
     fun sameHeightInEveryState() {
         var row by mutableStateOf(rows.first())
         compose.setContent { PodborTheme { ServiceLine(row, onTap = {}) } }

@@ -85,6 +85,10 @@ import podbor.screen.rowsOf
 import podbor.screen.vpnTraffic
 import podbor.screen.cardTime
 import podbor.screen.ExitOrigin
+import podbor.screen.ServerRoute
+import podbor.app.ui.country.placeOf
+import podbor.app.ui.country.entryCode
+import podbor.app.ui.country.flagOf
 
 internal fun colorOf(t: Tone): Color = when (t) {
     Tone.Ok -> PodborColors.Ok
@@ -119,6 +123,10 @@ fun MainScreen(
     pulse: PulseView = PulseView.Empty,
     /** История строки по её метке — для шторки ([ServiceSheet]); свежие сверху. */
     history: suspend (String) -> List<HistoryEvent> = { emptyList() },
+    countries: podbor.screen.CountrySelection = podbor.screen.CountrySelection(),
+    onCountries: (podbor.core.ExitFilter) -> Unit = {},
+    exitCountry: suspend (ServiceId) -> String? = { null },
+    routes: Map<ServiceId, ServerRoute> = emptyMap(),
 ) {
     Box(
         Modifier
@@ -136,7 +144,8 @@ fun MainScreen(
             PressButton(faceOf(board, link), onPress, onOff, onOn)
             TierWithTraffic("ТЕКУЩИЙ VPN", vpnTraffic(pulse))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry, history)
+                CountryFilterNotice(countries)
+                VpnCard(rowsOf(board, link, origin, pulse = pulse), onRetry, history, exitCountry, routes)
                 when (val s = supportWhenStuck(board.button, supportOf(subscription))) {
                     is Support.Link -> StuckSupport { onSupport(s.url) }
                     Support.None -> Unit
@@ -148,6 +157,7 @@ fun MainScreen(
             }
             ShareLink(shareNote, onShare, onDonate)
         }
+        CountryFilterButton(countries, onCountries, Modifier.align(Alignment.TopStart))
         Menu(subscription, onSupport, onChangeSubscription, Modifier.align(Alignment.TopEnd))
     }
 }
@@ -316,7 +326,13 @@ private val TIME_TOP = 2.dp
  * «повторить», если подъём не удался.
  */
 @Composable
-private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit, history: suspend (String) -> List<HistoryEvent>) {
+private fun VpnCard(
+    rows: List<ServiceRow>,
+    onRetry: () -> Unit,
+    history: suspend (String) -> List<HistoryEvent>,
+    exitCountry: suspend (ServiceId) -> String?,
+    routes: Map<ServiceId, ServerRoute>,
+) {
     // Открытая шторка — по метке сервиса: строки обновляются, шторка показывает живую.
     var open by remember { mutableStateOf("") }
     Surface(
@@ -328,13 +344,13 @@ private fun VpnCard(rows: List<ServiceRow>, onRetry: () -> Unit, history: suspen
         Column {
             rows.forEachIndexed { i, row ->
                 if (i > 0) HorizontalDivider(thickness = Space.hairline, color = Rule)
-                ServiceLine(row, onTap = { open = row.label })
+                ServiceLine(row, onTap = { open = row.label }, route = routes[row.service])
             }
         }
     }
     when (val row = rows.firstOrNull { it.label.isNotEmpty() && it.label == open }) {
         null -> Unit
-        else -> ServiceSheet(row, history, onDismiss = { open = "" })
+        else -> ServiceSheet(row, history, exitCountry, routes[row.service], onDismiss = { open = "" })
     }
     if (rows.any { it.retry }) {
         // Главной кнопкой: сейчас это единственное, что человек может сделать.
@@ -355,18 +371,37 @@ private val CLOCK = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ServiceSheet(row: ServiceRow, history: suspend (String) -> List<HistoryEvent>, onDismiss: () -> Unit) {
+private fun ServiceSheet(
+    row: ServiceRow,
+    history: suspend (String) -> List<HistoryEvent>,
+    exitCountry: suspend (ServiceId) -> String?,
+    route: ServerRoute?,
+    onDismiss: () -> Unit,
+) {
+    var country by remember(row.service, route?.id, row.mark) { mutableStateOf("проверяю…") }
+    LaunchedEffect(row.service, route?.id, row.mark) {
+        if (row.mark == Mark.Works) country = exitCountry(row.service)?.let(::placeOf) ?: "не определена"
+    }
     var events by remember(row.label) { mutableStateOf(emptyList<HistoryEvent>()) }
     LaunchedEffect(row.label) { events = history(row.label).take(HISTORY_SHOWN) }
     PodborSheet(rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismiss, title = row.label) {
         Text(
-            listOfNotNull(row.name, row.protocol).joinToString(" · "),
+            if (route != null && row.protocol != null) "${serverNumber(route)} · ${row.protocol}" else row.name,
             color = PodborColors.Text,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(Space.m))
+        if (route != null && row.protocol != null) {
+            Text("Вход: ${placeOf(entryCode(route.entry))}", style = MaterialTheme.typography.bodyMedium)
+        }
+        if (row.mark == Mark.Works) {
+            Text("Страна выхода: $country", color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (route != null && row.protocol != null) {
+            Text("Подпись провайдера: ${row.name}", color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         Text(row.mini.text, color = colorOf(row.mini.tone), style = MaterialTheme.typography.bodyMedium)
         // Величины пары — если добавляют к мини-статусу («сейчас не пользуется» там уже сказано).
         row.pulse?.takeUnless { it in row.mini.text }?.let {
@@ -419,7 +454,7 @@ const val SERVICE_TAG = "service"
  * строку с многоточием; пустое место держит строку той же высоты. Длинные слова — в шторке ([onTap]).
  */
 @Composable
-internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
+internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit, route: ServerRoute? = null) {
     val tappable = row.label.isNotEmpty()
     Box(
         Modifier
@@ -458,7 +493,8 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
                 VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = Space.m))
             }
             Column(Modifier.weight(1f)) {
-                Text(row.name, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val title = if (row.protocol == null) row.name else route?.let(::routeTitle) ?: "выход уточняется"
+                Text(title, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     row.mini.text,
                     color = colorOf(row.mini.tone),
@@ -493,4 +529,13 @@ internal fun ServiceLine(row: ServiceRow, onTap: () -> Unit) {
             )
         }
     }
+}
+
+
+private fun serverNumber(route: ServerRoute): String = "#${route.id.tag.removePrefix("s").trimStart('0')}"
+
+private fun routeTitle(route: ServerRoute): String {
+    val entry = flagOf(entryCode(route.entry)).ifEmpty { "?" }
+    val exit = flagOf(route.exitCountry).ifEmpty { "?" }
+    return "$entry → $exit  ${serverNumber(route)}"
 }

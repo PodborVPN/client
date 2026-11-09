@@ -45,11 +45,17 @@ interface ServicePort {
 
     suspend fun press()
 
+    /** Сохранить исключения стран; поднятый VPN пересобирается и заново подбирает выходы. */
+    suspend fun setExitFilter(filter: podbor.core.ExitFilter)
+
     /** Включён ли системный постоянный VPN с блокировкой — для подсказки ([alwaysOnHintDue]). */
     fun alwaysOn(): AlwaysOn
 
     /** История сервиса для шторки — свёртка Ленты, свежие сверху, сколько влезает. */
     suspend fun history(service: ServiceId): List<HistoryEvent>
+
+    /** Свежий замер для деталей сервиса. */
+    suspend fun exitCountry(service: ServiceId): String? = null
 
 
     /**

@@ -82,6 +82,7 @@ internal class World(
     @Volatile var savedPassport: Passport? = null
     var lineCalls = 0
     var engineRuns = 0
+    val configs = mutableListOf<JsonObject>()
 
     val lineProbe = LineProbe { synchronized(this) { lineCalls++ }; delay(lineDelayMs); line }
 
@@ -99,7 +100,7 @@ internal class World(
 
     fun driver() = Driver(
         converter = { _ -> ips.mapIndexed { i, ip -> outbound(i, ip) }.right() },
-        engine = XrayEngine { _ -> engineRuns++; if (engineFails) EngineError.Failed("xray не стартовал").left() else Unit.right() },
+        engine = XrayEngine { _config -> engineRuns++; configs += _config; if (engineFails) EngineError.Failed("xray не стартовал").left() else Unit.right() },
         api = object : XrayApi {
             override suspend fun routeOf(ip: String) = (if (ip in ruIps) DIRECT else "s001").right()
             override suspend fun setExit(balancer: String, tag: String) = Unit.right().also {

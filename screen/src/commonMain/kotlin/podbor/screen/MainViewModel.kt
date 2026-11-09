@@ -128,6 +128,16 @@ class MainViewModel(
     val board: StateFlow<Board> =
         service.keepLast { it.board }.stateIn(viewModelScope, SharingStarted.Eagerly, board(HARDCODED_SERVICES, emptyMap()))
 
+    val countries: StateFlow<CountrySelection> =
+        service.keepLast { port -> port.status.map { it.countries } }.stateIn(viewModelScope, SharingStarted.Eagerly, CountrySelection())
+
+    val routes: StateFlow<Map<ServiceId, ServerRoute>> =
+        service.keepLast { port -> port.status.map { it.routes } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    fun setExitFilter(filter: podbor.core.ExitFilter) {
+        viewModelScope.launch { service.filterNotNull().first().setExitFilter(filter) }
+    }
+
     val origin: StateFlow<Map<ServiceId, ExitOrigin>> =
         service.keepLast { it.exitOrigin }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 

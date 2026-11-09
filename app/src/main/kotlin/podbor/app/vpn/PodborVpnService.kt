@@ -124,6 +124,15 @@ import kotlinx.coroutines.flow.update
 import podbor.screen.AlwaysOn
 import podbor.screen.ExitOrigin
 import podbor.screen.Status
+import podbor.screen.ServerRoute
+import podbor.screen.CountrySelection
+import podbor.core.ExitFilter
+import podbor.core.Exit
+import podbor.core.knownCountry
+import podbor.app.net.ExitFilterPrefs
+import podbor.driver.TraceExit
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 import podbor.screen.Shade
 import podbor.screen.ShadeButton
 import podbor.screen.shadeOf
@@ -200,6 +209,33 @@ class PodborVpnService : VpnService(), ServicePort {
     private val subscriptions by lazy { SubscriptionStore(filesDir) }
     private val passports by lazy { FilePassportStore(filesDir) }
     private val memory by lazy { AndroidStore(filesDir) }
+    private val filterPrefs by lazy { ExitFilterPrefs(getSharedPreferences("exit_filter", MODE_PRIVATE)) }
+    private val countryChanges = Mutex()
+    private val countryState by lazy { MutableStateFlow(CountrySelection(filter = filterPrefs.read())) }
+
+    private suspend fun passportCountries(): Set<String> {
+        val current = subscriptions.current() ?: return emptySet()
+        val keys = current.servers.ifEmpty {
+            LibXrayConverter(LibXrayInvoke).convert(current.text).fold({ emptyList() }, ::draftKeysOf)
+        }.toSet()
+        return passports.load()?.servers.orEmpty().filterKeys { it in keys }.values.mapNotNull { facts ->
+            when (val exit = facts.exit) {
+                Exit.Unknown -> null
+                is Exit.At -> exit.country.takeIf(::knownCountry)
+            }
+        }.toSet()
+    }
+
+    private suspend fun refreshCountries() {
+        val before = countryState.value
+        val cached = passportCountries()
+        val available = when (val session = host.state.value) {
+            is SessionState.Up -> if (before.filter.excluded.isEmpty()) cached else session.live.warm.countries
+            SessionState.Down, SessionState.Starting, is SessionState.Failed -> cached
+        }
+        // Позднее чтение паспорта не затирает измерения нового туннеля или новое ограничение.
+        countryState.compareAndSet(before, before.copy(available = available))
+    }
 
     /** Напоминание о конце срока: при открытии экрана (после обновления подписки) и подъёме VPN — экран могут не открывать. */
     private val expiry by lazy { ExpiryNotice(this, subscriptions) { clock.nowMs() } }
@@ -277,6 +313,7 @@ class PodborVpnService : VpnService(), ServicePort {
         super.onCreate()
         GeoHolder.start { File(geoDir(this), "geoip.dat") }
         WhiteHolder.start(this)
+        scope.launch { refreshCountries() }
         scope.launch {
             val resumed = Pulse.resumed(books.load())
             pulseState.value = resumed
@@ -321,8 +358,10 @@ class PodborVpnService : VpnService(), ServicePort {
      * „выключен“» вернул бы убранное уведомление.
      */
     override val status: StateFlow<Status> by lazy {
-        combine(sessionExits(), desk.board, desk.work) { (s, exit), board, work -> Status(s.view(), board, work, exitName(s, exit)) }
-            .stateIn(scope, SharingStarted.Eagerly, Status(host.state.value.view(), desk.board.value))
+        combine(sessionExits(), desk.board, desk.work, countryState) { (s, exit, routes), board, work, countries ->
+            Status(s.view(), board, work, exitName(s, exit), countries.copy(blocked = countries.blocked && s is SessionState.Up, checking = s == SessionState.Starting && countries.filter.excluded.isNotEmpty()), routes)
+        }
+            .stateIn(scope, SharingStarted.Eagerly, Status(host.state.value.view(), desk.board.value, countries = countryState.value))
     }
 
     /**
@@ -396,6 +435,7 @@ class PodborVpnService : VpnService(), ServicePort {
     /** Тихое обновление подписки ([Desk.refreshSubscription]), потом — напоминание о конце срока по свежим сведениям. */
     override suspend fun refreshSubscription() {
         desk.refreshSubscription()
+        refreshCountries()
         expiry.check()
     }
 
@@ -403,6 +443,29 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Нажатие: см. [Desk.press]. */
     override suspend fun press() = desk.press()
+
+    override suspend fun exitCountry(service: ServiceId): String? =
+        when (val result = host.act { live -> live.driver.currentExitCountry(live.warm, service) }) {
+            Acted.NoSession -> null
+            is Acted.Done -> result.value
+        }
+
+    override suspend fun setExitFilter(filter: ExitFilter): Unit = countryChanges.withLock {
+        if (filter == countryState.value.filter) return@withLock
+        filterPrefs.save(filter)
+        countryState.update { it.copy(filter = filter, blocked = false) }
+        when (host.state.value) {
+            SessionState.Down, is SessionState.Failed -> Unit
+            SessionState.Starting, is SessionState.Up -> {
+                val before = host.stops.value
+                host.restart(lastStartId)
+                scope.launch {
+                    host.stops.first { it > before }
+                    desk.repick()
+                }
+            }
+        }
+    }
 
     /**
      * История сервиса из Ленты: два свежих куска (≈ 2 МБ, часы работы) — строками в свёртку [historyOf]. Битая строка или
@@ -427,17 +490,17 @@ class PodborVpnService : VpnService(), ServicePort {
         input: SubscriptionInput,
         onSkipped: (Skipped) -> Unit,
         onBoard: (ScanBoard) -> Unit,
-    ): Either<InputError, ScanBoard> = desk.analyze(input, onSkipped, onBoard)
+    ): Either<InputError, ScanBoard> = desk.analyze(input, onSkipped, onBoard).also { refreshCountries() }
 
     override suspend fun known(input: SubscriptionInput) = desk.known(input)
 
     override suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit) =
-        desk.reanalyze(id, onSkipped, onBoard)
+        desk.reanalyze(id, onSkipped, onBoard).also { refreshCountries() }
 
     /** Выбор подписки: см. [Desk.select]; уведомление о сроке — уже по новой текущей. */
     override suspend fun select(id: String): Picked = desk.select(id).also { picked ->
         when (picked) {
-            Picked.Ready -> switchTraffic()
+            Picked.Ready -> { switchTraffic(); refreshCountries() }
             is Picked.Expired -> Unit
         }
         expiry.check()
@@ -452,14 +515,30 @@ class PodborVpnService : VpnService(), ServicePort {
         pulseNow.update { it.copy(vpn = pulseState.value.book.vpn) }
     }
 
-    override suspend fun delete(id: String) = desk.delete(id)
+    override suspend fun delete(id: String) {
+        desk.delete(id)
+        refreshCountries()
+    }
 
     /** Сессия и выход общего балансера в ней ([podbor.driver.ExitsState.general]): у новой сессии — свои выходы. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun sessionExits(): Flow<Pair<SessionState<Live>, ServerId?>> = host.state.flatMapLatest { s ->
+    private fun sessionExits(): Flow<Triple<SessionState<Live>, ServerId?, Map<ServiceId, ServerRoute>>> = host.state.flatMapLatest { s ->
         when (s) {
-            is SessionState.Up -> s.live.driver.exits.state.map { s to it.general.serverOrNull() }
-            SessionState.Down, SessionState.Starting, is SessionState.Failed -> flowOf(s to null)
+            is SessionState.Up -> {
+                val servers = s.live.warm.servers.associateBy { it.id }
+                val facts = passports.load()?.servers.orEmpty()
+                s.live.driver.exits.state.map { exits ->
+                    val general = exits.general.serverOrNull()
+                    val routes = HARDCODED_SERVICES.mapNotNull { service ->
+                        val id = exits.pinned[service.id]?.server ?: general
+                        val server = servers[id] ?: return@mapNotNull null
+                        val country = (facts[server.key]?.exit as? Exit.At)?.country.orEmpty()
+                        service.id to ServerRoute(server.id, server.entry, country)
+                    }.toMap()
+                    Triple(s, general, routes)
+                }
+            }
+            SessionState.Down, SessionState.Starting, is SessionState.Failed -> flowOf(Triple(s, null, emptyMap()))
         }
     }
 
@@ -489,8 +568,8 @@ class PodborVpnService : VpnService(), ServicePort {
             },
             ruDns = ruDnsHere(tun),
         )
-        // Страна входа — из geoip.dat, загруженного один раз на процесс; не готов вовремя или не загрузился — «?».
-        val geo = GeoHolder.await(GEO_WAIT_MS)
+        // Загрузка базы не захватывается снимком: поздно готовая база доступна следующим измерениям.
+        val fallback = TraceExit()
         val channel = xrayChannel { UdsChannelBuilder.forPath(apiSocket.path, LocalSocketAddress.Namespace.FILESYSTEM).build() }
         val driver = Driver(
             converter = LibXrayConverter(LibXrayInvoke),
@@ -506,9 +585,25 @@ class PodborVpnService : VpnService(), ServicePort {
             passportStore = passports,
             tape = tape,
             opts = opts,
-            countryOf = { ip -> geo?.of(ip) },
+            countryOf = { ip -> GeoHolder.await(GEO_WAIT_MS)?.of(ip) },
+            exitFallback = fallback::measure,
         )
-        return with(driver) { warmUp(subscription) }.map { warm ->
+        val filter = when (tun) {
+            Tun.Off -> ExitFilter()
+            is Tun.On -> countryState.value.filter
+        }
+        return with(driver) { warmUp(subscription, filter) }.map { warm ->
+            when (tun) {
+                Tun.Off -> Unit
+                is Tun.On -> {
+                    val available = if (filter.excluded.isEmpty()) passportCountries() else warm.countries
+                    countryState.update { it.copy(
+                        available = available,
+                        blocked = filter.excluded.isNotEmpty() && warm.servers.isEmpty(),
+                        unknown = warm.unknownExits,
+                    ) }
+                }
+            }
             meter(driver, opts, xrayStatsOn(channel), epochOf(tun))
             Live(driver, warm)
         }

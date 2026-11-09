@@ -5,7 +5,6 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.fx.coroutines.ResourceScope
 import arrow.fx.coroutines.resourceScope
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -169,7 +168,7 @@ class Desk(
     private val openRun = AtomicReference<Job?>(null)
 
     /** Нажатие ждёт или идёт: следующее не встаёт в очередь. */
-    private val pressing = AtomicBoolean(false)
+    private val pressing = Mutex()
 
     private val initial = board(services, emptyMap())
     private val boardState = MutableStateFlow(initial)
@@ -272,24 +271,27 @@ class Desk(
      * — не в очередь: подбор один.
      */
     suspend fun press() {
-        if (!pressing.compareAndSet(false, true)) return
-        try {
-            openRun.get()?.cancel(Superseded())
-            searching()
-            settle(
-                host.act { live ->
-                    actions.withLock {
-                        // Вытесненный замер мог успеть опубликовать экран, пока снимался.
-                        searching()
-                        val hints = pressHintsOf(live.warm) ?: hintsOf(scan.passports.load())
-                        live.driver.press(live.warm, services, os(), prior, hints) { boardState.value = it }
-                        prior = Prior.None
-                    }
-                },
-            )
-        } finally {
-            pressing.set(false)
-        }
+        if (!pressing.tryLock()) return
+        try { pressLocked() } finally { pressing.unlock() }
+    }
+
+    /** После пересборки допуска подбор обязателен: дождаться завершения вытесненного нажатия. */
+    suspend fun repick() = pressing.withLock { pressLocked() }
+
+    private suspend fun pressLocked() {
+        openRun.get()?.cancel(Superseded())
+        searching()
+        settle(
+            host.act { live ->
+                actions.withLock {
+                    // Вытесненный замер мог успеть опубликовать экран, пока снимался.
+                    searching()
+                    val hints = pressHintsOf(live.warm) ?: hintsOf(scan.passports.load())
+                    live.driver.press(live.warm, services, os(), prior, hints) { boardState.value = it }
+                    prior = Prior.None
+                }
+            },
+        )
     }
 
     /**

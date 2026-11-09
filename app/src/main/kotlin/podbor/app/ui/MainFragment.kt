@@ -24,6 +24,8 @@ class MainFragment : Fragment() {
                 val note by screen.shareNote.collectAsStateWithLifecycle()
                 val origin by screen.vm.origin.collectAsStateWithLifecycle()
                 val subscription by screen.vm.subscriptionNote.collectAsStateWithLifecycle()
+                val routes by screen.vm.routes.collectAsStateWithLifecycle()
+                val countries by screen.vm.countries.collectAsStateWithLifecycle()
                 val pulse by screen.vm.pulse.collectAsStateWithLifecycle()
                 PodborTheme {
                     MainScreen(
@@ -32,7 +34,10 @@ class MainFragment : Fragment() {
                         onShare = screen::share, onChangeSubscription = screen::changeSubscription, onSupport = screen::openSupport,
                         onDonate = if (BuildConfig.SELF_DISTRIBUTED) screen::donate else null,
                         pulse = pulse,
+                        countries = countries, onCountries = screen.vm::setExitFilter,
                         history = screen::history,
+                        routes = routes,
+                        exitCountry = { id -> screen.vm.service.value?.exitCountry(id) },
                     )
                 }
             }

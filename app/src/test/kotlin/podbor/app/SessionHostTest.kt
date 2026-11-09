@@ -47,11 +47,38 @@ private class Fixture(scope: CoroutineScope, private val fail: Boolean = false) 
 
     fun start() = host.start(++lastId)
     fun stop() = host.stop(++lastId)
+    fun restart() = host.restart(lastId)
 }
 
 private fun TestScope.fixture(fail: Boolean = false) = Fixture(backgroundScope, fail)
 
 class SessionHostTest : FunSpec({
+    test("команда перезапуска после выключения не поднимает VPN снова") {
+        runTest {
+            val f = fixture()
+            f.start()
+            runCurrent()
+            f.stop()
+            f.restart()
+            runCurrent()
+            f.host.state.value shouldBe SessionState.Down
+            f.events shouldBe listOf("open1", "close1", "ended2", "stopped")
+        }
+    }
+
+    test("перезапуск освобождает старый туннель без завершения службы") {
+        runTest {
+            val f = fixture()
+            f.start()
+            runCurrent()
+            f.restart()
+            runCurrent()
+            (f.host.state.value as SessionState.Up).live shouldBe Live(2)
+            f.events shouldBe listOf("open1", "close1", "open2")
+            f.host.stops.value shouldBe 1
+        }
+    }
+
 
     test("стоп посреди медленного нажатия: нажатие отменено до release — ни памяти, ни экрана") {
         runTest {

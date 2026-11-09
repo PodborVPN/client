@@ -230,6 +230,21 @@ private fun TestScope.rig(
 private fun TestScope.pressNow(s: Rig) = async(start = CoroutineStart.UNDISPATCHED) { s.desk.press() }
 
 class DeskTest : FunSpec({
+    test("подбор после смены допуска ждёт прежнее нажатие и не теряется") {
+        runTest {
+            val s = rig(chosenProbeMs = 300)
+            s.gate.complete(Unit)
+            s.host.start(1)
+            s.up()
+            val first = pressNow(s)
+            val again = async(start = CoroutineStart.UNDISPATCHED) { s.desk.repick() }
+            first.await()
+            again.await()
+            s.saves shouldBe 2
+        }
+    }
+
+
 
     test("линия готова раньше подъёма сессии → плашка сети опубликована до Up; после Up линия не меряется заново") {
         runTest {

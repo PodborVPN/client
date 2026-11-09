@@ -54,6 +54,17 @@ private class FakeSocks(private val auth: SocksAuth, private val reply: ByteArra
 }
 
 class SocksAuthTest : FunSpec({
+    test("запасное определение выхода предъявляет пароль локального SOCKS") {
+        val auth = SocksAuth("trace-user", "trace-pass")
+        installSocksAuth(auth)
+        val body = "ip=203.0.113.8\nloc=NL\n"
+        val reply = "HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
+        FakeSocks(auth, reply.toByteArray()).use { fake ->
+            kotlinx.coroutines.runBlocking { TraceExit("http://example.org/cdn-cgi/trace").measure(fake.port) } shouldBe podbor.core.Exit.At("203.0.113.8", "NL")
+            fake.seen shouldBe listOf("trace-user")
+        }
+    }
+
     test("случайный пароль процесса: разный от раза к разу, не пустой") {
         val a = SocksAuth.random(); val b = SocksAuth.random()
         a shouldNotBe b

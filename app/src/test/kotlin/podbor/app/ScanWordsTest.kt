@@ -2,7 +2,7 @@ package podbor.app
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import podbor.app.ui.flagOf
+import podbor.app.ui.country.flagOf
 import podbor.app.ui.skipProgress
 import podbor.core.ScanBoard
 

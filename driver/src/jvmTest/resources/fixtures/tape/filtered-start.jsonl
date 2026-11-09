@@ -1,0 +1,2 @@
+{"type":"step","run":1,"letter":{"type":"podbor.core.Letter.ExitSeen","atMs":1,"server":"s001","exit":{"type":"podbor.core.Exit.At","ip":"203.0.113.11","country":"RU"}},"deeds":[]}
+{"type":"step","run":1,"letter":{"type":"podbor.core.Letter.ExitSeen","atMs":2,"server":"s002","exit":{"type":"podbor.core.Exit.At","ip":"203.0.113.12","country":"NL"}},"deeds":[]}

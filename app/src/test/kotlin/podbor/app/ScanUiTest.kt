@@ -16,7 +16,7 @@ import podbor.app.ui.FEED_CARDS
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.SKIP_WARNING
 import podbor.app.ui.ScanScreen
-import podbor.app.ui.flagOf
+import podbor.app.ui.country.flagOf
 import podbor.core.Entry
 import podbor.core.Exit
 import podbor.core.Mark3

@@ -27,6 +27,8 @@ import podbor.core.Diagnosis
 import podbor.core.Endpoint
 import podbor.core.Entry
 import podbor.core.Exit
+import podbor.core.ExitFilter
+import podbor.core.knownCountry
 import podbor.core.GENERAL_FOLLOWS
 import podbor.core.LINE_FRESH_MS
 import podbor.core.Letter
@@ -78,7 +80,11 @@ private val SERVICE_ORDER = compareBy<Service>({ it.id != GENERAL_FOLLOWS }, { i
 data class Opening(val board: Board, val prior: Prior)
 
 /** Прогретая сессия: Xray поднят в той области ресурсов, где получен Warm; серверы с определённым входом. */
-data class Warm(val servers: List<Server>)
+data class Warm(
+    val servers: List<Server>,
+    val countries: Set<String> = emptySet(),
+    val unknownExits: Int = 0,
+)
 
 /**
  * Край ядра: прогрев, нажатие и открытие — трубопровод на каждый сервис, каждый своим актором (owned state)
@@ -102,9 +108,10 @@ class Driver(
     private val tape: TapeSink,
     private val opts: ConfigOpts,
     /** Страна IP по локальному geoip ([GeoCountry.of]); null — нет файла или IP вне диапазонов. */
-    private val countryOf: (String) -> String? = { null },
+    private val countryOf: suspend (String) -> String? = { null },
     private val pressTimeoutMs: Long = PRESS_TIMEOUT_MS,
     private val scanTimeoutMs: Long = SCAN_TIMEOUT_MS,
+    private val exitFallback: suspend (Int) -> Exit = { Exit.Unknown },
 ) {
     /** Куда указывают балансеры; трубопроводы читают отсюда свой текущий выход и сюда выставляют находку. */
     val exits = Exits(api, opts.services, exitTagOf(opts))
@@ -120,11 +127,45 @@ class Driver(
      * Прогрев: подписка → Xray → вход каждого сервера по правилу geoip:ru самого Xray.
      * Xray живёт, пока жива область ресурсов, где вызван прогрев: остановка движка — её освобождение.
      */
-    suspend fun ResourceScope.warmUp(subscription: String): Either<EngineError, Warm> = either {
+    suspend fun ResourceScope.warmUp(subscription: String, filter: ExitFilter = ExitFilter()): Either<EngineError, Warm> = either {
         val outbounds = converter.convert(subscription).bind()
         val unplaced = classifyDrafts(draftsOf(outbounds)) { Entry.Unknown }
-        with(engine) { run(buildConfig(unplaced, retag(unplaced, outbounds), opts)) }.bind()
-        Warm(coroutineScope { unplaced.map { async { locate(it) } }.awaitAll() })
+        val tagged = retag(unplaced, outbounds)
+        val selected = if (filter.excluded.isEmpty()) Warm(unplaced) else selectExits(unplaced, filter)
+        with(engine) { run(buildConfig(selected.servers, tagged, opts)) }.bind()
+        selected.copy(servers = coroutineScope { selected.servers.map { async { locate(it) } }.awaitAll() })
+    }
+
+    /** Допуск по последнему анализу подписки, до запуска Xray на туннеле. */
+    private fun selectExits(servers: List<Server>, filter: ExitFilter): Warm {
+        val facts = when (val passport = passportStore.load()) {
+            null -> emptyMap()
+            else -> passport.servers
+        }
+        val exits = servers.associate { server ->
+            server.id to when (val found = facts[server.key]) {
+                null -> Exit.Unknown
+                else -> found.exit
+            }
+        }
+        return Warm(
+            servers.filter { filter.allows(exits.getValue(it.id)) },
+            exits.values.mapNotNull(::exitCountry).toSet(),
+            exits.values.count { exitCountry(it) == null },
+        )
+    }
+
+    private val discovery = ExitDiscovery(exitProbe, countryOf, exitFallback)
+
+    private suspend fun measuredExit(port: Int): Exit = discovery.measure(port)
+
+    /** Страна текущего выхода сервиса по свежему замеру через его сервер. */
+    suspend fun currentExitCountry(warm: Warm, service: ServiceId): String? {
+        val route = exits.effective(service)
+        val server = warm.servers.find { it.id == route.serverOrNull() }
+        if (server == null) return null
+        val exit = gate.withEndpoint(server.endpoint) { measuredExit(socksPortOf(server.id, warm.servers, opts)) }
+        return if (exits.effective(service) == route) exitCountry(exit) else null
     }
 
     /**
@@ -253,7 +294,7 @@ class Driver(
     )
 
     /** Страна IP по локальному geoip; не знаем — «?». */
-    private fun countryOrUnknown(ip: String): String = when (val c = countryOf(ip)) {
+    private suspend fun countryOrUnknown(ip: String): String = when (val c = countryOf(ip)) {
         null -> "?"
         else -> c
     }
@@ -283,8 +324,7 @@ class Driver(
                 is Deed.MeasureExit -> launch {
                     val server = byId.getValue(deed.server)
                     // Эталон ходит тем же TCP до того же IP:порт — под тем же потолком, что пробы.
-                    val ip = gate.withEndpoint(server.endpoint) { exitProbe.exitIp(socksPortOf(deed.server, servers, opts)) }
-                    val exit = if (ip == null) Exit.Unknown else Exit.At(ip, countryOrUnknown(ip))
+                    val exit = gate.withEndpoint(server.endpoint) { measuredExit(socksPortOf(deed.server, servers, opts)) }
                     inbox.send(Letter.ExitSeen(clock.nowMs(), deed.server, exit))
                 }
                 is Deed.Remember -> memoryLock.withLock {
@@ -485,4 +525,10 @@ suspend fun detectLine(
     }, tape, { s, _ -> onBoard(boardOf(renderOpened(s, closed = false))) })
     val board = boardOf(renderOpened(run.state, closed = run.closed)).also(onBoard)
     return Opening(board, priorOf(emptyList(), listOf(run)))
+}
+
+/** Подтверждённая страна выхода; отсутствие страны — только на краю. */
+private fun exitCountry(exit: Exit): String? = when (exit) {
+    Exit.Unknown -> null
+    is Exit.At -> if (knownCountry(exit.country)) exit.country else null
 }

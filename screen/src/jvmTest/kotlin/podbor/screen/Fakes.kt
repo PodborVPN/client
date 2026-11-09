@@ -53,6 +53,10 @@ internal class FakePort : ServicePort {
         presses++
     }
 
+    override suspend fun setExitFilter(filter: podbor.core.ExitFilter) {
+        status.update { it.copy(countries = it.countries.copy(filter = filter)) }
+    }
+
     var always = AlwaysOn.Unknown
     override fun alwaysOn(): AlwaysOn = always
 

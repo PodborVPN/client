@@ -1,5 +1,6 @@
 package podbor.app.ui
 
+import podbor.app.ui.country.placeOf
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -80,32 +81,15 @@ import podbor.core.ServerCard
 import podbor.core.WhiteHint
 import podbor.core.plural
 import podbor.core.transportWords
-import java.util.Locale
 
 /*
  * Экран анализа подписки: живая сводка, лента карточек серверов (новейшая сверху въезжает и сдвигает прошлые вниз,
  * строки заполняются по мере замеров), итог и «ОК». Сервисы — только из доски (метки ядра), без имён в коде экрана.
  */
 
-private val RU = Locale.forLanguageTag("ru")
 
 /** Сколько новейших карточек лента рисует (как в макете: нижняя гаснет градиентом); прочие не композируются. */
 const val FEED_CARDS = 6
-
-/** Флаг из двухбуквенного кода страны (региональные индикаторы); не код — "". */
-fun flagOf(code: String): String {
-    val c = code.uppercase(Locale.ROOT)
-    if (c.length != 2 || !c.all { it in 'A'..'Z' }) return ""
-    return c.map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")
-}
-
-/** «🇳🇱 Нидерланды» по коду; не код — «?». */
-fun placeOf(code: String): String {
-    val flag = flagOf(code)
-    if (flag.isEmpty()) return "?"
-    val name = Locale.forLanguageTag("und-${code.uppercase(Locale.ROOT)}").getDisplayCountry(RU).ifEmpty { code }
-    return "$flag $name"
-}
 
 /** Вход → выход; выход ещё меряем — «…», не узнали — «?». */
 fun routeOf(card: ServerCard): String {

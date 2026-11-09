@@ -68,6 +68,7 @@ class SessionHost<L : Any>(
 
         data class Start(override val startId: Int) : Command
         data class Stop(override val startId: Int) : Command
+        data class Restart(override val startId: Int) : Command
     }
 
     private val stateFlow = MutableStateFlow<SessionState<L>>(SessionState.Down)
@@ -110,6 +111,7 @@ class SessionHost<L : Any>(
                 when (c) {
                     is Command.Start -> begin(c.startId)
                     is Command.Stop -> end(c.startId)
+                    is Command.Restart -> restartSession(c.startId)
                 }
             }
         }
@@ -130,8 +132,24 @@ class SessionHost<L : Any>(
         commands.trySend(Command.Start(startId))
     }
 
+    /** Пересобрать поднятый туннель, не завершая Android-службу между сессиями. */
+    fun restart(startId: Int) {
+        commands.trySend(Command.Restart(startId))
+    }
+
     fun stop(startId: Int) {
         commands.trySend(Command.Stop(startId))
+    }
+
+    private suspend fun restartSession(startId: Int) {
+        // Ранее исполненный Stop сильнее запроса пересборки: выключенный VPN не поднимаем.
+        if (job?.isActive == true) {
+            job?.cancelAndJoin()
+            job = null
+            set(SessionState.Starting)
+            begin(startId)
+        }
+        stopsFlow.update { it + 1 }
     }
 
     private suspend fun begin(startId: Int) {

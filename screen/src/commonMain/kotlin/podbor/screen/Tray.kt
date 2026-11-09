@@ -21,7 +21,7 @@ sealed interface Work {
  * плитка): каждая — проекция [Status], и новое состояние (вариант [Work]) компилятор требует решить в каждой.
  * [exit] — имя общего выхода поднятой сессии.
  */
-data class Status(val session: SessionView, val board: Board, val work: Work = Work.Idle, val exit: String = NO_EXIT)
+data class Status(val session: SessionView, val board: Board, val work: Work = Work.Idle, val exit: String = NO_EXIT, val countries: CountrySelection = CountrySelection(), val routes: Map<podbor.core.ServiceId, ServerRoute> = emptyMap())
 
 /** Выхода нет или он не выбран. */
 const val NO_EXIT = "выход не выбран"
@@ -101,3 +101,6 @@ private fun markOf(status: CardStatus): String = when (status) {
     is CardStatus.Checking, CardStatus.Searching -> "…"
     CardStatus.Unknown, is CardStatus.Unlisted -> "—"
 }
+
+/** Маршрут закреплённого сервера: вход текущей сессии, выход по паспорту. */
+data class ServerRoute(val id: podbor.core.ServerId, val entry: podbor.core.Entry, val exitCountry: String)

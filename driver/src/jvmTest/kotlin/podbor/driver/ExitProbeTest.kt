@@ -17,7 +17,7 @@ import kotlin.concurrent.thread
  * Фейковый SOCKS5, за которым сразу HTTP-ответ [reply] (после запроса); [tls] — оборачивает соединение в TLS-сервер
  * (самоподписанный эталон); reply == null — молчит.
  */
-private fun fakeExitServer(reply: String?, tls: SSLContext? = null): ServerSocket {
+internal fun fakeExitServer(reply: String?, tls: SSLContext? = null): ServerSocket {
     val server = ServerSocket(0)
     thread(isDaemon = true) {
         while (!server.isClosed) {
