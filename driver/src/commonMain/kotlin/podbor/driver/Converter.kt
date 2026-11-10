@@ -6,10 +6,8 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
 import arrow.core.toNonEmptyListOrNull
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import podbor.core.Server
 import podbor.core.ServerDraft
 import podbor.core.ServerId
@@ -21,11 +19,17 @@ import podbor.core.draftOf
  */
 fun outboundsOfResponse(stdout: String): Either<EngineError, Nel<JsonObject>> = either {
     val last = ensureNotNull(stdout.lineSequence().lastOrNull { it.isNotBlank() }) { EngineError.Failed("конвертер ничего не вернул") }
-    val response = Either.catch { Json.parseToJsonElement(last).jsonObject }
+    val response = Either.catch { libXrayJson.decodeFromString(ConvertReply.serializer(), last) }
         .mapLeft { EngineError.Failed("конвертер вернул не JSON") }.bind()
-    ensure(response.flag("success")) { EngineError.Failed("конвертер: ${response.text("error")}") }
-    val list = response.obj("data").arr("outbounds").filterIsInstance<JsonObject>()
-    ensureNotNull(list.toNonEmptyListOrNull()) { EngineError.Failed("конвертер: нет outbounds") }
+    ensure(response.success) { EngineError.Failed("конвертер: ${response.error}") }
+    ensureNotNull(response.data.outbounds.toNonEmptyListOrNull()) { EngineError.Failed("конвертер: нет outbounds") }
+}
+
+/** Ответ Invoke без данных (runXray, stopXray): отказ — Left с текстом libXray. */
+fun runReplyOf(json: String): Either<EngineError, Unit> = either {
+    val response = Either.catch { libXrayJson.decodeFromString(RunReply.serializer(), json) }
+        .mapLeft { EngineError.Failed("libXray вернул не JSON") }.bind()
+    ensure(response.success) { EngineError.Failed("libXray: ${response.error}") }
 }
 
 /**

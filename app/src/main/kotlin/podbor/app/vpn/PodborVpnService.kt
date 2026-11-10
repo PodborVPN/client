@@ -565,7 +565,7 @@ class PodborVpnService : VpnService(), ServicePort {
             // Журнал соединений — только у сессии с TUN: там ходят приложения; лог прошлой сессии свёрнут — с нуля.
             accessLog = when (tun) {
                 Tun.Off -> AccessLog.Off
-                is Tun.On -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
+                is Tun.On, is Tun.Proxy -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
             },
             ruDns = ruDnsHere(tun),
         )
@@ -595,12 +595,12 @@ class PodborVpnService : VpnService(), ServicePort {
         )
         val filter = when (tun) {
             Tun.Off -> ExitFilter()
-            is Tun.On -> countryState.value.filter
+            is Tun.On, is Tun.Proxy -> countryState.value.filter
         }
         return with(driver) { warmUp(subscription, filter) }.map { warm ->
             when (tun) {
                 Tun.Off -> Unit
-                is Tun.On -> {
+                is Tun.On, is Tun.Proxy -> {
                     val available = if (filter.excluded.isEmpty()) passportCountries() else warm.countries
                     countryState.update { it.copy(
                         available = available,
@@ -624,7 +624,7 @@ class PodborVpnService : VpnService(), ServicePort {
     /** Эпоха счётчиков: сессия с TUN или анализ без него. */
     private fun epochOf(tun: Tun): EpochKind = when (tun) {
         Tun.Off -> EpochKind.Scan
-        is Tun.On -> EpochKind.Session
+        is Tun.On, is Tun.Proxy -> EpochKind.Session
     }
 
     private suspend fun ResourceScope.meter(driver: Driver, opts: ConfigOpts, stats: XrayStats, kind: EpochKind) {

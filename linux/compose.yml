@@ -1,0 +1,24 @@
+# ./gradlew :linux:dockerContext && docker compose -f linux/compose.yml up -d --build
+services:
+  podbor:
+    build:
+      context: build/docker
+    container_name: podbor
+    ports:
+      # Только петля: прокси без пароля и экран управления нельзя пускать в LAN.
+      - 127.0.0.1:8898:8898/tcp
+      - 127.0.0.1:8899:8899/tcp
+    volumes:
+      - podbor-data:/data
+    networks:
+      - podbor
+    restart: unless-stopped
+
+volumes:
+  podbor-data:
+
+networks:
+  podbor:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"

@@ -1,6 +1,5 @@
 package podbor.app.sub
 
-import android.util.Log
 import arrow.core.Either
 import arrow.core.getOrElse
 import kotlinx.coroutines.CoroutineDispatcher
@@ -8,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import podbor.app.net.warnToStderr
 import podbor.core.Passport
 import podbor.core.TrafficBook
 import podbor.driver.PassportStore
@@ -52,7 +52,7 @@ private fun writeAtomic(file: File, what: String, text: String, warn: (String) -
 
 class SubscriptionStore(
     dir: File,
-    private val warn: (String) -> Unit = { Log.w("Podbor", it) },
+    private val warn: (String) -> Unit = ::warnToStderr,
     /** Пул файла; тест подставляет свой диспетчер. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -84,14 +84,14 @@ class SubscriptionStore(
 /** Id места подписки в списке: 8 случайных байт hex. */
 fun newSubscriptionId(): String = ByteArray(8).also { SecureRandom().nextBytes(it) }.hex()
 
-class FilePassportStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) : PassportStore {
+class FilePassportStore(dir: File, private val warn: (String) -> Unit = ::warnToStderr) : PassportStore {
     private val file = File(dir, "passport.json")
     override fun load(): Passport? = readJson(file) { json.decodeFromString(Passport.serializer(), it) }
     override fun save(p: Passport) = writeAtomic(file, "паспорт", json.encodeToString(Passport.serializer(), p), warn)
 }
 
 /** Итоги трафика (на сети, через VPN на подписке) между запусками процесса; нет файла или битый — пустые. */
-class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) : TrafficBookStore {
+class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = ::warnToStderr) : TrafficBookStore {
     private val file = File(dir, "traffic.json")
     override fun load(): TrafficBook = readJson(file) { json.decodeFromString(TrafficBook.serializer(), it) } ?: TrafficBook()
     override fun save(b: TrafficBook) = writeAtomic(file, "итоги трафика", json.encodeToString(TrafficBook.serializer(), b), warn)
@@ -118,9 +118,9 @@ fun hwidOf(salt: ByteArray): String =
         .take(16).toByteArray().hex()
 
 /** Заголовки устройства при скачивании подписки — так панели (Remnawave и др.) считают устройства на подписке. */
-fun deviceHeaders(hwid: String, osVersion: String, model: String): Map<String, String> = mapOf(
+fun deviceHeaders(hwid: String, osVersion: String, model: String, os: String = "Android"): Map<String, String> = mapOf(
     "x-hwid" to hwid,
-    "x-device-os" to "Android",
+    "x-device-os" to os,
     "x-ver-os" to osVersion,
     "x-device-model" to model,
 )

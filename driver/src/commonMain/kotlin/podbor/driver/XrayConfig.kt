@@ -18,10 +18,14 @@ sealed interface ApiListen {
     data class Unix(val path: String) : ApiListen
 }
 
-/** TUN Xray: нет (анализ подписки, пробы через SOCKS) или на fd туннеля VpnService (сессия; только на Android). */
+/**
+ * Чем сессия принимает трафик: ничем (анализ подписки, пробы через SOCKS), fd туннеля VpnService (Android) или общим
+ * входом-прокси HTTP/SOCKS на [Proxy.listen]:[Proxy.port] (Linux, контейнер: туннель на всю систему не нужен).
+ */
 sealed interface Tun {
     data object Off : Tun
     data class On(val fd: Int) : Tun
+    data class Proxy(val listen: String, val port: Int) : Tun
 }
 
 /** SOCKS-входы кандидатов: открытые (тесты, JVM без соседей) или с паролем процесса. */
@@ -78,6 +82,9 @@ private const val API = "api"
 /** Тег tun-входа. */
 private const val TUN_IN = "tun"
 
+/** Тег общего входа-прокси сессии без туннеля. */
+private const val PROXY_IN = "proxy"
+
 /** Российские ресурсы: напрямую и через DNS сети. */
 private const val RU_SITES = "geosite:category-ru"
 private const val RU_IPS = "geoip:ru"
@@ -99,7 +106,7 @@ const val PAIR_PREFIX = "pair."
 /** Тег, которым балансер сервиса указывает на сервер: пара — в сессии с TUN, сервер — в анализе; как в [buildConfig]. */
 fun exitTagOf(opts: ConfigOpts): (ServerId, ServiceId) -> String = when (opts.tun) {
     Tun.Off -> { server, _ -> server.tag }
-    is Tun.On -> ::pairTag
+    is Tun.On, is Tun.Proxy -> ::pairTag
 }
 
 /** Тег dns-outbound'а: DNS-запросы телефона из TUN отвечает блок `dns` Xray (только с TUN). */
@@ -140,7 +147,7 @@ private fun accessOf(a: AccessLog): String? = when (a) {
 }
 
 private fun tunEnv(tun: Tun): Map<String, String> = when (tun) {
-    Tun.Off -> emptyMap()
+    Tun.Off, is Tun.Proxy -> emptyMap()
     is Tun.On -> mapOf("xray.tun.fd" to tun.fd.toString())
 }
 
@@ -165,22 +172,28 @@ private fun socksSettings(socks: SocksIn): SocksSettings = when (socks) {
 
 private fun tunInbounds(tun: Tun): List<InboundConf> = when (tun) {
     Tun.Off -> emptyList()
+    // SOCKS-клиент может прислать голый IP: без sniffing правила по доменам его не увидят.
+    is Tun.Proxy -> listOf(InboundConf.Mixed(PROXY_IN, tun.listen, tun.port, SocksSettings(udp = false), SESSION_SNIFFING))
     is Tun.On -> listOf(
         InboundConf.Tun(
             TUN_IN,
             // Без имени Xray подбирает свободное перебором интерфейсов (netlink), что Android приложению
             // запрещает: «netlinkrib: permission denied». На Android интерфейс берётся из fd, имя не используется.
             TunSettings("podbor0", TUN_MTU),
-            // Из TUN приходят IP: без sniffing правило geosite:category-ru для них не срабатывает.
-            // routeOnly — домен только для выбора маршрута, соединение идёт на исходный IP.
-            Sniffing(enabled = true, destOverride = listOf("http", "tls", "quic"), routeOnly = true),
+            SESSION_SNIFFING,
         ),
     )
 }
 
+/**
+ * Из TUN приходят IP: без sniffing правило geosite:category-ru для них не срабатывает. routeOnly — домен только для
+ * выбора маршрута, соединение идёт на исходный IP.
+ */
+private val SESSION_SNIFFING = Sniffing(enabled = true, destOverride = listOf("http", "tls", "quic"), routeOnly = true)
+
 private fun builtinOutbounds(tun: Tun): List<BuiltinOutbound> =
     listOf(BuiltinOutbound.Freedom(DIRECT), BuiltinOutbound.Blackhole(BLOCK)) + when (tun) {
-        Tun.Off -> emptyList()
+        Tun.Off, is Tun.Proxy -> emptyList()
         is Tun.On -> listOf(BuiltinOutbound.Dns(DNS_OUT))
     }
 
@@ -197,7 +210,7 @@ private fun rulesOf(servers: List<Server>, opts: ConfigOpts): List<RuleConf> =
 
 /** DNS телефона (VpnService отдаёт адрес внутри TUN) — в блок dns Xray, а не в балансер как обычный UDP. */
 private fun dnsRules(tun: Tun): List<RuleConf> = when (tun) {
-    Tun.Off -> emptyList()
+    Tun.Off, is Tun.Proxy -> emptyList()
     is Tun.On -> listOf(rule(Target.Out(DNS_OUT), RuleConf(inboundTag = listOf(TUN_IN), port = 53)))
 }
 
@@ -224,7 +237,7 @@ private fun sortedServices(opts: ConfigOpts): List<Service> = opts.services.sort
 /** Пары «сервер × сервис» — только в сессии с TUN; порядок — сервер, затем сервис по ServiceId. */
 private fun pairsOf(servers: List<Server>, opts: ConfigOpts): List<Pair<Server, Service>> = when (opts.tun) {
     Tun.Off -> emptyList()
-    is Tun.On -> servers.flatMap { s -> sortedServices(opts).map { s to it } }
+    is Tun.On, is Tun.Proxy -> servers.flatMap { s -> sortedServices(opts).map { s to it } }
 }
 
 /** Виды правил сервиса в порядке приоритета: домен > IP > приложение. Значения отсортированы: порядок описания не важен. */

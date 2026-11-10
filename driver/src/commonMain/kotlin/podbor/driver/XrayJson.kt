@@ -76,6 +76,11 @@ internal sealed interface InboundConf {
     @Serializable
     @SerialName("tun")
     data class Tun(override val tag: String, val settings: TunSettings, val sniffing: Sniffing) : InboundConf
+
+    /** Один порт для HTTP и SOCKS: настройки — те же, что у SOCKS. */
+    @Serializable
+    @SerialName("mixed")
+    data class Mixed(override val tag: String, val listen: String, val port: Int, val settings: SocksSettings, val sniffing: Sniffing) : InboundConf
 }
 
 @Serializable

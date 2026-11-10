@@ -20,6 +20,8 @@ kotlin {
     jvm()
     iosArm64()
     iosSimulatorArm64()
+    // Браузер: ViewModel здесь, мозг — в другом процессе, за ServicePort.
+    wasmJs { browser() }
 
     sourceSets {
         commonMain.dependencies {

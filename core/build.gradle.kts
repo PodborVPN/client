@@ -19,6 +19,8 @@ kotlin {
     jvm()
     iosArm64()
     iosSimulatorArm64()
+    // Браузер: тот же экран поверх мозга в другом процессе.
+    wasmJs { browser() }
 
     sourceSets {
         commonMain.dependencies {

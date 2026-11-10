@@ -8,9 +8,6 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -20,11 +17,7 @@ class LibXrayCli(
     private val timeoutSec: Long = 30,
 ) : LinkConverter {
     override suspend fun convert(text: String): Either<EngineError, List<JsonObject>> = withContext(Dispatchers.IO) {
-        val request = buildJsonObject {
-            put("apiVersion", 3)
-            put("method", "convertShareLinksToXrayJson")
-            putJsonObject("payload") { put("text", text) }
-        }
+        val request = convertRequest(text)
         resourceScope {
             either {
                 // Вывод — в файл: чтение до EOF раньше waitFor вешало нажатие, если конвертер завис.
@@ -33,7 +26,7 @@ class LibXrayCli(
                     install({ ProcessBuilder(command).redirectErrorStream(true).redirectOutput(out).start() }, { p, _ -> p.destroyForcibly() })
                 }.mapLeft { EngineError.Failed("конвертер не запустился: ${it.message}") }.bind()
                 // Запись не удалась (процесс уже умер) — ответ всё равно читаем из файла, он скажет почему.
-                Either.catch { process.outputStream.use { it.write(request.toString().toByteArray()) } }
+                Either.catch { process.outputStream.use { it.write(request.toByteArray()) } }
                 ensure(runInterruptible { process.waitFor(timeoutSec, TimeUnit.SECONDS) }) {
                     EngineError.Failed("конвертер не ответил за $timeoutSec с")
                 }

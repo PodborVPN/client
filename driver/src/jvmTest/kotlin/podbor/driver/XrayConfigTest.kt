@@ -79,6 +79,21 @@ class XrayConfigTest : FunSpec({
         ) shouldBe golden("session")
     }
 
+    test("вход-прокси сессии: mixed на заданном адресе, пары как у TUN, без fd и DNS-выхода") {
+        val proxy = opts.copy(tun = Tun.Proxy("0.0.0.0", 8888), services = setOf(Telegram))
+        val conf = buildConfig(servers, outbounds, proxy)
+        val inbound = conf["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["protocol"] == JsonPrimitive("mixed") }
+        inbound["listen"] shouldBe JsonPrimitive("0.0.0.0")
+        inbound["port"] shouldBe JsonPrimitive(8888)
+        inbound["sniffing"]!!.jsonObject["enabled"] shouldBe JsonPrimitive(true)
+        conf["env"]!!.jsonObject["xray.tun.fd"] shouldBe null
+        conf["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }.let { tags ->
+            tags shouldContain pairTag(ServerId("s001"), Telegram.id)
+            (DNS_OUT in tags) shouldBe false
+        }
+        exitTagOf(proxy)(ServerId("s001"), Telegram.id) shouldBe pairTag(ServerId("s001"), Telegram.id)
+    }
+
     test("SOCKS-входы кандидатов — с паролем процесса, если он задан; без него — как было") {
         val auth = SocksAuth("u", "p")
         val socks = buildConfig(servers, outbounds, opts.copy(socks = SocksIn.Locked(auth)))["inbounds"]!!.jsonArray.map { it.jsonObject }

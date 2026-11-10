@@ -1,6 +1,5 @@
 package podbor.app.net
 
-import android.util.Log
 import arrow.core.Either
 import arrow.core.getOrElse
 import kotlinx.serialization.json.Json
@@ -21,9 +20,9 @@ private sealed interface Disk {
 /**
  * Память сети в `dir/memory.json`. Нет файла или он битый (не JSON) — пустая память: потеря памяти не авария.
  * Файл есть, но не читается (ошибка ввода-вывода) — пустая память на это нажатие, а запись пропускается,
- * пока чтение не удастся снова. [warn] — в logcat (тег Podbor), без содержимого памяти.
+ * пока чтение не удастся снова. [warn] — без содержимого памяти.
  */
-class AndroidStore(dir: File, private val warn: (String) -> Unit = { Log.w("Podbor", it) }) : Store {
+class AndroidStore(dir: File, private val warn: (String) -> Unit = ::warnToStderr) : Store {
     private val file = File(dir, "memory.json")
     private val disk = AtomicReference<Disk>(Disk.Writable)
 
