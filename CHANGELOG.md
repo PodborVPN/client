@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/PodborVPN/client/compare/v0.16.0...v0.17.0) (2026-11-10)
+
+
+### Новое
+
+* **linux:** веб-экран на Compose и общая история включения VPN ([48501f9](https://github.com/PodborVPN/client/commit/48501f92ade82260f1ccf49bf8e32e5b227110ec))
+* **linux:** демон Podbor для контейнера с прокси вместо туннеля ([5bc60a4](https://github.com/PodborVPN/client/commit/5bc60a44491fec26a72fe2398982f58b5a3f8cca))
+
 ## [0.16.0](https://github.com/PodborVPN/client/compare/v0.15.1...v0.16.0) (2026-11-09)
 
 
