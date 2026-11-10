@@ -17,6 +17,7 @@ import podbor.screen.SessionPlatform
 import podbor.screen.SessionStory
 import podbor.screen.UpdateMemory
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Пауза перед перезагрузкой страницы, когда демон пропал: перезапуск контейнера — несколько секунд. */
 private const val RECONNECT_MS = 2_000L
@@ -50,7 +51,7 @@ fun main() {
     socket.onmessage = { port.receive(it.data.toString()) }
     socket.onclose = {
         scope.launch {
-            delay(RECONNECT_MS)
+            delay(RECONNECT_MS.milliseconds)
             reloadPage()
         }
     }

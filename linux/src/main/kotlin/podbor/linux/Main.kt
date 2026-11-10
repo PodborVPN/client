@@ -121,7 +121,11 @@ fun main() {
             post("/api/subscription") {
                 if (!sameOrigin(call)) return@post call.respond(HttpStatusCode.Forbidden)
                 val input = when (val parsed = inputOf(call.receiveText())) {
-                    is Either.Left -> return@post call.respondText(wordsOf(parsed.value), status = HttpStatusCode.BadRequest)
+                    is Either.Left -> return@post call.respondText(
+                        wordsOf(parsed.value),
+                        status = HttpStatusCode.BadRequest
+                    )
+
                     is Either.Right -> parsed.value
                 }
                 intake.withLock {

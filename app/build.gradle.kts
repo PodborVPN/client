@@ -51,7 +51,10 @@ abstract class PrepareXrayAssets : DefaultTask() {
             fetchPinned(geoBaseUrl.get(), geoShaFile.get().asFile, name).copyTo(xrayDir.resolve(name))
         }
         val wlDir = out.resolve("whitelist").also { it.mkdirs() }
-        for ((remote, local) in listOf("ru-mobile-whitelist-ip.txt" to "ip.txt", "ru-mobile-whitelist-sni.txt" to "sni.txt")) {
+        for ((remote, local) in listOf(
+            "ru-mobile-whitelist-ip.txt" to "ip.txt",
+            "ru-mobile-whitelist-sni.txt" to "sni.txt"
+        )) {
             fetchPinned(whitelistBaseUrl.get(), whitelistShaFile.get().asFile, remote).copyTo(wlDir.resolve(local))
         }
     }
@@ -175,7 +178,11 @@ android {
     }
     packaging {
         // Дубликаты метаданных из gRPC/protobuf/Arrow.
-        resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties", "META-INF/DEPENDENCIES")
+        resources.excludes += setOf(
+            "META-INF/INDEX.LIST",
+            "META-INF/io.netty.versions.properties",
+            "META-INF/DEPENDENCIES"
+        )
         // libXray (~32 МБ) — сжатой в APK: скачивать втрое меньше; цена — распаковка на диск при установке.
         jniLibs.useLegacyPackaging = true
     }

@@ -1,6 +1,7 @@
 package podbor.app.net
 
 import arrow.core.Either
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -14,6 +15,7 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URI
 import java.net.URL
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Потолок тела подписки: больше — не подписка (страница, файл), читать дальше незачем. */
 const val SUBSCRIPTION_CAP_BYTES = 2 * 1024 * 1024
@@ -45,36 +47,38 @@ class HttpFetch(
     private val warn: (String) -> Unit = ::warnToStderr,
 ) {
     /** Не 2xx, сеть пропала, срок, больше [SUBSCRIPTION_CAP_BYTES] — null. Заголовки ответа — с именами в нижнем регистре. */
-    suspend fun download(url: String, headers: Map<String, String> = emptyMap()): Fetched? {
-        val c = direct(URI.create(url).toURL())
-        if (c == null) return null
-        return fetch({ c.with(headers) }, ::bodyOf)
-    }
+    suspend fun download(url: String, headers: Map<String, String> = emptyMap()): Fetched? =
+        fetch({ directTo(url) }) { c -> bodyOf(c.with(headers)) }
 
     /** То же туннелем: SOCKS сервера [socksPort] на этой машине — запрос выходит там, где этот сервер. */
     suspend fun downloadVia(url: String, socksPort: Int, headers: Map<String, String> = emptyMap()): Fetched? =
-        fetch({ viaSocks(url, socksPort).with(headers) }, ::bodyOf)
+        fetch({ viaSocks(url, socksPort) }) { c -> bodyOf(c.with(headers)) }
 
     /** Куда редиректит ссылка: Location ответа 3xx, тело не читается. [socksPort] — туннелем, null — обычной сетью. */
     suspend fun location(url: String, socksPort: Int?): String? {
-        val open: () -> HttpURLConnection = when (socksPort) {
+        val open: () -> HttpURLConnection? = when (socksPort) {
             null -> {
-                val c = direct(URI.create(url).toURL())
-                if (c == null) return null
-                { c }
+                { directTo(url) }
             }
-            else -> { { viaSocks(url, socksPort) } }
+
+            else -> {
+                { viaSocks(url, socksPort) }
+            }
         }
-        return fetch({ open().apply { instanceFollowRedirects = false } }) { c ->
+        return fetch(open) { c ->
+            c.instanceFollowRedirects = false
             if (c.responseCode in 300..399) c.getHeaderField("Location") else null
         }
     }
+
+    private fun directTo(url: String): HttpURLConnection? = direct(URI.create(url).toURL())
 
     private fun HttpURLConnection.with(headers: Map<String, String>): HttpURLConnection =
         apply { headers.forEach(::setRequestProperty) }
 
     private fun viaSocks(url: String, socksPort: Int): HttpURLConnection =
-        URI.create(url).toURL().openConnection(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))) as HttpURLConnection
+        URI.create(url).toURL()
+            .openConnection(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))) as HttpURLConnection
 
     private fun bodyOf(c: HttpURLConnection): Fetched? {
         if (c.responseCode !in 200..299) return null
@@ -82,26 +86,37 @@ class HttpFetch(
         return if (body == null) null else Fetched(body, headersOf(c))
     }
 
-    private suspend fun <T : Any> fetch(open: () -> HttpURLConnection, read: (HttpURLConnection) -> T?): T? = Either.catch {
-        coroutineScope {
+    /** Соединение открывается внутри [Either.catch]: сбой открытия — null, как и сбой чтения, а не исключение наружу. */
+    private suspend fun <T : Any> fetch(open: () -> HttpURLConnection?, read: (HttpURLConnection) -> T?): T? =
+        Either.catch {
             val c = open()
-            // Блокирующее чтение сокета на прерывание потока не реагирует: соединение рвёт сторож — по сроку или
-            // при отмене сразу.
-            val watchdog = launch { try { delay(DOWNLOAD_TIMEOUT_MS) } finally { c.disconnect() } }
+            if (c == null) null else coroutineScope { guarded(c, read) }
+        }.onLeft { warn("не скачалось: ${it.javaClass.simpleName}") }.getOrNull()
+
+    private suspend fun <T : Any> CoroutineScope.guarded(c: HttpURLConnection, read: (HttpURLConnection) -> T?): T? {
+        // Блокирующее чтение сокета на прерывание потока не реагирует: соединение рвёт сторож — по сроку или
+        // при отмене сразу.
+        val watchdog = launch {
             try {
-                runInterruptible(Dispatchers.IO) {
-                    c.connectTimeout = CONNECT_TIMEOUT_MS
-                    c.readTimeout = READ_TIMEOUT_MS
-                    read(c)
-                }
+                delay(DOWNLOAD_TIMEOUT_MS.milliseconds)
             } finally {
-                watchdog.cancel()
                 c.disconnect()
             }
         }
-    }.onLeft { warn("не скачалось: ${it.javaClass.simpleName}") }.getOrNull()
+        return try {
+            runInterruptible(Dispatchers.IO) {
+                c.connectTimeout = CONNECT_TIMEOUT_MS
+                c.readTimeout = READ_TIMEOUT_MS
+                read(c)
+            }
+        } finally {
+            watchdog.cancel()
+            c.disconnect()
+        }
+    }
 
     /** Заголовки ответа: имя в нижнем регистре → первое значение; строка статуса (имя null) — не заголовок. */
     private fun headersOf(c: HttpURLConnection): Map<String, String> =
-        c.headerFields.entries.filter { it.key != null }.associate { it.key.lowercase() to it.value.firstOrNull().orEmpty() }
+        c.headerFields.entries.filter { it.key != null }
+            .associate { it.key.lowercase() to it.value.firstOrNull().orEmpty() }
 }

@@ -35,15 +35,21 @@ interface RemoteBrain : ServicePort {
 /** Ход анализа подписки: что не стало серверами и очередная доска. */
 @Serializable
 sealed interface AnalysisStep {
-    @Serializable data class Dropped(val skipped: Skipped) : AnalysisStep
-    @Serializable data class Progress(val board: ScanBoard) : AnalysisStep
+    @Serializable
+    data class Dropped(val skipped: Skipped) : AnalysisStep
+
+    @Serializable
+    data class Progress(val board: ScanBoard) : AnalysisStep
 }
 
 /** Итог анализа и разбора вставленного: значением, а не исключением за границей процесса. */
 @Serializable
 sealed interface Outcome<out T> {
-    @Serializable data class Failed(val error: InputError) : Outcome<Nothing>
-    @Serializable data class Done<T>(val value: T) : Outcome<T>
+    @Serializable
+    data class Failed(val error: InputError) : Outcome<Nothing>
+
+    @Serializable
+    data class Done<T>(val value: T) : Outcome<T>
 }
 
 internal fun <T> Either<InputError, T>.outcome(): Outcome<T> = fold({ Outcome.Failed(it) }, { Outcome.Done(it) })
@@ -84,18 +90,30 @@ object Rpcs {
 /** Что браузер шлёт мозгу. */
 @Serializable
 sealed interface ToBrain {
-    @Serializable data class Ask(val id: Long, val method: String, val arg: JsonElement) : ToBrain
-    @Serializable data class Cancel(val id: Long) : ToBrain
+    @Serializable
+    data class Ask(val id: Long, val method: String, val arg: JsonElement) : ToBrain
+
+    @Serializable
+    data class Cancel(val id: Long) : ToBrain
 }
 
 /** Что мозг шлёт браузеру: снимки по мере изменения и ответы на вопросы. */
 @Serializable
 sealed interface FromBrain {
-    @Serializable data class StatusNow(val status: Status) : FromBrain
-    @Serializable data class OriginNow(val origin: Map<ServiceId, ExitOrigin>) : FromBrain
-    @Serializable data class PulseNow(val pulse: PulseView) : FromBrain
-    @Serializable data class Step(val id: Long, val step: AnalysisStep) : FromBrain
-    @Serializable data class Answer(val id: Long, val result: JsonElement) : FromBrain
+    @Serializable
+    data class StatusNow(val status: Status) : FromBrain
+
+    @Serializable
+    data class OriginNow(val origin: Map<ServiceId, ExitOrigin>) : FromBrain
+
+    @Serializable
+    data class PulseNow(val pulse: PulseView) : FromBrain
+
+    @Serializable
+    data class Step(val id: Long, val step: AnalysisStep) : FromBrain
+
+    @Serializable
+    data class Answer(val id: Long, val result: JsonElement) : FromBrain
 }
 
 /** Формат кадров: неизвестные поля другой версии не роняют разговор. */

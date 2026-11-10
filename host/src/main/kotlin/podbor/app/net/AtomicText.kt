@@ -15,5 +15,4 @@ fun writeAtomic(file: File, text: String): Either<Throwable, Unit> = Either.catc
     val tmp = File(file.parentFile, "${file.name}.tmp")
     tmp.writeText(text)
     Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-    Unit
 }

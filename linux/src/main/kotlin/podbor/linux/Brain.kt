@@ -39,6 +39,7 @@ import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.current
 import podbor.app.sub.deviceHeaders
 import podbor.app.sub.hwidOf
+import podbor.app.sub.inputOf
 import podbor.app.sub.installSalt
 import podbor.app.sub.subscriptionKey
 import podbor.app.sub.subscriptionsOf
@@ -102,7 +103,6 @@ import podbor.driver.serverOrNull
 import podbor.driver.xrayApiOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
-import podbor.app.sub.inputOf
 import podbor.remote.RemoteBrain
 import podbor.screen.AlwaysOn
 import podbor.screen.CountrySelection
@@ -115,9 +115,10 @@ import podbor.screen.Status
 import podbor.screen.SubscriptionInput
 import podbor.screen.Subscriptions
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
-import java.net.HttpURLConnection
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val GEO_WAIT_MS = 3_000L
 private const val WHITE_WAIT_MS = 3_000L
@@ -147,7 +148,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     private val xray = Mutex()
     private val os: OsNetwork = OsNetwork.Wifi
 
-    private val host = SessionHost<Live>(
+    private val host = SessionHost(
         scope = scope,
         bring = {
             holdXray(xray)
@@ -172,7 +173,14 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     private val memory = AndroidStore(cfg.data)
     private val books = FileTrafficBookStore(cfg.data)
     private val salt by lazy { installSalt(cfg.data) }
-    private val device by lazy { deviceHeaders(hwidOf(salt), System.getProperty("os.version").orEmpty(), "container", os = "Linux") }
+    private val device by lazy {
+        deviceHeaders(
+            hwidOf(salt),
+            System.getProperty("os.version").orEmpty(),
+            "container",
+            os = "Linux"
+        )
+    }
 
     private val converter = LibXrayCli(command = listOf(cfg.converter))
     private val geo: Deferred<GeoCountry?> = scope.async(Dispatchers.IO) {
@@ -202,7 +210,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
             location = http::location,
             serverKeys = { text -> converter.convert(text).fold({ emptyList() }, ::draftKeysOf) },
             warm = { text -> live(Tun.Off, text) },
-            lists = { withTimeoutOrNull(WHITE_WAIT_MS) { white.await() } },
+            lists = { withTimeoutOrNull(WHITE_WAIT_MS.milliseconds) { white.await() } },
             subscriptions = subscriptions,
             passports = passports,
             memory = memory,
@@ -230,7 +238,11 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
                 ),
                 routes,
             )
-        }.stateIn(scope, SharingStarted.Eagerly, Status(host.state.value.view(), desk.board.value, countries = countryState.value))
+        }.stateIn(
+            scope,
+            SharingStarted.Eagerly,
+            Status(host.state.value.view(), desk.board.value, countries = countryState.value)
+        )
 
     init {
         scope.launch { refreshCountries() }
@@ -323,7 +335,10 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
 
     override suspend fun select(id: String): Picked = desk.select(id).also { picked ->
         when (picked) {
-            Picked.Ready -> { switchTraffic(); refreshCountries() }
+            Picked.Ready -> {
+                switchTraffic(); refreshCountries()
+            }
+
             is Picked.Expired -> Unit
         }
     }
@@ -354,7 +369,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     }
 
     /** Паспорт с диска; пока его нет — пустой. */
-    private suspend fun savedPassport(): Passport {
+    private fun savedPassport(): Passport {
         val saved = passports.load()
         return if (saved == null) Passport(emptyMap(), 0) else saved
     }
@@ -362,7 +377,8 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     private suspend fun passportCountries(): Set<String> {
         val current = subscriptions.current()
         if (current == null) return emptySet()
-        val keys = current.servers.ifEmpty { converter.convert(current.text).fold({ emptyList() }, ::draftKeysOf) }.toSet()
+        val keys =
+            current.servers.ifEmpty { converter.convert(current.text).fold({ emptyList() }, ::draftKeysOf) }.toSet()
         return savedPassport().servers.filterKeys { it in keys }.values.mapNotNull { facts ->
             when (val exit = facts.exit) {
                 Exit.Unknown -> null
@@ -382,37 +398,40 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun sessionExits(): Flow<Triple<SessionState<Live>, ServerId?, Map<ServiceId, ServerRoute>>> = host.state.flatMapLatest { s ->
-        when (s) {
-            is SessionState.Up -> {
-                val servers = s.live.warm.servers.associateBy { it.id }
-                val facts = savedPassport().servers
-                s.live.driver.exits.state.map { exits ->
-                    val general = exits.general.serverOrNull()
-                    val routes = VPN_SERVICES.mapNotNull { service ->
-                        val pin = exits.pinned[service.id]
-                        val server = servers[if (pin == null) general else pin.server]
-                        if (server == null) return@mapNotNull null
-                        val known = facts[server.key]
-                        val exit = if (known == null) Exit.Unknown else known.exit
-                        val country = when (exit) {
-                            Exit.Unknown -> ""
-                            is Exit.At -> exit.country
-                        }
-                        service.id to ServerRoute(server.id, server.entry, country)
-                    }.toMap()
-                    Triple(s, general, routes)
+    private fun sessionExits(): Flow<Triple<SessionState<Live>, ServerId?, Map<ServiceId, ServerRoute>>> =
+        host.state.flatMapLatest { s ->
+            when (s) {
+                is SessionState.Up -> {
+                    val servers = s.live.warm.servers.associateBy { it.id }
+                    val facts = savedPassport().servers
+                    s.live.driver.exits.state.map { exits ->
+                        val general = exits.general.serverOrNull()
+                        val routes = VPN_SERVICES.mapNotNull { service ->
+                            val pin = exits.pinned[service.id]
+                            val server = servers[if (pin == null) general else pin.server]
+                            if (server == null) return@mapNotNull null
+                            val known = facts[server.key]
+                            val exit = if (known == null) Exit.Unknown else known.exit
+                            val country = when (exit) {
+                                Exit.Unknown -> ""
+                                is Exit.At -> exit.country
+                            }
+                            service.id to ServerRoute(server.id, server.entry, country)
+                        }.toMap()
+                        Triple(s, general, routes)
+                    }
                 }
+
+                SessionState.Down, SessionState.Starting, is SessionState.Failed -> flowOf(Triple(s, null, emptyMap()))
             }
-            SessionState.Down, SessionState.Starting, is SessionState.Failed -> flowOf(Triple(s, null, emptyMap()))
         }
-    }
 
     private fun exitName(s: SessionState<Live>, exit: ServerId?): String = when (s) {
         is SessionState.Up -> {
             val server = s.live.warm.servers.find { it.id == exit }
             if (server == null) podbor.screen.NO_EXIT else server.name
         }
+
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> podbor.screen.NO_EXIT
     }
 
@@ -435,7 +454,12 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
             converter = converter,
             engine = XrayBinary(cfg.xray, cfg.data, API_PORT),
             api = xrayApiOn(channel),
-            prober = ProberImpl(TelegramProbeImpl(), InstagramProbeImpl(), SocketTcpReach(), https = webProbe::responds),
+            prober = ProberImpl(
+                TelegramProbeImpl(),
+                InstagramProbeImpl(),
+                SocketTcpReach(),
+                https = webProbe::responds
+            ),
             exitProbe = ExitProbeImpl(),
             gate = EndpointGate(),
             resolver = resolver,
@@ -446,7 +470,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
             tape = tape,
             opts = opts,
             countryOf = { ip ->
-                val base = withTimeoutOrNull(GEO_WAIT_MS) { geo.await() }
+                val base = withTimeoutOrNull(GEO_WAIT_MS.milliseconds) { geo.await() }
                 if (base == null) null else base.of(ip)
             },
             exitFallback = fallback::measure,
@@ -519,7 +543,8 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     }
 
     private fun readFilter(): ExitFilter =
-        Either.catch { Json.decodeFromString(ExitFilter.serializer(), filterFile.readText()) }.fold({ ExitFilter() }, { it })
+        Either.catch { Json.decodeFromString(ExitFilter.serializer(), filterFile.readText()) }
+            .fold({ ExitFilter() }, { it })
 
     private fun saveFilter(filter: ExitFilter) {
         writeAtomic(filterFile, Json.encodeToString(ExitFilter.serializer(), filter))
