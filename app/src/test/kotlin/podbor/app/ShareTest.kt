@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import podbor.app.share.Bundle
 import podbor.app.share.SHARE_WINDOW_MS
@@ -45,7 +46,7 @@ class ShareTest : FunSpec({
         listOf(now - SHARE_WINDOW_MS - 1, now - SHARE_WINDOW_MS, now - 1_000).forEach {
             File(dir, "tape-$it.jsonl").apply { writeText("$it\n"); setLastModified(it) }
         }
-        readTapes(dir, now).getOrNull()!!.map { it.startedAt } shouldBe listOf(now - SHARE_WINDOW_MS, now - 1_000)
+        readTapes(dir, now).getOrNull().shouldNotBeNull().map { it.startedAt } shouldBe listOf(now - SHARE_WINDOW_MS, now - 1_000)
     }
 
     test("readTapes: лента начата 8 дней назад, но дописывалась вчера (сервис живёт днями) — отдаётся") {
@@ -53,14 +54,14 @@ class ShareTest : FunSpec({
         val now = 1_800_000_000_000L
         val started = now - SHARE_WINDOW_MS - 86_400_000
         File(dir, "tape-$started.jsonl").apply { writeText("episode\n"); setLastModified(now - 86_400_000) }
-        readTapes(dir, now).getOrNull()!!.map { it.text } shouldBe listOf("episode\n")
+        readTapes(dir, now).getOrNull().shouldNotBeNull().map { it.text } shouldBe listOf("episode\n")
     }
 
     test("readTapes: лента «из будущего» (часы телефона уходили вперёд) не теряется") {
         val dir = tempdir()
         val now = 1_800_000_000_000L
         File(dir, "tape-${now + 3_600_000}.jsonl").writeText("ahead\n")
-        readTapes(dir, now).getOrNull()!!.map { it.text } shouldBe listOf("ahead\n")
+        readTapes(dir, now).getOrNull().shouldNotBeNull().map { it.text } shouldBe listOf("ahead\n")
     }
 
     test("лент нет или все пустые → Лента пуста (Left Empty)") {
@@ -88,10 +89,10 @@ class ShareTest : FunSpec({
         File(cache, "share").mkdirs()
         File(cache, "share/podbor-tape-20260114-1000.jsonl").writeText("old")
         File(cache, "other.bin").writeText("keep")
-        val file = writeShare(cache, Bundle("podbor-tape-20260115-1200.jsonl", "{\"a\":1}\n")).getOrNull()!!
+        val file = writeShare(cache, Bundle("podbor-tape-20260115-1200.jsonl", "{\"a\":1}\n")).getOrNull().shouldNotBeNull()
         file shouldBe File(cache, "share/podbor-tape-20260115-1200.jsonl")
         file.readText() shouldBe "{\"a\":1}\n"
-        File(cache, "share").list()!!.toList() shouldBe listOf("podbor-tape-20260115-1200.jsonl")
+        File(cache, "share").list().shouldNotBeNull().toList() shouldBe listOf("podbor-tape-20260115-1200.jsonl")
         File(cache, "other.bin").isFile shouldBe true
     }
 })

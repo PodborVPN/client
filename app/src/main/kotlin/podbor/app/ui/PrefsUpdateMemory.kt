@@ -10,9 +10,9 @@ private const val UPDATE_URL = "update_url"
 /** Память обновлялки в SharedPreferences: ключи прежние — ответ GitHub, полученный прежней версией, не теряется. */
 class PrefsUpdateMemory(private val prefs: SharedPreferences) : UpdateMemory {
     override fun known(): Release? {
-        val tag = prefs.getString(UPDATE_TAG, null) ?: return null
-        val url = prefs.getString(UPDATE_URL, null) ?: return null
-        return Release(tag, url)
+        val tag = prefs.getString(UPDATE_TAG, null)
+        val url = prefs.getString(UPDATE_URL, null)
+        return if (tag == null || url == null) null else Release(tag, url)
     }
 
     override fun remember(release: Release) {

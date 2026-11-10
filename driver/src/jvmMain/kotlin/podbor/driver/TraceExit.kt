@@ -22,10 +22,16 @@ class TraceExit(
     private val url: String = "https://www.cloudflare.com/cdn-cgi/trace",
     private val deadlineMs: Int = PROBE_DEADLINE_MS.toInt(),
 ) {
-    suspend fun measure(port: Int): Exit = body(port)?.let(::exitOfTrace) ?: Exit.Unknown
+    suspend fun measure(port: Int): Exit {
+        val text = body(port)
+        return if (text == null) Exit.Unknown else exitOfTrace(text)
+    }
 
     /** Сетевая проба: геолокация в ответе может отсутствовать. */
-    suspend fun responds(port: Int): Boolean = body(port)?.let { traceFields(it)["ip"]?.let(::exitIpOf) } != null
+    suspend fun responds(port: Int): Boolean {
+        val text = body(port)
+        return text != null && ipOf(traceFields(text)) != null
+    }
 
     private suspend fun body(port: Int): String? = coroutineScope {
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port))
@@ -60,11 +66,13 @@ class TraceExit(
 
 internal fun exitOfTrace(body: String): Exit {
     val fields = traceFields(body)
-    val ip = fields["ip"]?.let(::exitIpOf) ?: return Exit.Unknown
-    val country = fields["loc"] ?: return Exit.Unknown
+    val ip = ipOf(fields)
+    val country = fields["loc"]
+    if (ip == null || country == null) return Exit.Unknown
     return if (knownCountry(country) && country != "XX" && country != "ZZ") Exit.At(ip, country) else Exit.Unknown
 }
 
+private fun ipOf(fields: Map<String, String>) = fields["ip"].let { if (it == null) null else exitIpOf(it) }
 
 private fun traceFields(body: String): Map<String, String> = body.lineSequence()
     .map { it.trim().split('=', limit = 2) }

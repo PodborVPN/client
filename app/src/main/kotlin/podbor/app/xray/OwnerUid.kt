@@ -28,7 +28,7 @@ class OwnerUidFinder(private val cm: ConnectivityManager) : ProcessFinder {
         // SecurityException — VPN уже не наш (отозван между соединением и вопросом): чьё — неизвестно.
         return Either.catch {
             cm.getConnectionOwnerUid(protocol, InetSocketAddress(srcIP, srcPort.toInt()), InetSocketAddress(destIP, destPort.toInt()))
-        }.getOrNull()?.toLong() ?: Process.INVALID_UID.toLong()
+        }.fold({ Process.INVALID_UID.toLong() }, { it.toLong() })
     }
 }
 

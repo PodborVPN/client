@@ -1,6 +1,7 @@
 package podbor.app
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import podbor.app.sub.FilePassportStore
@@ -143,7 +144,7 @@ class StoresTest : FunSpec({
     test("запись атомарна: временных файлов не остаётся") {
         val dir = tmp()
         FilePassportStore(dir).save(passport)
-        dir.list()!!.toList() shouldBe listOf("passport.json")
+        dir.list().shouldNotBeNull().toList() shouldBe listOf("passport.json")
     }
     test("сбой записи не бросает") {
         val dir = tmp()

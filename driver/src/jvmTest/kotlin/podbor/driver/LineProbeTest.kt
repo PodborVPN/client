@@ -17,6 +17,7 @@ import io.kotest.datatest.withData
 import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.longs.shouldBeInRange
 import io.kotest.matchers.longs.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
@@ -140,9 +141,9 @@ class LineProbeTest : FunSpec({
         )
         val h = runBlocking { shaker.shake(ref) }.shouldBeInstanceOf<Handshake.Silent>()
         h.stage shouldBe Stage.Tls
-        h.beforeMs!! shouldBeInRange 1_400L..1_550L
-        h.allowedMs!! shouldBeInRange 250L..450L
-        h.waitedMs shouldBeLessThanOrEqual h.allowedMs!! + 100
+        h.beforeMs.shouldNotBeNull() shouldBeInRange 1_400L..1_550L
+        h.allowedMs.shouldNotBeNull() shouldBeInRange 250L..450L
+        h.waitedMs shouldBeLessThanOrEqual h.allowedMs.shouldNotBeNull() + 100
     }
 
     test("SYN без ответа после резолва 300 мс на боевых сроках: строго Silent(Connect, ≥ 1000), allowedMs = min(connectMs, остаток потолка), beforeMs ≈ резолв") {
@@ -159,8 +160,8 @@ class LineProbeTest : FunSpec({
         val h = runBlocking { shaker.shake(ref) }.shouldBeInstanceOf<Handshake.Silent>()
         h.stage shouldBe Stage.Connect
         h.waitedMs shouldBeGreaterThanOrEqual 1_000L
-        h.beforeMs!! shouldBeInRange 300L..450L
-        h.allowedMs!! shouldBeInRange 1_350L..1_500L
+        h.beforeMs.shouldNotBeNull() shouldBeInRange 300L..450L
+        h.allowedMs.shouldNotBeNull() shouldBeInRange 1_350L..1_500L
     }
 
     test("таймаут чтения ServerHello (не потолок): Silent(Tls) тоже несёт allowedMs и beforeMs") {
@@ -175,8 +176,8 @@ class LineProbeTest : FunSpec({
         )
         val h = runBlocking { shaker.shake(ref) }.shouldBeInstanceOf<Handshake.Silent>()
         h.stage shouldBe Stage.Tls
-        h.beforeMs!! shouldBeLessThan 100L
-        h.allowedMs!! shouldBeInRange 1_700L..1_800L
+        h.beforeMs.shouldNotBeNull() shouldBeLessThan 100L
+        h.allowedMs.shouldNotBeNull() shouldBeInRange 1_700L..1_800L
     }
 
     test("старый JSON Silent без allowedMs/beforeMs (Лента v0) декодируется с null") {

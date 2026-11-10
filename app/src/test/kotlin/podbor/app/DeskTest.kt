@@ -139,7 +139,7 @@ private class Rig(
         },
         prober = { spec, _, port ->
             val service = services.first { it.probe == spec }
-            val origin = desk.origin.value[service.id] ?: ExitOrigin.Chosen
+            val origin = desk.origin.value.getOrDefault(service.id, ExitOrigin.Chosen)
             // Телега — прежними метками, Инста — со своей.
             val who = if (service == Telegram) "" else "${service.label} "
             events += "probe $who$port ($origin)"
@@ -197,7 +197,10 @@ private class Rig(
     suspend fun up() = host.state.first { it is SessionState.Up }
 
     /** Выходы балансеров поднятой сессии; без сессии — пусто (новая сессия начинает без выходов). */
-    fun exits(): ExitsState = (host.state.value as? SessionState.Up)?.live?.driver?.exits?.state?.value ?: ExitsState(Route.Free, emptyMap())
+    fun exits(): ExitsState = when (val s = host.state.value) {
+        is SessionState.Up -> s.live.driver.exits.state.value
+        SessionState.Down, SessionState.Starting, is SessionState.Failed -> ExitsState(Route.Free, emptyMap())
+    }
 
     fun status(service: ServiceId): CardStatus = desk.board.value.cards.single { it.service == service }.status
 }

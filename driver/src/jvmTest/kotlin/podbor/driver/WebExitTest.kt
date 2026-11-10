@@ -6,6 +6,7 @@ import arrow.core.right
 import podbor.core.ChosenOn
 import arrow.fx.coroutines.resourceScope
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import podbor.core.Letter
@@ -41,7 +42,7 @@ class WebExitTest : FunSpec({
         runBlocking {
             resourceScope {
                 val driver = world.driver()
-                val warm = with(driver) { warmUp("sub") }.getOrNull()!!
+                val warm = with(driver) { warmUp("sub") }.getOrNull().shouldNotBeNull()
                 driver.press(warm, services, OsNetwork.Wifi)
                 driver.exits.effective(Telegram.id) shouldBe Route.Fixed(first)
                 driver.exits.effective(Web.id) shouldBe Route.Fixed(second)
@@ -76,13 +77,13 @@ class WebExitTest : FunSpec({
         val base = World(servers, emptySet(), observation, emptySet(), services = services)
         runBlocking {
             val firstServer = resourceScope {
-                with(base.driver()) { warmUp("sub") }.getOrNull()!!.servers.first()
+                with(base.driver()) { warmUp("sub") }.getOrNull().shouldNotBeNull().servers.first()
             }
             val memory = Memory.Empty.rememberSuccess(memoryKey(OsNetwork.Wifi, Scenario.Wifi, Web.id), firstServer, 1L)
             val world = World(servers, emptySet(), observation, emptySet(), memory = memory, prober = probe, services = services)
             resourceScope {
                 val driver = world.driver()
-                val warm = with(driver) { warmUp("sub") }.getOrNull()!!
+                val warm = with(driver) { warmUp("sub") }.getOrNull().shouldNotBeNull()
                 val prior = Prior.Detected(nonEmptyListOf(Letter.LineObserved(System.currentTimeMillis(), observation)))
                 driver.recall(warm, services, OsNetwork.Wifi, prior) shouldBe emptyMap()
                 driver.exits.state.value.general shouldBe Route.Free

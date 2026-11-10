@@ -22,7 +22,8 @@ private class FakeSocks(private val auth: SocksAuth, private val reply: ByteArra
     init {
         thread(isDaemon = true) {
             while (!server.isClosed) {
-                val c = runCatching { server.accept() }.getOrNull() ?: break
+                val c = runCatching { server.accept() }.getOrNull()
+                if (c == null) break
                 thread(isDaemon = true) { c.use(::serve) }
             }
         }

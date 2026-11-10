@@ -50,10 +50,15 @@ class ExpiryNotice(
 
     suspend fun check(): Unit = withContext(Dispatchers.IO) {
         val shelf = subscriptions.load()
-        val p = shelf.current()?.provider ?: return@withContext
-        val expireS = p.expireS ?: return@withContext
-        val last = prefs.getLong(EXPIRE_S, -1).takeIf { it >= 0 }?.let { Reminded(it, prefs.getInt(DAY, -1)) }
-        val day = reminderDay(expireS, nowMs(), ZoneId.systemDefault(), last) ?: return@withContext
+        val current = shelf.current()
+        if (current == null) return@withContext
+        val p = current.provider
+        val expireS = p.expireS
+        if (expireS == null) return@withContext
+        val remindedFor = prefs.getLong(EXPIRE_S, -1)
+        val last = if (remindedFor >= 0) Reminded(remindedFor, prefs.getInt(DAY, -1)) else null
+        val day = reminderDay(expireS, nowMs(), ZoneId.systemDefault(), last)
+        if (day == null) return@withContext
         val (title, text) = expiryWords(day, p.title)
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Подписка", NotificationManager.IMPORTANCE_DEFAULT))

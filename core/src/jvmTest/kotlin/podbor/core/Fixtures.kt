@@ -6,7 +6,7 @@ import arrow.core.nonEmptyListOf
 fun server(
     tag: String,
     entry: Entry,
-    host: String = "10.0.0.${tag.filter(Char::isDigit).toIntOrNull() ?: 1}",
+    host: String = "10.0.0.${tag.filter(Char::isDigit).toIntOrNull().let { if (it == null) 1 else it }}",
     port: Int = 443,
     transport: Transport = Transport.Grpc,
     name: String = tag,

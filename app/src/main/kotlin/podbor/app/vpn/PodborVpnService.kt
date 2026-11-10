@@ -214,11 +214,12 @@ class PodborVpnService : VpnService(), ServicePort {
     private val countryState by lazy { MutableStateFlow(CountrySelection(filter = filterPrefs.read())) }
 
     private suspend fun passportCountries(): Set<String> {
-        val current = subscriptions.current() ?: return emptySet()
+        val current = subscriptions.current()
+        if (current == null) return emptySet()
         val keys = current.servers.ifEmpty {
             LibXrayConverter(LibXrayInvoke).convert(current.text).fold({ emptyList() }, ::draftKeysOf)
         }.toSet()
-        return passports.load()?.servers.orEmpty().filterKeys { it in keys }.values.mapNotNull { facts ->
+        return passports.load().let { if (it == null) emptyMap() else it.servers }.filterKeys { it in keys }.values.mapNotNull { facts ->
             when (val exit = facts.exit) {
                 Exit.Unknown -> null
                 is Exit.At -> exit.country.takeIf(::knownCountry)
@@ -301,7 +302,10 @@ class PodborVpnService : VpnService(), ServicePort {
         val key = subscriptionKey(s, salt)
         pulseState.update { it.copy(book = it.book.without(key)) }
         books.save(pulseState.value.book)
-        pulseNow.update { if (it.vpn?.key == key) it.copy(vpn = null) else it }
+        pulseNow.update { now ->
+            val vpn = now.vpn
+            if (vpn != null && vpn.key == key) now.copy(vpn = null) else now
+        }
         Either.catch { tape.write(noteLine("subscription: удалена, забыто серверов $servers")) }
     }
 
@@ -382,13 +386,13 @@ class PodborVpnService : VpnService(), ServicePort {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
         // Лепесток «выкл» на экране, кнопка уведомления, плитка: стоп сессии той же дорогой, что отзыв VPN системой.
-        if (intent?.action == ACTION_STOP) {
+        if (intent != null && intent.action == ACTION_STOP) {
             log("стоп: выключен с экрана или из шторки")
             host.stop(startId)
             return START_NOT_STICKY
         }
         // «Подобрать» в уведомлении: то же нажатие, что на экране; без поднятой сессии подбирать нечем — оно молчит.
-        if (intent?.action == ACTION_PRESS) {
+        if (intent != null && intent.action == ACTION_PRESS) {
             when (host.state.value) {
                 is SessionState.Up -> {
                     log("нажатие: из уведомления")
@@ -407,7 +411,7 @@ class PodborVpnService : VpnService(), ServicePort {
         startForeground()
         host.start(startId)
         // Старт из шторки: экрана нет, и замер открытия не позовёт никто — зовём сами, чтобы статус был честным сразу.
-        if (intent?.getBooleanExtra(EXTRA_OPEN, false) == true) {
+        if (intent != null && intent.getBooleanExtra(EXTRA_OPEN, false)) {
             log("старт: из шторки, замер открытия")
             scope.launch { desk.open() }
         }
@@ -509,7 +513,8 @@ class PodborVpnService : VpnService(), ServicePort {
 
     /** Текущая подписка сменилась: «через VPN» — её счёт сразу, а не прежней до первого отсчёта. */
     private suspend fun switchTraffic() {
-        val current = subscriptions.current() ?: return
+        val current = subscriptions.current()
+        if (current == null) return
         val key = subscriptionKey(current, salt)
         pulseState.update { it.copy(book = it.book.switchedTo(key)) }
         books.save(pulseState.value.book)
@@ -527,13 +532,19 @@ class PodborVpnService : VpnService(), ServicePort {
         when (s) {
             is SessionState.Up -> {
                 val servers = s.live.warm.servers.associateBy { it.id }
-                val facts = passports.load()?.servers.orEmpty()
+                val facts = passports.load().let { if (it == null) emptyMap() else it.servers }
                 s.live.driver.exits.state.map { exits ->
                     val general = exits.general.serverOrNull()
                     val routes = VPN_SERVICES.mapNotNull { service ->
-                        val id = exits.pinned[service.id]?.server ?: general
-                        val server = servers[id] ?: return@mapNotNull null
-                        val country = (facts[server.key]?.exit as? Exit.At)?.country.orEmpty()
+                        val pin = exits.pinned[service.id]
+                        val server = servers[if (pin == null) general else pin.server]
+                        if (server == null) return@mapNotNull null
+                        val known = facts[server.key]
+                        val exit = if (known == null) Exit.Unknown else known.exit
+                        val country = when (exit) {
+                            Exit.Unknown -> ""
+                            is Exit.At -> exit.country
+                        }
                         service.id to ServerRoute(server.id, server.entry, country)
                     }.toMap()
                     Triple(s, general, routes)
@@ -546,7 +557,8 @@ class PodborVpnService : VpnService(), ServicePort {
     /** Сессия VPN: Xray на fd туннеля с сохранённой подпиской; её нет — сессия Failed «нет подписки». */
     private suspend fun ResourceScope.warmUp(fd: Int): Either<EngineError, Live> {
         // Подписку человека кладёт экран входа; её текст секретен и в лог не идёт.
-        val subscription = subscriptions.current() ?: return Either.Left(EngineError.Failed("нет подписки"))
+        val subscription = subscriptions.current()
+        if (subscription == null) return Either.Left(EngineError.Failed("нет подписки"))
         return live(Tun.On(fd), subscription.text)
     }
 
@@ -559,7 +571,7 @@ class PodborVpnService : VpnService(), ServicePort {
             assetDir = geoDir(this@PodborVpnService).absolutePath,
             tun = tun,
             services = VPN_SERVICES,
-            uids = VPN_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg)?.let { pkg to it } }.toMap(),
+            uids = VPN_SERVICES.flatMap { it.match.apps }.mapNotNull { pkg -> uidOf(pkg).let { if (it == null) null else pkg to it } }.toMap(),
             socks = SocksIn.Locked(LOCAL_SOCKS),
             api = ApiListen.Unix(apiSocket.path),
             // Журнал соединений — только у сессии с TUN: там ходят приложения; лог прошлой сессии свёрнут — с нуля.
@@ -590,7 +602,7 @@ class PodborVpnService : VpnService(), ServicePort {
             passportStore = passports,
             tape = tape,
             opts = opts,
-            countryOf = { ip -> GeoHolder.await(GEO_WAIT_MS)?.of(ip) },
+            countryOf = { ip -> GeoHolder.await(GEO_WAIT_MS).let { if (it == null) null else it.of(ip) } },
             exitFallback = fallback::measure,
         )
         val filter = when (tun) {
@@ -631,7 +643,8 @@ class PodborVpnService : VpnService(), ServicePort {
         booksLoaded.await()
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
-        val subscription = subscriptions.current()?.let { subscriptionKey(it, salt) } ?: ""
+        val current = subscriptions.current()
+        val subscription = if (current == null) "" else subscriptionKey(current, salt)
         install(
             {
                 scope.launch {
@@ -657,10 +670,10 @@ class PodborVpnService : VpnService(), ServicePort {
                         mono = SystemClock::elapsedRealtime,
                         epoch = epoch,
                         // Сеть — ОС на момент отсчёта (доска экрана без открытого экрана смену сети не видит).
-                        context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())) ?: "", subscription) },
+                        context = { PulseContext(kind, networkKey(telephony.osNetworkLight(underlying.transport())).orEmpty(), subscription) },
                         watching = watching,
                         effective = {
-                            VPN_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull()?.let { s.id to tagOf(it, s.id) } }.toMap()
+                            VPN_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull().let { if (it == null) null else s.id to tagOf(it, s.id) } }.toMap()
                         },
                         pulse = pulseState,
                         tape = tape,
@@ -742,7 +755,7 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     private fun exitName(s: SessionState<Live>, exit: ServerId?): String = when (s) {
-        is SessionState.Up -> s.live.warm.servers.find { it.id == exit }?.name ?: "выход не выбран"
+        is SessionState.Up -> s.live.warm.servers.find { it.id == exit }.let { if (it == null) "выход не выбран" else it.name }
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> "выход не выбран"
     }
 

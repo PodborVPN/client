@@ -59,7 +59,8 @@ class ScanBoardTest : FunSpec({
                 is Deed.MeasureExit -> Letter.ExitSeen(now, d.server, Exit.At("9.9.9.9", "NL"))
                 is Deed.Probe -> Letter.ProbeAnswered(now, d.server, verdict(d.server, d.service), d.service)
                 is Deed.MakeExit, is Deed.MeasureSpeed, is Deed.Remember, is Deed.SavePassport -> null
-            } ?: continue
+            }
+            if (letter == null) continue
             letters += letter
             val (next, out) = scanStep(state, letter)
             state = next

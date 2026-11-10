@@ -21,7 +21,7 @@ val LOCAL_SOCKS: SocksAuth by lazy { SocksAuth.random().also(::installSocksAuth)
 fun installSocksAuth(auth: SocksAuth) {
     Authenticator.setDefault(object : Authenticator() {
         override fun getPasswordAuthentication(): PasswordAuthentication? =
-            if (requestingProtocol == "SOCKS5" && requestingSite?.isLoopbackAddress == true) {
+            if (requestingProtocol == "SOCKS5" && requestingSite != null && requestingSite.isLoopbackAddress) {
                 PasswordAuthentication(auth.user, auth.pass.toCharArray())
             } else null
     })

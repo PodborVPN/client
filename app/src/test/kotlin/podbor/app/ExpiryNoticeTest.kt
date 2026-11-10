@@ -74,7 +74,7 @@ class ExpiryNoticeTest {
         store.saveOne(Subscription("https://a.b/s", "vless://a", provider = ProviderInfo(expireS = now / 1000 + 2 * 86_400 + 3_600, support = podbor.screen.Support.Link("https://t.me/help"))))
         ExpiryNotice(app, store) { now }.check()
         val renew = shadowOf(shadowOf(nm).allNotifications.single().actions[0].actionIntent).savedIntent
-        assertEquals("podbor.app.ui.MainActivity", renew.component?.className)
+        assertEquals("podbor.app.ui.MainActivity", renew.component.let { if (it == null) null else it.className })
         assertEquals("https://t.me/help", renew.getStringExtra(EXTRA_RENEW_URL))
     }
 

@@ -128,7 +128,7 @@ class MainActivity : FragmentActivity() {
      */
     private suspend fun shelfNow(store: SubscriptionStore): Subscriptions = withContext(Dispatchers.IO) {
         val os = Telephony(this@MainActivity).osNetworkLight(UnderlyingNetwork(getSystemService(ConnectivityManager::class.java)).transport())
-        val passport = FilePassportStore(filesDir).load() ?: Passport(emptyMap(), 0)
+        val passport = FilePassportStore(filesDir).load().let { if (it == null) Passport(emptyMap(), 0) else it }
         val memory = AndroidStore(filesDir).loadMemory()
         val book = FileTrafficBookStore(filesDir).load()
         val salt = installSalt(noBackupFilesDir)
@@ -156,7 +156,8 @@ class MainActivity : FragmentActivity() {
     /** Сканер QR (zxing): текст QR — тем же путём, что буфер. */
     private val qr = registerForActivityResult(ScanContract()) { r ->
         vm.answered()
-        r.contents?.let(::input)
+        val text: String? = r.contents
+        if (text != null) input(text)
     }
 
     /** Системный выбор «куда отправить». */
@@ -181,7 +182,8 @@ class MainActivity : FragmentActivity() {
         }
 
         override fun askConsent() {
-            prepared?.let { consent.launch(it) }
+            val asking = prepared
+            if (asking != null) consent.launch(asking)
         }
 
         // Сначала старт: дальше сервис держит он, и отпущенная после него привязка ([MainViewModel.hold]) его не гасит.
@@ -294,7 +296,8 @@ class MainActivity : FragmentActivity() {
         }
         if (intent.getBooleanExtra(EXTRA_RENEW, false)) {
             dismissExpiry(this)
-            intent.getStringExtra(EXTRA_RENEW_URL)?.let(::openSupport)
+            val url: String? = intent.getStringExtra(EXTRA_RENEW_URL)
+            if (url != null) openSupport(url)
         }
     }
 
@@ -379,7 +382,8 @@ class MainActivity : FragmentActivity() {
                         Page.Main -> MainFragment::class.java
                         Page.AddSubscription, is Page.Scanning -> SubscriptionFragment::class.java
                     }
-                    if (supportFragmentManager.findFragmentById(R.id.page)?.javaClass != kind) {
+                    val shownPage = supportFragmentManager.findFragmentById(R.id.page)
+                    if (shownPage == null || shownPage.javaClass != kind) {
                         log("экран: страница ${kind.simpleName}")
                         supportFragmentManager.beginTransaction()
                             .setReorderingAllowed(true)
@@ -448,8 +452,9 @@ class MainActivity : FragmentActivity() {
 
     /** «Поделиться → Podbor» (SEND text/plain): тот же путь, что буфер. Текст секретен — в лог только факт. */
     private fun shared(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND) return
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        if (intent == null || intent.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        if (text == null) return
         // Повторная доставка того же Intent (пересоздание) не запускает анализ снова.
         setIntent(Intent(this, MainActivity::class.java))
         log("подписка: пришла через «поделиться»")
@@ -561,7 +566,7 @@ class MainActivity : FragmentActivity() {
                 launch {
                     // Ярус «текущий VPN» — только вид состояния и откуда выход по сервисам, без имён: метка для замера на телефоне.
                     combine(boards, vm.origin) { b, origin ->
-                        b.cards.joinToString(" ") { "${it.label}:${kindOf(it.status)}/${origin[it.service] ?: ExitOrigin.Chosen}" }
+                        b.cards.joinToString(" ") { "${it.label}:${kindOf(it.status)}/${origin.getOrDefault(it.service, ExitOrigin.Chosen)}" }
                     }
                         .distinctUntilChanged()
                         .collect { log("экран: выход $it через ${SystemClock.elapsedRealtime() - openedAt} мс от открытия") }

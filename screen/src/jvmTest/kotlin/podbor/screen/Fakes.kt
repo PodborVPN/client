@@ -73,7 +73,7 @@ internal class FakePort : ServicePort {
         onBoard: (ScanBoard) -> Unit,
     ): Either<InputError, ScanBoard> {
         analyses++
-        skipped?.let(onSkipped)
+        listOfNotNull(skipped).forEach(onSkipped)
         return analysis(onBoard)
     }
 

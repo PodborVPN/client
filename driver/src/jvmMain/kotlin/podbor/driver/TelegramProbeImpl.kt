@@ -28,7 +28,10 @@ class TelegramProbeImpl(
 ) : TelegramProbe {
     override suspend fun probe(socksPort: Int): Int = coroutineScope {
         dcs.map { (ip, port) ->
-            async(Dispatchers.IO) { withTimeoutOrNull(deadlineMs) { askDc(socksPort, ip, port) } ?: DcAnswer.Silent }
+            async(Dispatchers.IO) {
+                val answer = withTimeoutOrNull(deadlineMs) { askDc(socksPort, ip, port) }
+                if (answer == null) DcAnswer.Silent else answer
+            }
         }.awaitAll().count { it == DcAnswer.ResPq }
     }
 
@@ -48,7 +51,9 @@ class TelegramProbeImpl(
                 o.write(byteArrayOf(5, 1, 0, 1) + addr + byteArrayOf((port shr 8).toByte(), port.toByte()))
                 i.exactly(10)
                 o.write(TG_BLOB); o.flush()
-                val len = le32(i.exactly(4) ?: return@runInterruptible DcAnswer.Silent, 0)
+                val header = i.exactly(4)
+                if (header == null) return@runInterruptible DcAnswer.Silent
+                val len = le32(header, 0)
                 judgeResPq(if (len in 1..4096) i.exactly(len) else null)
             }
         }.getOrElse { DcAnswer.Silent }.also { currentCoroutineContext().ensureActive() }
@@ -65,11 +70,11 @@ class TelegramProbeImpl(
             return
         }
         o.write(byteArrayOf(5, 1, 2))
-        val chosen = i.exactly(2) ?: error("SOCKS: нет ответа")
+        val chosen = checkNotNull(i.exactly(2)) { "SOCKS: нет ответа" }
         check(chosen[1] == 2.toByte()) { "SOCKS: пароль не принят как метод" }
         val user = a.user.toByteArray(); val pass = a.pass.toByteArray()
         o.write(byteArrayOf(1, user.size.toByte()) + user + byteArrayOf(pass.size.toByte()) + pass)
-        val verdict = i.exactly(2) ?: error("SOCKS: нет ответа на пароль")
+        val verdict = checkNotNull(i.exactly(2)) { "SOCKS: нет ответа на пароль" }
         check(verdict[1] == 0.toByte()) { "SOCKS: пароль отвергнут" }
     }
 }

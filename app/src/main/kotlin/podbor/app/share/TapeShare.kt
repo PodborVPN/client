@@ -70,7 +70,7 @@ fun readTapes(dir: File, nowMs: Long, windowMs: Long = SHARE_WINDOW_MS): Either<
 /** Пишет выгрузку в cache/share/, прошлые выгрузки удаляет (в кэше копится не больше одной). */
 fun writeShare(cache: File, bundle: Bundle): Either<Unshared.Unreadable, File> = Either.catch {
     val dir = File(cache, SHARE_DIR)
-    dir.listFiles()?.forEach { it.delete() }
+    dir.listFiles().orEmpty().forEach { it.delete() }
     dir.mkdirs()
     File(dir, bundle.fileName).apply { writeText(bundle.text) }
 }.mapLeft { Unshared.Unreadable }

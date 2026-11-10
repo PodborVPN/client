@@ -27,8 +27,8 @@ private fun geoDirLocked(context: Context): File {
     val dir = File(context.filesDir, "xray").also { it.mkdirs() }
     val stamp = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
     val markerFile = File(dir, "installed.marker")
-    val onDisk = GEO_FILES.associateWith { name -> File(dir, name).takeIf { it.isFile }?.length() }
-    val marker = markerFile.takeIf { it.isFile }?.readText()
+    val onDisk = GEO_FILES.associateWith { name -> File(dir, name).let { if (it.isFile) it.length() else null } }
+    val marker = if (markerFile.isFile) markerFile.readText() else null
     if (!geoFresh(marker, stamp, onDisk)) {
         // Метку — сначала долой: прерванное копирование не оставит «свежую» метку при недописанных файлах.
         markerFile.delete()
@@ -65,5 +65,8 @@ object WhiteHolder {
         }
     }
 
-    suspend fun await(timeoutMs: Long): WhiteLists? = withTimeoutOrNull(timeoutMs) { loading?.await() }
+    suspend fun await(timeoutMs: Long): WhiteLists? {
+        val started = loading
+        return if (started == null) null else withTimeoutOrNull(timeoutMs) { started.await() }
+    }
 }

@@ -69,8 +69,8 @@ class MemoryTest : FunSpec({
         val mine = Memory.Empty.rememberSuccess(tg, a, 1L).copy(blocks = mapOf(e to 100L))
         val update = Memory.Empty.rememberSuccess(ig, b, 2L).copy(blocks = mapOf(e to 200L))
         val result = mine.merged(update, Instagram.id)
-        result.successes[tg]!!.first().serverKey shouldBe a.key
-        result.successes[ig]!!.first().serverKey shouldBe b.key
+        result.successes.getValue(tg).first().serverKey shouldBe a.key
+        result.successes.getValue(ig).first().serverKey shouldBe b.key
         result.blocks[e] shouldBe 200L
         // update без ключа Телеги не стирает её успехи; чужие ключи update не берутся.
         result.successes.keys shouldBe setOf(tg, ig)

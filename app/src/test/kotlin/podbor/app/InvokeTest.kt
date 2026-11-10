@@ -6,6 +6,7 @@ import arrow.fx.coroutines.resourceScope
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.serialization.json.Json
@@ -61,7 +62,7 @@ class InvokeTest : FunSpec({
     }
 
     test("parseConvertResponse: outbounds читаются; пустые, отказ и мусор → Left") {
-        parseConvertResponse(CONVERT_OK).getOrNull()!! shouldHaveSize 1
+        parseConvertResponse(CONVERT_OK).getOrNull().shouldNotBeNull() shouldHaveSize 1
         parseConvertResponse("""{"success":true,"data":{"outbounds":[]},"error":""}""").shouldBeInstanceOf<Either.Left<EngineError>>()
         parseConvertResponse(FAILED).shouldBeInstanceOf<Either.Left<EngineError>>()
         parseConvertResponse("").shouldBeInstanceOf<Either.Left<EngineError>>()
@@ -110,7 +111,7 @@ class InvokeTest : FunSpec({
 
     test("LibXrayConverter: convertShareLinksToXrayJson с текстом подписки в payload.text") {
         val fake = FakeInvoke { CONVERT_OK }
-        LibXrayConverter(fake).convert("vless://x").getOrNull()!! shouldHaveSize 1
+        LibXrayConverter(fake).convert("vless://x").getOrNull().shouldNotBeNull() shouldHaveSize 1
         fake.methods shouldBe listOf("convertShareLinksToXrayJson")
         fake.requests.single().getValue("payload").jsonObject.getValue("text") shouldBe JsonPrimitive("vless://x")
     }

@@ -32,5 +32,8 @@ object GeoHolder {
     }
 
     /** Загруженный geoip или null: не стартовал, не успел за [timeoutMs], не загрузился. */
-    suspend fun await(timeoutMs: Long): GeoCountry? = withTimeoutOrNull(timeoutMs) { loading?.await() }
+    suspend fun await(timeoutMs: Long): GeoCountry? {
+        val started = loading
+        return if (started == null) null else withTimeoutOrNull(timeoutMs) { started.await() }
+    }
 }

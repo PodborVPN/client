@@ -35,8 +35,9 @@ class XrayConfigTest : FunSpec({
     val opts = ConfigOpts(assetDir = "/assets")
     val cfg = buildConfig(servers, outbounds, opts)
 
-    val rules = cfg["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
-    fun JsonObject.strs(k: String) = (this[k] as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+    val rules = cfg.getValue("routing").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
+    fun JsonObject.strs(k: String): List<String> = this[k].let { v -> if (v is JsonArray) v.map { it.jsonPrimitive.content } else emptyList() }
+    fun JsonObject.ruleTag(): String? = this["ruleTag"].let { if (it is JsonPrimitive) it.content else null }
     fun indexOf(pred: (JsonObject) -> Boolean) = rules.indexOfFirst(pred)
 
     test("inbound кандидата ведёт в свой outbound раньше geo-правил") {
@@ -50,14 +51,14 @@ class XrayConfigTest : FunSpec({
         rules[indexOf { "geosite:category-ru" in it.strs("domain") }]["outboundTag"] shouldBe JsonPrimitive("direct")
         rules[indexOf { "geoip:ru" in it.strs("ip") }]["outboundTag"] shouldBe JsonPrimitive("direct")
         rules.last()["balancerTag"] shouldBe JsonPrimitive("exit")
-        val balancer = cfg["routing"]!!.jsonObject["balancers"]!!.jsonArray.single().jsonObject
+        val balancer = cfg.getValue("routing").jsonObject.getValue("balancers").jsonArray.single().jsonObject
         balancer.strs("selector") shouldBe listOf("s001", "s002", "s003")
-        cfg["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content } shouldBe
+        cfg.getValue("outbounds").jsonArray.map { it.jsonObject.getValue("tag").jsonPrimitive.content } shouldBe
             listOf("s001", "s002", "s003", "direct", "block")
     }
 
     test("DNS: российские домены — локальный резолвер, прочее — 1.1.1.1") {
-        val dns = cfg["dns"]!!.jsonObject["servers"]!!.jsonArray
+        val dns = cfg.getValue("dns").jsonObject.getValue("servers").jsonArray
         dns[0].jsonObject.strs("domains") shouldBe listOf("geosite:category-ru")
         dns[0].jsonObject["address"] shouldBe JsonPrimitive("localhost")
         dns[1] shouldBe buildJsonObject { put("address", "1.1.1.1") }
@@ -82,12 +83,12 @@ class XrayConfigTest : FunSpec({
     test("вход-прокси сессии: mixed на заданном адресе, пары как у TUN, без fd и DNS-выхода") {
         val proxy = opts.copy(tun = Tun.Proxy("0.0.0.0", 8888), services = setOf(Telegram))
         val conf = buildConfig(servers, outbounds, proxy)
-        val inbound = conf["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["protocol"] == JsonPrimitive("mixed") }
+        val inbound = conf.getValue("inbounds").jsonArray.map { it.jsonObject }.single { it["protocol"] == JsonPrimitive("mixed") }
         inbound["listen"] shouldBe JsonPrimitive("0.0.0.0")
         inbound["port"] shouldBe JsonPrimitive(8888)
-        inbound["sniffing"]!!.jsonObject["enabled"] shouldBe JsonPrimitive(true)
-        conf["env"]!!.jsonObject["xray.tun.fd"] shouldBe null
-        conf["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }.let { tags ->
+        inbound.getValue("sniffing").jsonObject["enabled"] shouldBe JsonPrimitive(true)
+        conf.getValue("env").jsonObject["xray.tun.fd"] shouldBe null
+        conf.getValue("outbounds").jsonArray.map { it.jsonObject.getValue("tag").jsonPrimitive.content }.let { tags ->
             tags shouldContain pairTag(ServerId("s001"), Telegram.id)
             (DNS_OUT in tags) shouldBe false
         }
@@ -96,23 +97,23 @@ class XrayConfigTest : FunSpec({
 
     test("SOCKS-входы кандидатов — с паролем процесса, если он задан; без него — как было") {
         val auth = SocksAuth("u", "p")
-        val socks = buildConfig(servers, outbounds, opts.copy(socks = SocksIn.Locked(auth)))["inbounds"]!!.jsonArray.map { it.jsonObject }
-            .filter { it["protocol"]!!.jsonPrimitive.content == "socks" }
+        val socks = buildConfig(servers, outbounds, opts.copy(socks = SocksIn.Locked(auth))).getValue("inbounds").jsonArray.map { it.jsonObject }
+            .filter { it.getValue("protocol").jsonPrimitive.content == "socks" }
         socks.size shouldBe 3
         socks.forEach { inb ->
-            val st = inb["settings"]!!.jsonObject
-            st["auth"]!!.jsonPrimitive.content shouldBe "password"
-            val acc = st["accounts"]!!.jsonArray.single().jsonObject
-            acc["user"]!!.jsonPrimitive.content shouldBe "u"
-            acc["pass"]!!.jsonPrimitive.content shouldBe "p"
+            val st = inb.getValue("settings").jsonObject
+            st.getValue("auth").jsonPrimitive.content shouldBe "password"
+            val acc = st.getValue("accounts").jsonArray.single().jsonObject
+            acc.getValue("user").jsonPrimitive.content shouldBe "u"
+            acc.getValue("pass").jsonPrimitive.content shouldBe "p"
         }
-        cfg["inbounds"]!!.jsonArray.map { it.jsonObject }.filter { it["protocol"]!!.jsonPrimitive.content == "socks" }
-            .forEach { it["settings"]!!.jsonObject["auth"] shouldBe null }
+        cfg.getValue("inbounds").jsonArray.map { it.jsonObject }.filter { it.getValue("protocol").jsonPrimitive.content == "socks" }
+            .forEach { it.getValue("settings").jsonObject["auth"] shouldBe null }
     }
 
     test("api-inbound и RoutingService есть") {
-        cfg["api"]!!.jsonObject.strs("services") shouldContain "RoutingService"
-        val api = cfg["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("api") }
+        cfg.getValue("api").jsonObject.strs("services") shouldContain "RoutingService"
+        val api = cfg.getValue("inbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("api") }
         api["port"] shouldBe JsonPrimitive(10085)
         api["listen"] shouldBe JsonPrimitive("127.0.0.1")
         rules.first().strs("inboundTag") shouldBe listOf("api")
@@ -120,29 +121,29 @@ class XrayConfigTest : FunSpec({
 
     test("api на Unix-сокете: listen — путь, порта нет; правило api то же") {
         val unix = buildConfig(servers, outbounds, opts.copy(api = ApiListen.Unix("/data/podbor/no_backup/xray-api.sock")))
-        val api = unix["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("api") }
+        val api = unix.getValue("inbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("api") }
         api["listen"] shouldBe JsonPrimitive("/data/podbor/no_backup/xray-api.sock")
         api["port"] shouldBe null
-        unix["routing"]!!.jsonObject["rules"]!!.jsonArray.first().jsonObject.strs("inboundTag") shouldBe listOf("api")
+        unix.getValue("routing").jsonObject.getValue("rules").jsonArray.first().jsonObject.strs("inboundTag") shouldBe listOf("api")
     }
 
     test("без tunFd: каталог geo-файлов в env; ни tun-inbound'а, ни dns-outbound'а, ни правила порта 53") {
-        cfg["env"]!!.jsonObject["xray.location.asset"] shouldBe JsonPrimitive("/assets")
-        cfg["inbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("tun") } shouldBe true
-        cfg["outbounds"]!!.jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("dns") } shouldBe true
+        cfg.getValue("env").jsonObject["xray.location.asset"] shouldBe JsonPrimitive("/assets")
+        cfg.getValue("inbounds").jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("tun") } shouldBe true
+        cfg.getValue("outbounds").jsonArray.none { it.jsonObject["protocol"] == JsonPrimitive("dns") } shouldBe true
         rules.none { it["port"] != null } shouldBe true
     }
 
     test("tunFd → один tun-inbound: env xray.tun.fd, MTU = TUN_MTU (как у VpnService.Builder), имя и sniffing только для маршрута") {
         val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
-        tun["env"]!!.jsonObject["xray.tun.fd"] shouldBe JsonPrimitive("42")
-        val inbound = tun["inbounds"]!!.jsonArray.map { it.jsonObject }.filter { it["protocol"] == JsonPrimitive("tun") }.single()
+        tun.getValue("env").jsonObject["xray.tun.fd"] shouldBe JsonPrimitive("42")
+        val inbound = tun.getValue("inbounds").jsonArray.map { it.jsonObject }.filter { it["protocol"] == JsonPrimitive("tun") }.single()
         inbound["tag"] shouldBe JsonPrimitive("tun")
-        inbound["settings"]!!.jsonObject["mtu"] shouldBe JsonPrimitive(TUN_MTU)
+        inbound.getValue("settings").jsonObject["mtu"] shouldBe JsonPrimitive(TUN_MTU)
         // Без имени Xray перебирает интерфейсы (netlink), а Android приложению это запрещает.
-        inbound["settings"]!!.jsonObject["name"] shouldBe JsonPrimitive("podbor0")
+        inbound.getValue("settings").jsonObject["name"] shouldBe JsonPrimitive("podbor0")
         // geosite:category-ru срабатывает и для трафика из TUN.
-        val sniffing = inbound["sniffing"]!!.jsonObject
+        val sniffing = inbound.getValue("sniffing").jsonObject
         sniffing["enabled"] shouldBe JsonPrimitive(true)
         sniffing.strs("destOverride") shouldBe listOf("http", "tls", "quic")
         sniffing["routeOnly"] shouldBe JsonPrimitive(true)
@@ -150,9 +151,9 @@ class XrayConfigTest : FunSpec({
 
     test("tunFd → DNS телефона (порт 53 из tun) уходит в dns-outbound раньше geo-правил и балансера") {
         val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
-        val dnsOut = tun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(DNS_OUT) }
+        val dnsOut = tun.getValue("outbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(DNS_OUT) }
         dnsOut["protocol"] shouldBe JsonPrimitive("dns")
-        val tunRules = tun["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
+        val tunRules = tun.getValue("routing").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
         val dnsRule = tunRules.indexOfFirst { it.strs("inboundTag") == listOf("tun") && it["port"] == JsonPrimitive(53) }
         tunRules[dnsRule]["outboundTag"] shouldBe JsonPrimitive(DNS_OUT)
         dnsRule shouldBeLessThan tunRules.indexOfFirst { "geoip:ru" in it.strs("ip") }
@@ -160,13 +161,13 @@ class XrayConfigTest : FunSpec({
     }
 
     val tgUids = mapOf("org.telegram.messenger" to 10304)
-    fun rulesOf(o: ConfigOpts) = buildConfig(servers, outbounds, o)["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
+    fun rulesOf(o: ConfigOpts) = buildConfig(servers, outbounds, o).getValue("routing").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
     fun ruleTagged(rs: List<JsonObject>, tag: String) = rs.indexOfFirst { it["ruleTag"] == JsonPrimitive(tag) }
 
     test("сервисы → правила: все domain < все ip < все process, после geoip:ru, последнее — exit") {
         val rs = rulesOf(opts.copy(services = setOf(Telegram, Instagram), uids = tgUids))
-        val svc = rs.indices.filter { (rs[it]["ruleTag"] as? JsonPrimitive)?.content?.startsWith("svc.") == true }
-        val kind = svc.map { rs[it]["ruleTag"]!!.jsonPrimitive.content.substringAfterLast('.') }
+        val svc = rs.indices.filter { rs[it].ruleTag().orEmpty().startsWith("svc.") }
+        val kind = svc.map { rs[it].getValue("ruleTag").jsonPrimitive.content.substringAfterLast('.') }
         kind shouldBe listOf("domain", "domain", "ip", "ip", "app")
         rs.indexOfFirst { "geoip:ru" in it.strs("ip") } shouldBeLessThan svc.first()
         rs.last()["balancerTag"] shouldBe JsonPrimitive(EXIT_BALANCER)
@@ -186,9 +187,9 @@ class XrayConfigTest : FunSpec({
     }
 
     test("балансеры svc.insta, svc.tg и exit с одним selector") {
-        val bs = buildConfig(servers, outbounds, opts.copy(services = setOf(Telegram, Instagram)))["routing"]!!
-            .jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }
-        bs.map { it["tag"]!!.jsonPrimitive.content }.toSet() shouldBe setOf("svc.insta", "svc.tg", EXIT_BALANCER)
+        val bs = buildConfig(servers, outbounds, opts.copy(services = setOf(Telegram, Instagram))).getValue("routing")
+            .jsonObject.getValue("balancers").jsonArray.map { it.jsonObject }
+        bs.map { it.getValue("tag").jsonPrimitive.content }.toSet() shouldBe setOf("svc.insta", "svc.tg", EXIT_BALANCER)
         bs.map { it.strs("selector") }.toSet() shouldBe setOf(servers.map { it.id.tag })
     }
 
@@ -213,16 +214,16 @@ class XrayConfigTest : FunSpec({
     }
 
     test("без services правил и балансеров svc.* нет; уровень лога — warning, если не задан") {
-        for (r in rules) (r["ruleTag"] as? JsonPrimitive)?.content?.startsWith("svc.") shouldBe null
-        val bs = cfg["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }
+        for (r in rules) r.ruleTag() shouldBe null
+        val bs = cfg.getValue("routing").jsonObject.getValue("balancers").jsonArray.map { it.jsonObject.getValue("tag").jsonPrimitive.content }
         bs shouldBe listOf(EXIT_BALANCER)
         rules.none { it["process"] != null } shouldBe true
-        cfg["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("warning")
-        buildConfig(servers, outbounds, opts.copy(logLevel = "info"))["log"]!!.jsonObject["loglevel"] shouldBe JsonPrimitive("info")
+        cfg.getValue("log").jsonObject["loglevel"] shouldBe JsonPrimitive("warning")
+        buildConfig(servers, outbounds, opts.copy(logLevel = "info")).getValue("log").jsonObject["loglevel"] shouldBe JsonPrimitive("info")
     }
 
     test("российские домены: по умолчанию — DNS сети (localhost); ремонт — Яндекс DNS по IP, остальное как было") {
-        fun servers(o: ConfigOpts) = buildConfig(servers, outbounds, o)["dns"]!!.jsonObject["servers"]!!.jsonArray
+        fun servers(o: ConfigOpts) = buildConfig(servers, outbounds, o).getValue("dns").jsonObject.getValue("servers").jsonArray
         servers(opts)[0].jsonObject["address"] shouldBe JsonPrimitive("localhost")
         val fixed = servers(opts.copy(ruDns = RuDns.Yandex))
         fixed[0].jsonObject["address"] shouldBe JsonPrimitive("77.88.8.8")
@@ -231,30 +232,30 @@ class XrayConfigTest : FunSpec({
     }
 
     test("журнал соединений: по умолчанию выключен; включён — access-лог Xray в файл") {
-        ("access" in cfg["log"]!!.jsonObject) shouldBe false
-        buildConfig(servers, outbounds, opts.copy(accessLog = AccessLog.File("/data/x/access.log")))["log"]!!.jsonObject["access"] shouldBe
+        ("access" in cfg.getValue("log").jsonObject) shouldBe false
+        buildConfig(servers, outbounds, opts.copy(accessLog = AccessLog.File("/data/x/access.log"))).getValue("log").jsonObject["access"] shouldBe
             JsonPrimitive("/data/x/access.log")
     }
 
     test("socksPortOf: s001 → 20000, s003 → 20002; inbound на этом порту") {
         socksPortOf(ServerId("s001"), servers, opts) shouldBe 20000
         socksPortOf(ServerId("s003"), servers, opts) shouldBe 20002
-        val socks = cfg["inbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("in.s003") }
+        val socks = cfg.getValue("inbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("in.s003") }
         socks["port"] shouldBe JsonPrimitive(20002)
         socks["protocol"] shouldBe JsonPrimitive("socks")
     }
 
     test("ни одного кандидата → без балансера (Xray не принимает пустой selector), остальное — в block") {
         val empty = buildConfig(emptyList(), emptyMap(), opts)
-        (empty["routing"]!!.jsonObject["balancers"] == null || empty["routing"]!!.jsonObject["balancers"]!!.jsonArray.isEmpty()) shouldBe true
-        empty["routing"]!!.jsonObject["rules"]!!.jsonArray.last().jsonObject["outboundTag"] shouldBe JsonPrimitive("block")
+        (empty.getValue("routing").jsonObject["balancers"] == null || empty.getValue("routing").jsonObject.getValue("balancers").jsonArray.isEmpty()) shouldBe true
+        empty.getValue("routing").jsonObject.getValue("rules").jsonArray.last().jsonObject["outboundTag"] shouldBe JsonPrimitive("block")
     }
 
     val pairsOpts = opts.copy(tun = Tun.On(42), services = setOf(Telegram, Instagram))
     val withTun = buildConfig(servers, outbounds, pairsOpts)
-    fun JsonObject.tags() = this["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }
+    fun JsonObject.tags() = this.getValue("outbounds").jsonArray.map { it.jsonObject.getValue("tag").jsonPrimitive.content }
     fun JsonObject.balancer(tag: String) =
-        this["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(tag) }
+        this.getValue("routing").jsonObject.getValue("balancers").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(tag) }
 
     test("withTunPairOutboundsAndStats: с TUN — клон выхода на пару, балансер сервиса из пар, счётчики Xray") {
         withTun.tags() shouldBe listOf(
@@ -262,14 +263,14 @@ class XrayConfigTest : FunSpec({
             "pair.insta.s001", "pair.tg.s001", "pair.insta.s002", "pair.tg.s002", "pair.insta.s003", "pair.tg.s003",
             "direct", "block", "dns-out",
         )
-        val clone = withTun["outbounds"]!!.jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("pair.tg.s002") }
+        val clone = withTun.getValue("outbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive("pair.tg.s002") }
         clone shouldBe buildJsonObject { put("protocol", "vless"); put("tag", "pair.tg.s002") }
         withTun.balancer("svc.tg").strs("selector") shouldBe listOf("pair.tg.s001", "pair.tg.s002", "pair.tg.s003")
         withTun.balancer("svc.insta").strs("selector") shouldBe listOf("pair.insta.s001", "pair.insta.s002", "pair.insta.s003")
         withTun.balancer("exit").strs("selector") shouldBe listOf("s001", "s002", "s003")
-        withTun["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
+        withTun.getValue("api").jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
         withTun["stats"] shouldBe JsonObject(emptyMap())
-        withTun["policy"]!!.jsonObject["system"] shouldBe buildJsonObject {
+        withTun.getValue("policy").jsonObject["system"] shouldBe buildJsonObject {
             put("statsInboundUplink", true); put("statsInboundDownlink", true)
             put("statsOutboundUplink", true); put("statsOutboundDownlink", true)
         }
@@ -279,18 +280,18 @@ class XrayConfigTest : FunSpec({
         val scan = buildConfig(servers, outbounds, opts.copy(services = setOf(Telegram, Instagram)))
         scan.tags() shouldBe listOf("s001", "s002", "s003", "direct", "block")
         scan.balancer("svc.tg").strs("selector") shouldBe listOf("s001", "s002", "s003")
-        scan["api"]!!.jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
+        scan.getValue("api").jsonObject.strs("services") shouldBe listOf("RoutingService", "StatsService")
         scan["stats"] shouldBe JsonObject(emptyMap())
         scan["policy"] shouldBe withTun["policy"]
     }
 
     test("probesStayOnServerOutbound: проба кандидата — в выход сервера, не в выход пары: её байты не попадают в пульс") {
-        val rs = withTun["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
+        val rs = withTun.getValue("routing").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
         rs.single { it.strs("inboundTag") == listOf("in.s002") }["outboundTag"] shouldBe JsonPrimitive("s002")
     }
 
     test("клоны пар не попадают в чужой балансер: Xray выбирает выходы по НАЧАЛУ тега (strings.HasPrefix)") {
-        val balancers = withTun["routing"]!!.jsonObject["balancers"]!!.jsonArray.map { it.jsonObject }
+        val balancers = withTun.getValue("routing").jsonObject.getValue("balancers").jsonArray.map { it.jsonObject }
         val pairs = withTun.tags().filter { tag -> servers.none { it.id.tag == tag } && tag !in setOf("direct", "block", "dns-out") }
         for (b in balancers) {
             val own = b.strs("selector")

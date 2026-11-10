@@ -59,6 +59,6 @@ tasks.register("test") {
 
 // Classpath тестов для живых прогонов вне Gradle (в изолированной сети он не стартует — блокировки через loopback).
 tasks.register("printTestClasspath") {
-    val cp = kotlin.jvm().compilations["test"].runtimeDependencyFiles!! + kotlin.jvm().compilations["test"].output.allOutputs
+    val cp = checkNotNull(kotlin.jvm().compilations["test"].runtimeDependencyFiles) + kotlin.jvm().compilations["test"].output.allOutputs
     doLast { println(cp.asPath) }
 }

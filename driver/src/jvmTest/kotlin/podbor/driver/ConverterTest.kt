@@ -17,7 +17,7 @@ import podbor.core.classify
 
 class ConverterTest : FunSpec({
 
-    val sample = javaClass.getResource("/converter-sample.txt")!!.readText()
+    val sample = requireNotNull(javaClass.getResource("/converter-sample.txt")).readText()
     val outbounds = outboundsOfResponse(sample).getOrElse { error("фикстура не разобралась: $it") }
 
     test("ответ Invoke: предупреждения Xray перед JSON отбрасываются, outbound'ы читаются") {

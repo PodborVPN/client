@@ -31,7 +31,11 @@ internal fun resource(path: String): String =
 private fun fieldRounds(name: String): Map<Long, LineObservation> =
     resource("fixtures/tape/$name").lineSequence().filter { it.isNotBlank() }
         .map { v0.decodeFromString(V0Row.serializer(), it) }
-        .mapNotNull { row -> row.at?.let { at -> row.letter?.line?.let { at to it } } }
+        .mapNotNull { row ->
+            val at = row.at
+            val line = row.letter.let { if (it == null) null else it.line }
+            if (at == null || line == null) null else at to line
+        }
         .toMap()
 
 class FieldTest : FunSpec({

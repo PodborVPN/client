@@ -2,6 +2,7 @@ package podbor.driver
 
 import arrow.fx.coroutines.resourceScope
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonArray
@@ -25,7 +26,7 @@ class CountryFilterDriverTest : FunSpec({
             val base = World(ips = listOf("203.0.113.1", "203.0.113.2"), ruIps = emptySet(), line = line(podbor.core.Reach.Up, podbor.core.Reach.Up), fitsPorts = emptySet())
             val servers = resourceScope {
                 val driver = base.driver()
-                with(driver) { warmUp("sub") }.getOrNull()!!.servers
+                with(driver) { warmUp("sub") }.getOrNull().shouldNotBeNull().servers
             }
             val memory = podbor.core.Memory.Empty.rememberSuccess(
                 podbor.core.memoryKey(OsNetwork.Wifi, podbor.core.Scenario.Wifi, Telegram.id), servers.first(), 1L,
@@ -35,7 +36,7 @@ class CountryFilterDriverTest : FunSpec({
             world.seedExits()
             resourceScope {
                 val driver = world.driver()
-                val warm = with(driver) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull()!!
+                val warm = with(driver) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull().shouldNotBeNull()
                 val prior = podbor.core.Prior.Detected(arrow.core.nonEmptyListOf(podbor.core.Letter.LineObserved(System.currentTimeMillis(), base.line)))
                 driver.recall(warm, setOf(Telegram), OsNetwork.Wifi, prior) shouldBe emptyMap()
                 world.exits shouldBe emptyList()
@@ -52,14 +53,14 @@ class CountryFilterDriverTest : FunSpec({
         w.seedExits()
         runBlocking { resourceScope {
             val d = w.driver()
-            val warm = with(d) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull()!!
+            val warm = with(d) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull().shouldNotBeNull()
             warm.servers.map { it.id } shouldBe listOf(ServerId("s002"))
             warm.countries shouldBe setOf("RU", "NL")
             d.press(warm, setOf(Telegram), OsNetwork.Wifi)
             w.probed.toSet() shouldBe setOf(20000)
             val config = w.configs.last()
-            config["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content }.filter { it.startsWith("s") } shouldBe listOf("s002")
-            config["routing"]!!.jsonObject["balancers"]!!.jsonArray.first().jsonObject["selector"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe listOf("s002")
+            config.getValue("outbounds").jsonArray.map { it.jsonObject.getValue("tag").jsonPrimitive.content }.filter { it.startsWith("s") } shouldBe listOf("s002")
+            config.getValue("routing").jsonObject.getValue("balancers").jsonArray.first().jsonObject.getValue("selector").jsonArray.map { it.jsonPrimitive.content } shouldBe listOf("s002")
             w.engineRuns shouldBe 1
         } }
     }
@@ -69,11 +70,11 @@ class CountryFilterDriverTest : FunSpec({
         w.seedExits()
         runBlocking { resourceScope {
             val d = w.driver()
-            val warm = with(d) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull()!!
+            val warm = with(d) { warmUp("sub", ExitFilter(setOf("RU"))) }.getOrNull().shouldNotBeNull()
             warm.servers shouldBe emptyList()
-            val routing = w.configs.last()["routing"]!!.jsonObject
+            val routing = w.configs.last().getValue("routing").jsonObject
             routing["balancers"] shouldBe null
-            routing["rules"]!!.jsonArray.last().jsonObject["outboundTag"]!!.jsonPrimitive.content shouldBe "block"
+            routing.getValue("rules").jsonArray.last().jsonObject.getValue("outboundTag").jsonPrimitive.content shouldBe "block"
         } }
     }
 })

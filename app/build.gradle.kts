@@ -51,10 +51,7 @@ abstract class PrepareXrayAssets : DefaultTask() {
             fetchPinned(geoBaseUrl.get(), geoShaFile.get().asFile, name).copyTo(xrayDir.resolve(name))
         }
         val wlDir = out.resolve("whitelist").also { it.mkdirs() }
-        for ((remote, local) in listOf(
-            "ru-mobile-whitelist-ip.txt" to "ip.txt",
-            "ru-mobile-whitelist-sni.txt" to "sni.txt"
-        )) {
+        for ((remote, local) in listOf("ru-mobile-whitelist-ip.txt" to "ip.txt", "ru-mobile-whitelist-sni.txt" to "sni.txt")) {
             fetchPinned(whitelistBaseUrl.get(), whitelistShaFile.get().asFile, remote).copyTo(wlDir.resolve(local))
         }
     }
@@ -62,8 +59,8 @@ abstract class PrepareXrayAssets : DefaultTask() {
     /** Файл [remote] из кэша, если sha совпал с закреплённым в [pins]; иначе скачивает `base/remote` и сверяет. */
     private fun fetchPinned(base: String, pins: File, remote: String): File {
         val pin = pins.readLines().filter { it.isNotBlank() }
-            .associate { it.trim().substringAfter(' ').trim() to it.trim().substringBefore(' ').lowercase() }[remote]
-            ?: throw GradleException("в ${pins.name} нет строки для $remote")
+            .associate { it.trim().substringAfter(' ').trim() to it.trim().substringBefore(' ').lowercase() }
+            .getOrElse(remote) { throw GradleException("в ${pins.name} нет строки для $remote") }
         val file = cacheDir.get().asFile.resolve(remote)
         if (!file.isFile || sha256(file) != pin) {
             file.parentFile.mkdirs()
@@ -100,8 +97,7 @@ val prepareXrayAssets = tasks.register<PrepareXrayAssets>("prepareXrayAssets") {
 
 /** Версия — из `version.txt` (его ведёт release-please): X.Y.Z → versionName, versionCode = X·10000 + Y·100 + Z. */
 val appVersion: Pair<String, Int> = rootProject.file("version.txt").readText().trim().let { v ->
-    val m = Regex("""^(\d+)\.(\d+)\.(\d+)$""").matchEntire(v)
-        ?: error("version.txt: ожидается X.Y.Z, получено «$v»")
+    val m = checkNotNull(Regex("""^(\d+)\.(\d+)\.(\d+)$""").matchEntire(v)) { "version.txt: ожидается X.Y.Z, получено «$v»" }
     val (major, minor, patch) = m.destructured.toList().map { it.toInt() }
     check(minor < 100 && patch < 100) { "version.txt: minor и patch — до 99, получено «$v»" }
     v to major * 10_000 + minor * 100 + patch
@@ -110,7 +106,7 @@ val appVersion: Pair<String, Int> = rootProject.file("version.txt").readText().t
 /** Переменные релизной подписи: все — подписываем ими, ни одной — null (debug-ключ), часть — ошибка сборки. */
 fun releaseSigning(): Map<String, String>? {
     val names = listOf("SIGNING_KEYSTORE_PATH", "SIGNING_STORE_PASSWORD", "SIGNING_KEY_ALIAS", "SIGNING_KEY_PASSWORD")
-    val set = names.associateWith { System.getenv(it) }.filterValues { !it.isNullOrEmpty() }.mapValues { it.value!! }
+    val set = names.mapNotNull { name -> System.getenv(name).let { if (it.isNullOrEmpty()) null else name to it } }.toMap()
     return when (set.size) {
         0 -> null
         names.size -> set
@@ -179,11 +175,7 @@ android {
     }
     packaging {
         // Дубликаты метаданных из gRPC/protobuf/Arrow.
-        resources.excludes += setOf(
-            "META-INF/INDEX.LIST",
-            "META-INF/io.netty.versions.properties",
-            "META-INF/DEPENDENCIES"
-        )
+        resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties", "META-INF/DEPENDENCIES")
         // libXray (~32 МБ) — сжатой в APK: скачивать втрое меньше; цена — распаковка на диск при установке.
         jniLibs.useLegacyPackaging = true
     }
@@ -200,7 +192,8 @@ android {
 // Сгенерированный каталог — источник assets каждого варианта (зависимость задач проводится автоматически).
 androidComponents {
     onVariants { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(prepareXrayAssets, PrepareXrayAssets::outputDir)
+        val assets = variant.sources.assets
+        if (assets != null) assets.addGeneratedSourceDirectory(prepareXrayAssets, PrepareXrayAssets::outputDir)
     }
 }
 

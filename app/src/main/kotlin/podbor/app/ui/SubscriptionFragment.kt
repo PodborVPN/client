@@ -38,13 +38,18 @@ class SubscriptionFragment : Fragment() {
                 val duplicate by screen.vm.duplicate.collectAsStateWithLifecycle()
                 PodborTheme {
                     // Поверх обеих страниц: ничего не подошло — на «Добавь подписку», часть — на анализе.
-                    skipped?.let { s -> key(s) { SkippedSheet(s, onDismiss = screen.vm::dismissSkipped) } }
-                    duplicate?.let { RepeatDialog(it, onRefresh = screen.vm::refreshDuplicate, onDismiss = screen.vm::dismissDuplicate) }
+                    val notParsed = skipped
+                    val repeated = duplicate
+                    val opened = sheet
+                    val loaded = subs
+                    val shelf = if (loaded == null) Subscriptions.None else loaded
+                    if (notParsed != null) key(notParsed) { SkippedSheet(notParsed, onDismiss = screen.vm::dismissSkipped) }
+                    if (repeated != null) RepeatDialog(repeated, onRefresh = screen.vm::refreshDuplicate, onDismiss = screen.vm::dismissDuplicate)
                     // Шторка подписки — одна на карточку: шаги внутри (подтверждение, «обновляю») не пересоздают её.
-                    sheet?.let { s ->
-                        key(s.card().id) {
+                    if (opened != null) {
+                        key(opened.card().id) {
                             SubscriptionSheet(
-                                s, System.currentTimeMillis(),
+                                opened, System.currentTimeMillis(),
                                 onPick = screen.vm::pick, onReanalyze = screen.vm::reanalyze,
                                 onAskDelete = screen.vm::askDelete, onConfirmDelete = screen.vm::confirmDelete,
                                 onSupport = screen::openSupport, onDismiss = screen.vm::closeSheet,
@@ -53,7 +58,7 @@ class SubscriptionFragment : Fragment() {
                     }
                     // По виду страницы, не по доске: новая доска анализа — не новый переход.
                     AnimatedContent(
-                        pageOf(subs ?: Subscriptions.None, phase),
+                        pageOf(shelf, phase),
                         contentKey = { it::class },
                         transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
                         label = "страница",
@@ -62,7 +67,7 @@ class SubscriptionFragment : Fragment() {
                             Page.AddSubscription ->
                                 SubscriptionScreen(
                                     errorOf(phase), onInput = screen::input, onQr = screen::scanQr, onSupport = screen::openSupport,
-                                    subscriptions = subs ?: Subscriptions.None, nowMs = System.currentTimeMillis(), onCard = screen.vm::openCard,
+                                    subscriptions = shelf, nowMs = System.currentTimeMillis(), onCard = screen.vm::openCard,
                                 )
                             is Page.Scanning -> ScanScreen(page.board, onOk = screen::finishScan)
                             // Миг до транзакции на главный — пусто.

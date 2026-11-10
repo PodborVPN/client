@@ -8,6 +8,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CoroutineDispatcher
@@ -191,7 +192,7 @@ class PipesTest : FunSpec({
         val w = pipes(prober(tg = setOf(ServerId("s001")), insta = setOf(ServerId("s002"))), saveDelayMs = 30)
         val board = w.pressAll()
         board.card(Instagram.id).shouldBeInstanceOf<CardStatus.Found>().ref.name shouldBe "Сервер 1"
-        w.saved!!.successes.keys.map { it.service } shouldContainExactlyInAnyOrder listOf(Telegram.id, Instagram.id)
+        w.saved.shouldNotBeNull().successes.keys.map { it.service } shouldContainExactlyInAnyOrder listOf(Telegram.id, Instagram.id)
         w.overrides shouldContain "svc.insta=s002"
         w.exits shouldBe listOf("s001")
     }
@@ -213,7 +214,7 @@ class PipesTest : FunSpec({
         var worst = 0
         val w = pipes(prober(tg = emptySet(), delayMs = { _, _ -> 20 }, onProbe = { spec, e ->
             synchronized(lock) {
-                val n = (active[e] ?: 0) + 1
+                val n = active.getOrDefault(e, 0) + 1
                 active[e] = n
                 worst = maxOf(worst, n)
                 kinds.getOrPut(e) { mutableSetOf() } += spec

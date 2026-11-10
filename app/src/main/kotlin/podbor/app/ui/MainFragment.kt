@@ -37,7 +37,10 @@ class MainFragment : Fragment() {
                         countries = countries, onCountries = screen.vm::setExitFilter,
                         history = screen::history,
                         routes = routes,
-                        exitCountry = { id -> screen.vm.service.value?.exitCountry(id) },
+                        exitCountry = { id ->
+                            val service = screen.vm.service.value
+                            if (service == null) null else service.exitCountry(id)
+                        },
                     )
                 }
             }

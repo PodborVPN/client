@@ -11,11 +11,13 @@ fun geoMarker(stamp: Long, sizes: Map<String, Long>): String =
 
 /** Файлы на диске годятся: метка той же установки и каждый файл того размера, что записан ([onDisk]: null — файла нет). */
 fun geoFresh(marker: String?, stamp: Long, onDisk: Map<String, Long?>): Boolean {
-    val lines = marker?.lines() ?: return false
-    if (lines.firstOrNull()?.toLongOrNull() != stamp) return false
+    if (marker == null) return false
+    val lines = marker.lines()
+    if (lines.firstOrNull().orEmpty().toLongOrNull() != stamp) return false
     val recorded = lines.drop(1).mapNotNull { line ->
         val name = line.substringBefore('=', "")
-        line.substringAfter('=', "").toLongOrNull()?.let { size -> name to size }
+        val size = line.substringAfter('=', "").toLongOrNull()
+        if (size == null) null else name to size
     }.toMap()
     return onDisk.isNotEmpty() && onDisk.all { (name, size) -> size != null && recorded[name] == size }
 }

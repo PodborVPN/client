@@ -2,6 +2,7 @@ package podbor.app
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import podbor.app.net.AndroidStore
 import podbor.app.net.FileTape
@@ -41,7 +42,7 @@ class FilesTest : FunSpec({
     test("AndroidStore: после сохранения временного файла не остаётся") {
         val dir = tempdir()
         AndroidStore(dir).saveMemory(Memory.Empty)
-        dir.list()!!.toList() shouldBe listOf("memory.json")
+        dir.list().shouldNotBeNull().toList() shouldBe listOf("memory.json")
     }
 
     test("FileTape: строки дописываются построчно") {

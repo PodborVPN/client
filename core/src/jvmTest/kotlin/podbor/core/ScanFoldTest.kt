@@ -39,7 +39,8 @@ class ScanFoldTest : FunSpec({
                     else -> Verdict.Instagram(cdnOk = true, wwwOk = true)
                 }, d.service)
                 is Deed.MakeExit, is Deed.MeasureSpeed, is Deed.Remember, is Deed.SavePassport -> null
-            } ?: continue
+            }
+            if (letter == null) continue
             out += letter
             val (next, more) = scanStep(state, letter)
             state = next
@@ -85,22 +86,38 @@ private fun referenceBoard(services: Set<Service>, letters: List<Letter>): ScanB
         }
         state = next
     }
-    val begun = scan ?: return ScanBoard(0, 0, 0, 0, emptyList(), emptyList(), emptyList(), false)
+    val begun = scan
+    if (begun == null) return ScanBoard(0, 0, 0, 0, emptyList(), emptyList(), emptyList(), false)
     val shown = begun.services.mapNotNull { id -> services.find { it.id == id } }
     val tasks = when (val s = state) {
         is ScanState.Running -> s.queue + s.inFlight
         ScanState.Idle, is ScanState.Done -> emptyList()
     }
-    val inFlight = (state as? ScanState.Running)?.inFlight.orEmpty()
-    val exits = (state as? ScanState.Running)?.exits.orEmpty()
-    val passport = (state as? ScanState.Done)?.passport
+    val inFlight = when (val s = state) {
+        is ScanState.Running -> s.inFlight
+        ScanState.Idle, is ScanState.Done -> emptyList()
+    }
+    val exits = when (val s = state) {
+        is ScanState.Running -> s.exits
+        ScanState.Idle, is ScanState.Done -> emptyMap()
+    }
+    val passport = when (val s = state) {
+        is ScanState.Done -> s.passport
+        ScanState.Idle, is ScanState.Running -> null
+    }
+    fun exitOf(srv: Server): Exit {
+        val seen = exits[srv.id]
+        if (seen != null) return seen
+        val facts = if (passport == null) null else passport.servers[srv.key]
+        return if (facts == null) Exit.Unknown else facts.exit
+    }
     val byId = begun.servers.associateBy { it.id }
     val cards = started.reversed().mapNotNull(byId::get).map { srv ->
         ServerCard(
             key = srv.key,
             entry = srv.entry,
-            exit = exits[srv.id] ?: passport?.servers?.get(srv.key)?.exit ?: Exit.Unknown,
-            whiteHint = begun.hints[srv.key] ?: WhiteHint.Unlikely,
+            exit = exitOf(srv),
+            whiteHint = begun.hints.getOrDefault(srv.key, WhiteHint.Unlikely),
             sniWhite = srv.key in begun.sniWhite,
             transport = srv.transport,
             services = shown.map { svc ->

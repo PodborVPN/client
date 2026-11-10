@@ -119,7 +119,8 @@ class TlsHandshaker(
     override suspend fun shake(ref: Reference): Handshake {
         val started = System.nanoTime()
         val progress = AtomicReference<Progress>(Progress.Resolving)
-        return withTimeoutOrNull(ceilingMs) { attempt(ref, started, progress) } ?: onCeiling(progress.get())
+        val done = withTimeoutOrNull(ceilingMs) { attempt(ref, started, progress) }
+        return if (done == null) onCeiling(progress.get()) else done
     }
 
     private fun onCeiling(p: Progress): Handshake = when (p) {

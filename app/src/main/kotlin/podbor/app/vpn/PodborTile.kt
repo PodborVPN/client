@@ -51,7 +51,8 @@ class PodborTile : TileService() {
     }
 
     override fun onStopListening() {
-        watching?.cancel()
+        val running = watching
+        if (running != null) running.cancel()
         watching = null
     }
 
@@ -84,12 +85,14 @@ class PodborTile : TileService() {
     }
 
     override fun onDestroy() {
-        scope.coroutineContext[Job]?.cancel()
+        val job = scope.coroutineContext[Job]
+        if (job != null) job.cancel()
         super.onDestroy()
     }
 
     private fun render(tray: Tray) {
-        val tile = qsTile ?: return
+        val tile = qsTile
+        if (tile == null) return
         tile.state = if (tray.on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.label = applicationInfo.loadLabel(packageManager)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = tray.line

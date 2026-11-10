@@ -12,7 +12,7 @@ private const val TG_BLOB_SHA256 = "b9b1cba347934cccabbca53bbc47c4c05e0167668f9a
 private const val RES_PQ = 0x05162463
 
 private fun loadBlob(): ByteArray {
-    val bytes = object {}.javaClass.getResourceAsStream("/tg_req_pq_multi.bin")!!.use { it.readBytes() }
+    val bytes = checkNotNull(object {}.javaClass.getResourceAsStream("/tg_req_pq_multi.bin")) { "нет блоба Телеги" }.use { it.readBytes() }
     val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     check(sha == TG_BLOB_SHA256) { "блоб Телеги подменён: $sha" }
     return bytes

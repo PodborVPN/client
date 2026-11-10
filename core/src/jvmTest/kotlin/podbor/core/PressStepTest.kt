@@ -91,7 +91,7 @@ class PressStepTest : FunSpec({
         d shouldContain Deed.MakeExit(ServerId("s002"))
         d shouldContain Deed.MeasureSpeed(ServerId("s002"))
         val remember = d.filterIsInstance<Deed.Remember>().single()
-        remember.memory.successes[MemoryKey("MTS", Scenario.MobileWhitelist)]!!.first().serverKey shouldBe ru[1].key
+        remember.memory.successes.getValue(MemoryKey("MTS", Scenario.MobileWhitelist)).first().serverKey shouldBe ru[1].key
     }
 
     test("нажатие по Инсте: успех под ключом insta, ключ Телеги не тронут") {
@@ -100,7 +100,7 @@ class PressStepTest : FunSpec({
             Letter.ProbeAnswered(500, ServerId("s002"), Verdict.Instagram(cdnOk = true, wwwOk = true)),
         )
         val successes = d.filterIsInstance<Deed.Remember>().single().memory.successes
-        successes[MemoryKey("MTS", Scenario.MobileWhitelist, Instagram.id)]!!.first().serverKey shouldBe ru[1].key
+        successes.getValue(MemoryKey("MTS", Scenario.MobileWhitelist, Instagram.id)).first().serverKey shouldBe ru[1].key
         successes[MemoryKey("MTS", Scenario.MobileWhitelist, Telegram.id)] shouldBe null
     }
 
@@ -160,7 +160,7 @@ class PressStepTest : FunSpec({
             Letter.ProbeAnswered(150, ServerId("s005"), Verdict.TelegramDc(2)))
         val done = s.shouldBeInstanceOf<PressState.Done>()
         val remember = d.filterIsInstance<Deed.Remember>().single()
-        remember.memory.successes[MemoryKey("MTS", Scenario.MobileOpen)]!!.first().serverKey shouldBe servers[4].key
+        remember.memory.successes.getValue(MemoryKey("MTS", Scenario.MobileOpen)).first().serverKey shouldBe servers[4].key
         val screen = render(done.letters)
         screen.network.shouldBeInstanceOf<NetworkCard.Measured>().scenario shouldBe Scenario.MobileOpen
         screen.result.shouldBeInstanceOf<ResultCard.Found>().coverage shouldBe "проверено 5 из 8 серверов"

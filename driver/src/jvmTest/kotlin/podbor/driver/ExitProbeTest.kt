@@ -21,7 +21,8 @@ internal fun fakeExitServer(reply: String?, tls: SSLContext? = null): ServerSock
     val server = ServerSocket(0)
     thread(isDaemon = true) {
         while (!server.isClosed) {
-            val c = runCatching { server.accept() }.getOrNull() ?: break
+            val c = runCatching { server.accept() }.getOrNull()
+            if (c == null) break
             thread(isDaemon = true) { runCatching { serveExit(c, reply, tls) } }
         }
     }
@@ -38,9 +39,9 @@ private fun serveExit(c: Socket, reply: String?, tls: SSLContext?) = c.use {
         else -> i.readNBytes(16 + 2)
     }
     o.write(byteArrayOf(5, 0, 0, 1, 0, 0, 0, 0, 0, 0)); o.flush()
-    val s = tls?.let { ctx ->
-        (ctx.socketFactory.createSocket(it, null, it.port, false) as SSLSocket).apply { useClientMode = false }
-    } ?: it
+    val s = if (tls == null) it else {
+        (tls.socketFactory.createSocket(it, null, it.port, false) as SSLSocket).apply { useClientMode = false }
+    }
     val si = s.getInputStream()
     while (true) { // заголовки запроса до пустой строки
         val line = StringBuilder()

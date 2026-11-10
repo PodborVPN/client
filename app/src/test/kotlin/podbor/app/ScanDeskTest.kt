@@ -759,9 +759,9 @@ class ScanDeskTest : FunSpec({
             s.desk.refreshSubscription()
             asked shouldBe listOf("https://a.example/sub", "https://b.example/sub")
             val now = s.subscriptions.one()
-            now?.text shouldBe "vless://b"
-            now?.link shouldBe "https://a.example/sub"
-            now?.fallbackUrl shouldBe "https://b.example/sub"
+            now.shouldNotBeNull().text shouldBe "vless://b"
+            now.link shouldBe "https://a.example/sub"
+            now.fallbackUrl shouldBe "https://b.example/sub"
         }
     }
 
@@ -776,7 +776,7 @@ class ScanDeskTest : FunSpec({
             up.live.driver.exits.make(GENERAL_FOLLOWS, ServerId("s002"), podbor.core.ChosenOn.Unknown)
             s.desk.refreshSubscription()
             ports shouldBe listOf(ConfigOpts(assetDir = "/assets").socksBase + 1)
-            s.subscriptions.one()?.text shouldBe "vless://тоннель"
+            s.subscriptions.one().shouldNotBeNull().text shouldBe "vless://тоннель"
         }
     }
 
@@ -808,7 +808,7 @@ class ScanDeskTest : FunSpec({
 
     test("последний релиз: напрямую не вышло, VPN поднят и выход найден — туннелем") {
         runTest {
-            val s = stand(line = whiteLine, location = { url, port -> port?.let { github()(url) } })
+            val s = stand(line = whiteLine, location = { url, port -> if (port == null) null else github()(url) })
             s.start()
             val up = s.up() as SessionState.Up<Live>
             s.desk.open()

@@ -151,7 +151,7 @@ private fun IconRow(icon: Glyph, text: String, dim: Boolean = false, color: Colo
         Icon(painterOf(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(Space.icon))
         Spacer(Modifier.width(Space.m))
         Text(text, color = color, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        action?.invoke()
+        if (action != null) action()
     }
     HorizontalDivider(thickness = Space.hairline, color = Rule)
 }
@@ -194,7 +194,7 @@ private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
     // DNS сети — в той же строке: сломан — словами янтарём и 🔧 «починить», починен — как обошли и 🔧 «вернуть».
     when (dns) {
         // Улики ещё не было — строка держит место словами о том, что проверяем, а не пустотой.
-        DnsLine.Quiet -> IconRow(Glyph.Globe,evidence ?: last.value ?: "проверяю, отвечает ли заграница…", dim = evidence == null)
+        DnsLine.Quiet -> IconRow(Glyph.Globe,listOfNotNull(evidence, last.value, "проверяю, отвечает ли заграница…").first(), dim = evidence == null)
         is DnsLine.Broken -> IconRow(Glyph.Globe,dns.text, color = PodborColors.Accent) { Wrench(onDns) }
         is DnsLine.Fixed -> IconRow(Glyph.Globe,dns.text) { Wrench(onDns) }
     }

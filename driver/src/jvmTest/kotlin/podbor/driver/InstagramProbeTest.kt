@@ -18,7 +18,8 @@ private fun fakeSocksHttp(): ServerSocket {
     val server = ServerSocket(0)
     thread(isDaemon = true) {
         while (!server.isClosed) {
-            val c = runCatching { server.accept() }.getOrNull() ?: break
+            val c = runCatching { server.accept() }.getOrNull()
+            if (c == null) break
             thread(isDaemon = true) { runCatching { serveHttp(c) } }
         }
     }

@@ -32,7 +32,7 @@ class InstagramProbeImpl(
         val cdn = async(Dispatchers.IO) { fetch(proxy, cdnUrl, INSTAGRAM_CDN_MIN_BYTES) }
         val www = async(Dispatchers.IO) { fetch(proxy, wwwUrl, 0) }
         val c = cdn.await(); val w = www.await()
-        InstagramAnswer(c?.first, c?.second ?: 0, w?.first)
+        InstagramAnswer(if (c == null) null else c.first, if (c == null) 0 else c.second, if (w == null) null else w.first)
     }
 
     /**

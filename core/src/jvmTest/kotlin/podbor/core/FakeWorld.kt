@@ -33,18 +33,19 @@ fun runPress(pressed: Letter.Pressed, world: FakeWorld): Run {
         out.forEach { d ->
             when (d) {
                 Deed.ProbeLine -> pending += { t ->
-                    val line = world.lineAfter?.takeIf { (n, _) -> answers >= n }?.second ?: world.line
+                    val after = world.lineAfter
+                    val line = if (after != null && answers >= after.first) after.second else world.line
                     Letter.LineObserved(t, line)
                 }
                 is Deed.Probe -> {
                     probed += d.server
                     val e = byId.getValue(d.server).endpoint
-                    inFlight[e] = (inFlight[e] ?: 0) + 1
+                    inFlight[e] = inFlight.getOrDefault(e, 0) + 1
                     maxPerEndpoint = maxOf(maxPerEndpoint, inFlight.getValue(e))
                     pending += { t ->
                         answers += 1
                         inFlight[e] = inFlight.getValue(e) - 1
-                        Letter.ProbeAnswered(t, d.server, world.verdicts[d.server] ?: Verdict.Unreachable)
+                        Letter.ProbeAnswered(t, d.server, world.verdicts.getOrDefault(d.server, Verdict.Unreachable))
                     }
                 }
                 // Нажатие их не выдаёт: это дела анализа.

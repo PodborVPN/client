@@ -59,7 +59,7 @@ class ScanTest : FunSpec({
                 is Deed.Probe -> busy += byId.getValue(d.server).endpoint
                 else -> Unit
             }
-            maxPer = maxOf(maxPer, busy.groupingBy { it }.eachCount().values.maxOrNull() ?: 0)
+            maxPer = maxOf(maxPer, busy.groupingBy { it }.eachCount().values.maxOrNull().let { if (it == null) 0 else it })
         }
         track(deeds)
         while (pending.isNotEmpty()) {
@@ -70,7 +70,8 @@ class ScanTest : FunSpec({
                 is Deed.Probe ->
                     Letter.ProbeAnswered(now, d.server, world.verdict(d.server, d.service), d.service).also { busy -= byId.getValue(d.server).endpoint }
                 is Deed.MakeExit, is Deed.MeasureSpeed, is Deed.Remember, is Deed.SavePassport -> null
-            } ?: continue
+            }
+            if (letter == null) continue
             val (next, out) = scanStep(state, letter)
             state = next
             all += out

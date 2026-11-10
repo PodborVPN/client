@@ -22,7 +22,8 @@ private fun fakeSocks(answers: Map<String, ByteArray?>, connects: AtomicInteger 
     val server = ServerSocket(0)
     thread(isDaemon = true) {
         while (!server.isClosed) {
-            val c = runCatching { server.accept() }.getOrNull() ?: break
+            val c = runCatching { server.accept() }.getOrNull()
+            if (c == null) break
             connects.incrementAndGet()
             thread(isDaemon = true) { serve(c, answers) }
         }
@@ -37,10 +38,11 @@ private fun serve(c: Socket, answers: Map<String, ByteArray?>) = c.use {
     val ip = req.sliceArray(4..7).joinToString(".") { b -> (b.toInt() and 0xff).toString() }
     o.write(byteArrayOf(5, 0, 0, 1, 0, 0, 0, 0, 0, 0))
     i.readNBytes(TG_BLOB.size)
-    answers[ip]?.let { frame ->
+    val frame = answers[ip]
+    if (frame == null) Thread.sleep(10_000) else {
         o.write(java.nio.ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(frame.size).array())
         o.write(frame); o.flush()
-    } ?: Thread.sleep(10_000)
+    }
 }
 
 class TgBlobTest : FunSpec({

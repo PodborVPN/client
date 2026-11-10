@@ -28,10 +28,11 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
 
     /** Активная сеть, если она не VPN; иначе первая не-VPN сеть с интернетом. null — сети нет. */
     fun network(): Network? {
-        val active = cm.activeNetwork?.takeIf { isUnderlying(it) }
+        val active = cm.activeNetwork
+        if (active != null && isUnderlying(active)) return active
         // allNetworks устарел, но другого синхронного способа увидеть сеть под своим же VPN нет.
         @Suppress("DEPRECATION")
-        return active ?: cm.allNetworks.firstOrNull { isUnderlying(it) }
+        return cm.allNetworks.firstOrNull { isUnderlying(it) }
     }
 
     /**
@@ -55,7 +56,9 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
     }.conflate()
 
     fun transport(): Transport {
-        val caps = network()?.let(cm::getNetworkCapabilities) ?: return Transport.None
+        val net = network()
+        val caps = if (net == null) null else cm.getNetworkCapabilities(net)
+        if (caps == null) return Transport.None
         return when {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Transport.Cellular
             // Ethernet для ядра — та же домашняя сеть, что Wi-Fi: белых списков оператора там нет.
@@ -70,15 +73,19 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
      * Нет сети — UnknownHostException, который линия читает как Unknown("dns").
      */
     suspend fun resolve(host: String): InetAddress {
-        val net = network() ?: throw UnknownHostException("нет нижележащей сети")
+        val net = network()
+        if (net == null) throw UnknownHostException("нет нижележащей сети")
         return CompletableFuture.supplyAsync({ net.getAllByName(host).first() }, Dispatchers.IO.asExecutor()).await()
     }
 
     /** Порт Resolver для locate: IP строкой; не разрешилось — null. */
-    val resolver: Resolver = Resolver { host -> Either.catch { resolve(host) }.getOrNull()?.hostAddress }
+    val resolver: Resolver = Resolver { host -> Either.catch { resolve(host) }.fold({ null }, { it.hostAddress }) }
 
     private val http = HttpFetch(
-        direct = { url -> network()?.openConnection(url) as HttpURLConnection? },
+        direct = { url ->
+            val net = network()
+            if (net == null) null else net.openConnection(url) as HttpURLConnection
+        },
         warn = { Log.w("Podbor", it) },
     )
 
@@ -93,7 +100,8 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
     suspend fun location(url: String, socksPort: Int?): String? = http.location(url, socksPort)
 
     private fun isUnderlying(n: Network): Boolean {
-        val caps = cm.getNetworkCapabilities(n) ?: return false
+        val caps = cm.getNetworkCapabilities(n)
+        if (caps == null) return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

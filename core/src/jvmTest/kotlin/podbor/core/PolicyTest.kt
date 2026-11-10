@@ -20,7 +20,7 @@ class PolicyTest : FunSpec({
         )
         val p = plan(Scenario.MobileWhitelist, servers, Memory.Empty, mtsWl, nowMs = 0)
         p.queue.size shouldBe 2
-        p.skipped[CandidateClass.Foreign]!![SkipReason.ForeignInWhitelist] shouldBe 3
+        p.skipped.getValue(CandidateClass.Foreign)[SkipReason.ForeignInWhitelist] shouldBe 3
     }
 
     test("белые списки: память → RuEntry → UnknownEntry; имя со стрелкой порядок не меняет") {
@@ -40,7 +40,7 @@ class PolicyTest : FunSpec({
         val hints = mapOf(servers[0].key to WhiteHint.Likely, servers[1].key to WhiteHint.Unlikely)
         val p = plan(Scenario.MobileWhitelist, servers, Memory.Empty, mtsWl, nowMs = 0, hints = hints)
         ids(p) shouldBe listOf("s001", "s003")
-        p.skipped[CandidateClass.Foreign]!![SkipReason.ForeignInWhitelist] shouldBe 1
+        p.skipped.getValue(CandidateClass.Foreign)[SkipReason.ForeignInWhitelist] shouldBe 1
     }
 
     test("белые списки: память → Likely(Ru) → Likely(Foreign) → прочие Ru; подозрение — так же") {
@@ -68,7 +68,7 @@ class PolicyTest : FunSpec({
         val s = server("s001", hetzner)
         val p = plan(Scenario.MobileWhitelist, listOf(s), Memory.Empty.block(s.endpoint, 0), mtsWl, 1, mapOf(s.key to WhiteHint.Likely))
         p.queue.shouldBeEmpty()
-        p.skipped[CandidateClass.Foreign]!![SkipReason.BlockedRecently] shouldBe 1
+        p.skipped.getValue(CandidateClass.Foreign)[SkipReason.BlockedRecently] shouldBe 1
     }
 
     test("память другого сценария не поднимает сервер") {
@@ -105,7 +105,7 @@ class PolicyTest : FunSpec({
         val memory = Memory.Empty.block(s.endpoint, atMs = 0)
         plan(Scenario.MobileWhitelist, listOf(s), memory, mtsWl, nowMs = 599_999).let {
             it.queue.shouldBeEmpty()
-            it.skipped[CandidateClass.RuEntry]!![SkipReason.BlockedRecently] shouldBe 1
+            it.skipped.getValue(CandidateClass.RuEntry)[SkipReason.BlockedRecently] shouldBe 1
         }
         plan(Scenario.MobileWhitelist, listOf(s), memory, mtsWl, nowMs = 600_000).queue.size shouldBe 1
     }

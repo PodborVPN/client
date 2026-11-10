@@ -44,8 +44,8 @@ data class Radio(val simName: String?, val simMccMnc: String?, val networkName: 
  */
 fun osNetworkOf(transport: Transport, operator: String?, mccMnc: String?, tower: Tower): OsNetwork = when (transport) {
     Transport.Cellular -> {
-        val code = mccMnc?.takeIf { it.isNotBlank() }
-        OsNetwork.Cellular(operator?.takeIf { it.isNotBlank() } ?: code ?: "?", code ?: "?", tower)
+        val code = if (mccMnc.isNullOrBlank()) "?" else mccMnc
+        OsNetwork.Cellular(if (operator.isNullOrBlank()) code else operator, code, tower)
     }
     Transport.Wifi -> OsNetwork.Wifi
     Transport.None -> OsNetwork.None
@@ -73,7 +73,8 @@ class Telephony(private val context: Context) {
      */
     fun cell(tm: TelephonyManager = dataTm()): CellSnapshot? {
         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
-        val lte = tm.allCellInfo.orEmpty().filterIsInstance<CellInfoLte>().firstOrNull { it.isRegistered } ?: return null
+        val lte = tm.allCellInfo.orEmpty().filterIsInstance<CellInfoLte>().firstOrNull { it.isRegistered }
+        if (lte == null) return null
         return CellSnapshot(lte.cellIdentity.ci.toLong(), lte.cellIdentity.earfcn, lte.cellSignalStrength.rsrp)
     }
 

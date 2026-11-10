@@ -31,9 +31,11 @@ class GeoCountry private constructor(
 
     /** Страна как записана в файле ("RU", "NL"); null — адрес не IP или вне всех диапазонов. */
     fun of(ip: String): String? {
-        val (hi, lo) = WhiteLists.ipBits(ip).getOrNull() ?: return null
+        val bits = WhiteLists.ipBits(ip).getOrNull()
+        if (bits == null) return null
+        val (hi, lo) = bits
         val index = if (hi == 0L && lo ushr 32 == 0xFFFFL) v4Index(lo and 0xFFFFFFFFL) else v6Index(hi, lo)
-        return index?.let(countries::get)
+        return if (index == null) null else countries[index]
     }
 
     private fun v4Index(addr: Long): Int? {

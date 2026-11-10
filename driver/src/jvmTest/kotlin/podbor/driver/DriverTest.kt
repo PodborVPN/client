@@ -11,6 +11,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.longs.shouldBeLessThan
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.delay
@@ -117,18 +118,18 @@ internal class World(
                 }
             }
         },
-        prober = prober ?: telegram,
+        prober = prober.let { if (it == null) telegram else it },
         exitProbe = exitProbe,
         gate = gate,
         resolver = { host -> host },
         line = lineProbe,
         clock = clock,
         store = object : Store {
-            override fun loadMemory() = saved ?: memory
+            override fun loadMemory() = saved.let { if (it == null) memory else it }
             override fun saveMemory(m: Memory) { Thread.sleep(saveDelayMs); saved = m }
         },
         passportStore = object : PassportStore {
-            override fun load() = savedPassport ?: passport
+            override fun load() = savedPassport.let { if (it == null) passport else it }
             override fun save(p: Passport) { savedPassport = p }
         },
         tape = { l -> synchronized(tape) { tape += l } },
@@ -177,7 +178,7 @@ class DriverTest : FunSpec({
         w.probed shouldContain 20001
         w.reached shouldContain Endpoint("10.0.0.2", 443)
         (20002 in w.probed) shouldBe false // s003 — зарубежный вход, при белых списках не пробуется
-        w.saved!!.successes.values.single().single().serverKey.isNotEmpty() shouldBe true
+        w.saved.shouldNotBeNull().successes.values.single().single().serverKey.isNotEmpty() shouldBe true
     }
 
     test("движок не стартовал → Left(EngineError): человек видит ошибку движка, а не «у провайдера ничего не работает»") {
@@ -316,7 +317,7 @@ class DriverTest : FunSpec({
         seen.first().network shouldBe NetworkCard.Measuring(mts)
         seen.last() shouldBe screen
         // Подозрение после первого раунда видно словами, пока второй раунд в пути.
-        seen.any { (it.network as? NetworkCard.Measured)?.evidence?.endsWith("проверяю ещё раз") == true } shouldBe true
+        seen.any { card -> card.network.let { it is NetworkCard.Measured && it.evidence.endsWith("проверяю ещё раз") } } shouldBe true
     }
 
     test("промежуточные экраны открытия: сначала «измеряю сеть», последний — экран открытия") {
@@ -413,7 +414,7 @@ class DriverTest : FunSpec({
         val memory = Memory.Empty.rememberSuccess(memoryKey(mts, Scenario.MobileOpen, Telegram.id), second, 1L)
         val w = World(ips = listOf("10.0.0.1", "10.0.0.2"), ruIps = emptySet(), line = whitelist, fitsPorts = emptySet(), memory = memory)
         val (recalled, _) = recallNow(w, openLine)
-        recalled[Telegram.id]?.id shouldBe ServerId("s002")
+        recalled[Telegram.id].shouldNotBeNull().id shouldBe ServerId("s002")
         w.exits shouldContainExactly listOf("s002")
         w.saved shouldBe null
     }
