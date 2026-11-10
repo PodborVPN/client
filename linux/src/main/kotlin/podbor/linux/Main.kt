@@ -1,11 +1,14 @@
 package podbor.linux
 
 import arrow.core.Either
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.http.content.staticFiles
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
@@ -14,6 +17,11 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,11 +36,13 @@ import podbor.app.sub.current
 import podbor.app.sub.inputOf
 import podbor.app.sub.wordsOf
 import podbor.core.Button
+import podbor.remote.BrainServer
 import podbor.screen.Picked
 import podbor.screen.Status
 import podbor.screen.SubscriptionInput
 import podbor.screen.trayOf
 import java.io.File
+import java.net.URI
 
 /** Состояние для `GET /api/status`: слова экрана, без ключей и адресов подписки. [problem] — чем кончился последний приём подписки. */
 @Serializable
@@ -51,6 +61,15 @@ fun configFromEnv() = LinuxConfig(
     proxyListen = env("PODBOR_PROXY_LISTEN", "0.0.0.0"),
     proxyPort = env("PODBOR_PROXY_PORT", "8898").toInt(),
 )
+
+/**
+ * Запрос со своей страницы или не из браузера (нет Origin). Чужой сайт, открытый в том же браузере, достучался бы до
+ * 127.0.0.1 сам: WebSocket и простой POST браузер не останавливает.
+ */
+private fun sameOrigin(call: ApplicationCall): Boolean {
+    val origin = call.request.headers[HttpHeaders.Origin] ?: return true
+    return Either.catch { URI(origin).authority }.getOrNull() == call.request.headers[HttpHeaders.Host]
+}
 
 /** Поднять сессию и подобрать выходы: подбор нужен, только если память сети не дала рабочего. */
 private suspend fun connect(brain: Brain) {
@@ -90,8 +109,16 @@ fun main() {
         install(WebSockets)
         routing {
             get("/api/status") { call.respond(answerOf(brain.status.value, problem.value)) }
+            // Экран живёт, пока открыт сокет: закрылся — его вопросы к мозгу отменяются вместе с сессией.
+            webSocket("/ws") {
+                if (!sameOrigin(call)) return@webSocket close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "origin"))
+                val server = BrainServer(brain, this) { send(Frame.Text(it)) }
+                server.start()
+                for (frame in incoming) if (frame is Frame.Text) server.receive(frame.readText())
+            }
             // Текст подписки или ссылка — телом запроса. Анализ идёт минуты: ответ сразу, ход — в /api/status.
             post("/api/subscription") {
+                if (!sameOrigin(call)) return@post call.respond(HttpStatusCode.Forbidden)
                 val input = when (val parsed = inputOf(call.receiveText())) {
                     is Either.Left -> return@post call.respondText(wordsOf(parsed.value), status = HttpStatusCode.BadRequest)
                     is Either.Right -> parsed.value
@@ -103,6 +130,7 @@ fun main() {
                 }
                 call.respond(HttpStatusCode.Accepted, answerOf(brain.status.value, problem.value))
             }
+            staticFiles("/", File(env("PODBOR_WEB", "/opt/podbor/web")))
         }
     }.start(wait = true)
 }

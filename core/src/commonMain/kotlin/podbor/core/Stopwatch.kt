@@ -1,13 +1,16 @@
 package podbor.core
 
+import kotlinx.serialization.Serializable
+
 /**
  * Секундомер нажатия — производная истории, как и весь экран: старт — письмо нажатия, финиш — письмо, на котором
  * нажатие кончилось. «Сейчас» для идущего приходит снаружи ([elapsedMs]): тикает отрисовка, не ядро.
  */
+@Serializable
 sealed interface Stopwatch {
-    data object None : Stopwatch
-    data class Running(val startedAtMs: Long) : Stopwatch
-    data class Stopped(val startedAtMs: Long, val stoppedAtMs: Long) : Stopwatch
+    @Serializable data object None : Stopwatch
+    @Serializable data class Running(val startedAtMs: Long) : Stopwatch
+    @Serializable data class Stopped(val startedAtMs: Long, val stoppedAtMs: Long) : Stopwatch
 }
 
 /** Прошло мс к [nowMs]; часы ушли назад — 0, а не минус. Секундомера нет — null. */

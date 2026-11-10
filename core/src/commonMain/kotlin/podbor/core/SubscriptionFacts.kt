@@ -1,17 +1,22 @@
 package podbor.core
 
+import kotlinx.serialization.Serializable
+
 /** Когда сервис последний раз заработал через подписку на этой сети: не было; в момент [At.atMs]. */
+@Serializable
 sealed interface LastWorked {
-    data object Never : LastWorked
-    data class At(val atMs: Long) : LastWorked
+    @Serializable data object Never : LastWorked
+    @Serializable data class At(val atMs: Long) : LastWorked
 }
 
+@Serializable
 data class Worked(val service: Service, val last: LastWorked)
 
 /**
  * Как подписка ведёт себя на этом телефоне — свёртка уже накопленного знания по ключам её серверов: на этой сети
  * ([worked], по сервису); по паспорту — входы в РФ, вероятно для белых списков, ответили из проверенных анализом.
  */
+@Serializable
 data class SubscriptionFacts(
     val worked: List<Worked>,
     val ruEntries: Int,

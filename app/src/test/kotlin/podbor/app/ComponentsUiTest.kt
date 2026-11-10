@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import podbor.app.ui.Glyph
 import podbor.app.ui.IconSquareButton
 import podbor.app.ui.PodborTheme
 import podbor.app.ui.PrimaryButton
@@ -47,7 +48,7 @@ class ComponentsUiTest {
     @Test
     fun iconButtonTouchIs48EvenInA40Row() {
         compose.setContent {
-            PodborTheme { Row(Modifier.height(Space.control)) { IconSquareButton(R.drawable.ic_wrench, "ключ", {}) } }
+            PodborTheme { Row(Modifier.height(Space.control)) { IconSquareButton(Glyph.Wrench,"ключ", {}) } }
         }
         val b = compose.onNode(hasClickAction() and hasContentDescription("ключ")).getBoundsInRoot()
         assert(b.bottom - b.top >= 48.dp && b.right - b.left >= 48.dp) { "касание меньше 48 dp: $b" }

@@ -1,8 +1,10 @@
 package podbor.screen
 
+import kotlinx.serialization.Serializable
 import podbor.core.ExitFilter
 
 /** Страны текущей подписки и ограничение подбора — часть общего Status. */
+@Serializable
 data class CountrySelection(
     val filter: ExitFilter = ExitFilter(),
     val available: Set<String> = emptySet(),

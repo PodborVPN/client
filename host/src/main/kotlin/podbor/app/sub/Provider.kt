@@ -160,17 +160,6 @@ fun subscriptionsOf(
 private fun othersByUse(shelf: Shelf, currentId: String): List<Subscription> =
     shelf.items.filter { it.id != currentId }.sortedByDescending { it.usedAtMs }
 
-/** Давность словами: «только что», «N мин назад», «N ч назад», «N дн назад». */
-internal fun ago(ms: Long): String {
-    val min = (ms / 60_000).coerceAtLeast(0)
-    return when {
-        min < 1 -> "только что"
-        min < 60 -> "$min мин назад"
-        min < 48 * 60 -> "${min / 60} ч назад"
-        else -> "${min / (24 * 60)} дн назад"
-    }
-}
-
 /** Байты в ГБ: до 10 — с десятой, дальше — целыми. */
 private fun gb(bytes: Long): String {
     val v = bytes / 1_073_741_824.0

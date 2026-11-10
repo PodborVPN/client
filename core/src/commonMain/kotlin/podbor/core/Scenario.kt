@@ -12,6 +12,7 @@ sealed interface OsNetwork {
 }
 
 /** Сеть сменилась по ключу памяти ([networkKey]): выход, подобранный на [from], на [to] проверяется заново. */
+@Serializable
 data class NetworkMove(val from: OsNetwork, val to: OsNetwork)
 
 /** Где подобран выход: на сети [Network.os] или неизвестно (Ленты до поля, выход ставили не мы). */
@@ -22,10 +23,11 @@ sealed interface ChosenOn {
 }
 
 /** Выход и нынешняя сеть: где подобран — неизвестно, на этой же сети или сеть с тех пор сменилась. */
+@Serializable
 sealed interface Relocation {
-    data object Unknown : Relocation
-    data object Stayed : Relocation
-    data class Moved(val move: NetworkMove) : Relocation
+    @Serializable data object Unknown : Relocation
+    @Serializable data object Stayed : Relocation
+    @Serializable data class Moved(val move: NetworkMove) : Relocation
 }
 
 /** Свёртка: выход на той же сети или неизвестно где — [here]; сеть сменилась — [moved] от переезда. */

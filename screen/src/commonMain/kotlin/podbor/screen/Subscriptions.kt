@@ -1,6 +1,10 @@
+@file:UseSerializers(NonEmptyListSerializer::class)
+
 package podbor.screen
 
 import arrow.core.Nel
+import arrow.core.serialization.NonEmptyListSerializer
+import kotlinx.serialization.UseSerializers
 import podbor.core.SubscriptionFacts
 import podbor.core.Traffic
 import kotlinx.serialization.SerialName
@@ -18,17 +22,19 @@ sealed interface Analyzed {
 }
 
 /** Срок подписки по словам провайдера: не сказал (или бессрочно); оплачена до; кончилась; кончился трафик. */
+@Serializable
 sealed interface Term {
-    data object Unknown : Term
-    data class Until(val atS: Long) : Term
-    data class Expired(val atS: Long) : Term
-    data object OutOfTraffic : Term
+    @Serializable data object Unknown : Term
+    @Serializable data class Until(val atS: Long) : Term
+    @Serializable data class Expired(val atS: Long) : Term
+    @Serializable data object OutOfTraffic : Term
 }
 
 /**
  * Подписка в списке глазами экрана — без ссылки и текста (секрет): имя, серверов, анализ, срок, сведения провайдера;
  * как она ведёт себя на этом телефоне ([facts]) и сколько прошло через VPN на ней ([viaPodbor]).
  */
+@Serializable
 data class SubscriptionCard(
     val id: String,
     val title: String,
@@ -44,10 +50,11 @@ data class SubscriptionCard(
  * Подписки человека: нет ни одной; есть, но текущей нет (её удалили — выбирает сам); текущая и прочие. Текущая не из
  * списка — непостроима.
  */
+@Serializable
 sealed interface Subscriptions {
-    data object None : Subscriptions
-    data class Unchosen(val list: Nel<SubscriptionCard>) : Subscriptions
-    data class Chosen(val current: SubscriptionCard, val others: List<SubscriptionCard>) : Subscriptions
+    @Serializable data object None : Subscriptions
+    @Serializable data class Unchosen(val list: Nel<SubscriptionCard>) : Subscriptions
+    @Serializable data class Chosen(val current: SubscriptionCard, val others: List<SubscriptionCard>) : Subscriptions
 }
 
 /** Карточки списка, текущая первой. */
@@ -75,9 +82,10 @@ sealed interface SubSheet {
 }
 
 /** Вставленное человеком: новая подписка или уже есть в списке (та же ссылка, а без ссылки — тот же текст). */
+@Serializable
 sealed interface Known {
-    data object New : Known
-    data class Saved(val card: SubscriptionCard) : Known
+    @Serializable data object New : Known
+    @Serializable data class Saved(val card: SubscriptionCard) : Known
 }
 
 /** Чья шторка: карточка подписки на любом шаге. */
@@ -89,7 +97,8 @@ fun SubSheet.card(): SubscriptionCard = when (this) {
 }
 
 /** Выбор подписки после её обновления: можно ехать; провайдер говорит, что она кончилась ([Expired.support] — к нему). */
+@Serializable
 sealed interface Picked {
-    data object Ready : Picked
-    data class Expired(val support: Support) : Picked
+    @Serializable data object Ready : Picked
+    @Serializable data class Expired(val support: Support) : Picked
 }

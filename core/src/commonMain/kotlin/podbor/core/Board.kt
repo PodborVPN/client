@@ -1,26 +1,31 @@
 package podbor.core
 
+import kotlinx.serialization.Serializable
+
 /**
  * Статус карточки сервиса на экране: слова — «—», «не из подписки», «ищу», «проверяю», «работает», «мёртв», «найдено»,
  * «не найдено».
  */
+@Serializable
 sealed interface CardStatus {
-    data object Unknown : CardStatus
+    @Serializable data object Unknown : CardStatus
 
     /** Балансер сервиса указывает на сервер не из подписки: проверить нечем (слова прежнего экрана — тег и почему). */
-    data class Unlisted(val tag: ServerId) : CardStatus
-    data object Searching : CardStatus
+    @Serializable data class Unlisted(val tag: ServerId) : CardStatus
+    @Serializable data object Searching : CardStatus
     /** [relocation] — как у [ExitState]: выход и нынешняя сеть. */
-    data class Checking(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : CardStatus
-    data class Works(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : CardStatus
-    data class Dead(val ref: ExitRef, val blame: Blame, val relocation: Relocation = Relocation.Unknown) : CardStatus
-    data class Found(val ref: ExitRef, val probedAtMs: Long, val coverage: String) : CardStatus
-    data class NotFound(val lines: List<String>) : CardStatus
+    @Serializable data class Checking(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : CardStatus
+    @Serializable data class Works(val ref: ExitRef, val relocation: Relocation = Relocation.Unknown) : CardStatus
+    @Serializable data class Dead(val ref: ExitRef, val blame: Blame, val relocation: Relocation = Relocation.Unknown) : CardStatus
+    @Serializable data class Found(val ref: ExitRef, val probedAtMs: Long, val coverage: String) : CardStatus
+    @Serializable data class NotFound(val lines: List<String>) : CardStatus
 }
 
+@Serializable
 data class ServiceCard(val service: ServiceId, val label: String, val status: CardStatus, val stopwatch: Stopwatch = Stopwatch.None)
 
 /** Сводный экран: одна карточка сети, кнопка на всех (и общий секундомер), карточка на каждый сервис (по [ServiceId]). */
+@Serializable
 data class Board(val network: NetworkCard, val button: Button, val cards: List<ServiceCard>, val stopwatch: Stopwatch = Stopwatch.None)
 
 /** [screens] — экраны трубопроводов; сервис без экрана — Unknown. Сеть — с экрана GENERAL_FOLLOWS, иначе с первого по ServiceId. */

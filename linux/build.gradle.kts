@@ -24,6 +24,7 @@ application {
 
 dependencies {
     implementation(project(":host"))
+    implementation(project(":remote"))
     implementation(project(":xray-proto"))
     implementation(libs.grpc.netty)
     implementation(libs.ktor.server.cio)
@@ -43,6 +44,7 @@ tasks.register<Sync>("dockerContext") {
     into(layout.buildDirectory.dir("docker"))
     from(layout.projectDirectory.dir("docker"))
     from(tasks.named("installDist")) { into("podbor-linux") }
+    from(project(":web").tasks.named("wasmJsBrowserDistribution")) { into("web") }
     from(project(":app").layout.buildDirectory.dir("generated/xray-assets")) { into("assets") }
 }
 

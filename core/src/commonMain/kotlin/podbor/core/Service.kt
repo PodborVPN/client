@@ -12,16 +12,19 @@ value class ServiceId(val id: String)
  * По чему трафик сервиса узнаётся в маршрутизации Xray: geosite-домены, geoip-диапазоны,
  * пакеты приложений (по UID приложения-хозяина сокета). Имена — как в geosite.dat/geoip.dat.
  */
+@Serializable
 data class Match(val domains: Set<String>, val ips: Set<String>, val apps: Set<String>)
 
 /** Какой пробой проверять выход для сервиса; исполняет её край (по виду, не по имени сервиса). */
+@Serializable
 sealed interface ProbeSpec {
-    data object Telegram : ProbeSpec
-    data object Instagram : ProbeSpec
-    data object Https : ProbeSpec
+    @Serializable data object Telegram : ProbeSpec
+    @Serializable data object Instagram : ProbeSpec
+    @Serializable data object Https : ProbeSpec
 }
 
 /** label — в карточке («TG»), title — в словах экрана («Телега»), titleAcc — он же в винительном («проверяю Телегу…»). */
+@Serializable
 data class Service(
     val id: ServiceId,
     val label: String,

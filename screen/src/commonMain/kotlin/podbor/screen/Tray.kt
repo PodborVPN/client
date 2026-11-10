@@ -5,15 +5,17 @@ import podbor.core.Button
 import podbor.core.CardStatus
 import podbor.core.NetworkMove
 import podbor.core.moveWords
+import kotlinx.serialization.Serializable
 
 /**
  * Чем Podbor занят сверх сессии: ничем; перемером после переезда сети (сессия поднята); анализом подписки (VPN на его
  * время выключен), проверено [Analysis.done] из [Analysis.total].
  */
+@Serializable
 sealed interface Work {
-    data object Idle : Work
-    data class Remeasure(val move: NetworkMove) : Work
-    data class Analysis(val done: Int, val total: Int) : Work
+    @Serializable data object Idle : Work
+    @Serializable data class Remeasure(val move: NetworkMove) : Work
+    @Serializable data class Analysis(val done: Int, val total: Int) : Work
 }
 
 /**
@@ -21,6 +23,7 @@ sealed interface Work {
  * плитка): каждая — проекция [Status], и новое состояние (вариант [Work]) компилятор требует решить в каждой.
  * [exit] — имя общего выхода поднятой сессии.
  */
+@Serializable
 data class Status(val session: SessionView, val board: Board, val work: Work = Work.Idle, val exit: String = NO_EXIT, val countries: CountrySelection = CountrySelection(), val routes: Map<podbor.core.ServiceId, ServerRoute> = emptyMap())
 
 /** Выхода нет или он не выбран. */
@@ -103,4 +106,5 @@ private fun markOf(status: CardStatus): String = when (status) {
 }
 
 /** Маршрут закреплённого сервера: вход текущей сессии, выход по паспорту. */
+@Serializable
 data class ServerRoute(val id: podbor.core.ServerId, val entry: podbor.core.Entry, val exitCountry: String)

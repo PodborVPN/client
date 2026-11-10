@@ -1,12 +1,16 @@
 package podbor.core
 
+import kotlinx.serialization.Serializable
+
 /** Сколько серверов подписки ответило сервису через туннель. */
+@Serializable
 data class ServiceTally(val service: ServiceId, val label: String, val works: Int)
 
 /** Метка сервиса на карточке: ещё меряем, работает, не работает. */
 enum class Mark3 { Pending, Works, Dead }
 
 /** Карточка сервера на экране анализа; [services] — метка сервиса → отметка, в порядке набора. */
+@Serializable
 data class ServerCard(
     val key: String,
     val entry: Entry,
@@ -21,6 +25,7 @@ data class ServerCard(
 )
 
 /** Экран анализа как значение: сводка, лента карточек (новейшая первой), итог. */
+@Serializable
 data class ScanBoard(
     val total: Int,
     val done: Int,

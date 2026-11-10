@@ -2,6 +2,7 @@ package podbor.screen
 
 import arrow.core.Either
 import kotlin.io.encoding.Base64
+import kotlinx.serialization.Serializable
 
 /**
  * Что из подписки не стало серверами: конвертер молча выбрасывает то, чего не понял, поэтому ссылки считаем сами.
@@ -9,6 +10,7 @@ import kotlin.io.encoding.Base64
  * своих схем, из которых сервер не вышел; [repeats] — тот же сервер ещё раз под другой ремаркой (кандидат — один).
  * Одни повторы — сказать нечего: проверится всё, что есть.
  */
+@Serializable
 data class Skipped(val servers: Int, val unsupported: Map<String, Int>, val broken: Int, val repeats: Int = 0) {
     /** Есть что сказать: чужие или битые ссылки. */
     val any: Boolean get() = unsupported.isNotEmpty() || broken > 0

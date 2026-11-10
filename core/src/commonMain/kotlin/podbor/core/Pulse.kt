@@ -79,9 +79,10 @@ sealed interface Grew {
 }
 
 /** Сколько назад рос ↓ пары: не рос в сессии или [Ago.ms] назад. */
+@Serializable
 sealed interface Since {
-    data object Never : Since
-    data class Ago(val ms: Long) : Since
+    @Serializable data object Never : Since
+    @Serializable data class Ago(val ms: Long) : Since
 }
 
 /** Последнее накопленное значение входа в его эпохе — база прироста. */
@@ -183,12 +184,14 @@ private fun Lane.next(epoch: Long, p: PulsePoint): Lane {
 }
 
 /** Что известно о паре: ⊥ (не наблюдали) или темп вниз/вверх (Б/с) и сколько назад рос ↓ (null — не рос в сессии). */
+@Serializable
 sealed interface PairPulse {
-    data object Unseen : PairPulse
-    data class Seen(val downBps: Long, val upBps: Long, val answered: Since) : PairPulse
+    @Serializable data object Unseen : PairPulse
+    @Serializable data class Seen(val downBps: Long, val upBps: Long, val answered: Since) : PairPulse
 }
 
 /** Вид пульса: темп пар, итог «на этой сети» и «через VPN на этой подписке» — с ключами: экран сверит сеть сам. */
+@Serializable
 data class PulseView(val pairs: Map<ServiceId, PairPulse>, val network: Tally?, val vpn: Tally?) {
     companion object {
         val Empty = PulseView(emptyMap(), null, null)

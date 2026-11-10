@@ -30,6 +30,7 @@ kotlin {
             api(libs.androidx.lifecycle.viewmodel.savedstate)
             implementation(project.dependencies.platform(libs.arrow.stack))
             implementation(libs.arrow.core)
+            implementation(libs.arrow.core.serialization)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }

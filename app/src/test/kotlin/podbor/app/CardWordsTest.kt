@@ -20,9 +20,13 @@ import podbor.screen.SubscriptionCard
 import podbor.screen.SubscriptionNote
 import podbor.screen.Support
 import podbor.screen.Term
+import java.time.Instant
 import java.time.ZoneOffset
+import podbor.app.sub.DayMonth
 
 private const val DAY = 86_400_000L
+
+private fun utcDay(atS: Long): DayMonth = Instant.ofEpochSecond(atS).atZone(ZoneOffset.UTC).let { DayMonth(it.dayOfMonth, it.monthValue) }
 
 /** Строка под именем подписки: серверы, анализ, срок — словами и тоном. */
 class CardWordsTest : FunSpec({
@@ -30,18 +34,18 @@ class CardWordsTest : FunSpec({
         SubscriptionCard("a", "имя", servers, analyzed, term, SubscriptionNote(null, emptyList(), Support.None, Announce.None))
 
     test("серверы со склонением, без анализа, срок неизвестен — не пишем") {
-        cardWords(card(servers = 1), 0, ZoneOffset.UTC) shouldBe listOf(Word("1 сервер", Tone.Plain), Word("без анализа", Tone.Plain))
-        cardWords(card(servers = 3), 0, ZoneOffset.UTC).first() shouldBe Word("3 сервера", Tone.Plain)
+        cardWords(card(servers = 1), 0, ::utcDay) shouldBe listOf(Word("1 сервер", Tone.Plain), Word("без анализа", Tone.Plain))
+        cardWords(card(servers = 3), 0, ::utcDay).first() shouldBe Word("3 сервера", Tone.Plain)
     }
     test("анализ: прошёл — давность; прерван — янтарём") {
-        cardWords(card(analyzed = Analyzed.Done(0)), 2 * DAY, ZoneOffset.UTC)[1] shouldBe Word("анализ 2 дн назад", Tone.Plain)
-        cardWords(card(analyzed = Analyzed.Interrupted(0, 5, 8)), 0, ZoneOffset.UTC)[1] shouldBe Word("анализ прерван", Tone.Warn)
+        cardWords(card(analyzed = Analyzed.Done(0)), 2 * DAY, ::utcDay)[1] shouldBe Word("анализ 2 дн назад", Tone.Plain)
+        cardWords(card(analyzed = Analyzed.Interrupted(0, 5, 8)), 0, ::utcDay)[1] shouldBe Word("анализ прерван", Tone.Warn)
     }
     test("срок: оплачена до — день и месяц словом; кончилась — красным с давностью; трафик кончился — красным") {
-        cardWords(card(term = Term.Until(12 * 86_400L)), 0, ZoneOffset.UTC).last() shouldBe Word("до 13 янв", Tone.Plain)
-        cardWords(card(term = Term.Until(40 * 86_400L)), 0, ZoneOffset.UTC).last() shouldBe Word("до 10 фев", Tone.Plain)
-        cardWords(card(term = Term.Expired(0)), 3 * DAY, ZoneOffset.UTC).last() shouldBe Word("кончилась 3 дн назад", Tone.Bad)
-        cardWords(card(term = Term.OutOfTraffic), 0, ZoneOffset.UTC).last() shouldBe Word("трафик кончился", Tone.Bad)
+        cardWords(card(term = Term.Until(12 * 86_400L)), 0, ::utcDay).last() shouldBe Word("до 13 янв", Tone.Plain)
+        cardWords(card(term = Term.Until(40 * 86_400L)), 0, ::utcDay).last() shouldBe Word("до 10 фев", Tone.Plain)
+        cardWords(card(term = Term.Expired(0)), 3 * DAY, ::utcDay).last() shouldBe Word("кончилась 3 дн назад", Tone.Bad)
+        cardWords(card(term = Term.OutOfTraffic), 0, ::utcDay).last() shouldBe Word("трафик кончился", Tone.Bad)
     }
     test("шторка: как подписка ведёт себя здесь — сервисы, белые списки, ответили, через Podbor, анализ") {
         val facts = SubscriptionFacts(

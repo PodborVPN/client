@@ -1,16 +1,19 @@
 package podbor.core
 
+import kotlinx.serialization.Serializable
+
 /** Ready — линия ответила, можно подбирать (экран при открытии). */
 enum class Button { Idle, Ready, Searching, Green, Red }
 
 /** Карточка сети: пока линия молчит — Measuring (только то, что знает ОС), потом Measured. Вышку и сигнал добавит край (план 2). */
+@Serializable
 sealed interface NetworkCard {
     /** Сеть ОС — есть у карточки в любом состоянии замера. */
     val os: OsNetwork
 
-    data class Measuring(override val os: OsNetwork) : NetworkCard
+    @Serializable data class Measuring(override val os: OsNetwork) : NetworkCard
     /** [dns] — DNS сети по последнему раунду ([dnsOf]): отдельная ось рядом со сценарием. */
-    data class Measured(
+    @Serializable data class Measured(
         override val os: OsNetwork,
         val scenario: Scenario,
         val evidence: String,
@@ -19,9 +22,11 @@ sealed interface NetworkCard {
 }
 
 /** Кто виноват, что текущий выход мёртв, — по диагнозу линии. Unexplained: сеть непонятная или линия не ответила к сроку. */
+@Serializable
 enum class Blame { Whitelist, SuspectedWhitelist, NoNetwork, Server, Unexplained }
 
 /** Откуда выход, на котором сидит человек, и что с ним. Экран при открытии. */
+@Serializable
 data class ExitRef(val name: String, val transport: Transport)
 
 /** [relocation] — выход и нынешняя сеть: обстоятельство рядом с причиной ([Blame]), не сама причина. */

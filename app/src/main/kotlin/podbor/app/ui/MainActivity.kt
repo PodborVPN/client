@@ -54,6 +54,9 @@ import podbor.app.R
 import podbor.app.share.bundleOf
 import podbor.app.share.readTapes
 import podbor.app.share.wordsOf
+import podbor.screen.SessionLetter
+import podbor.screen.SessionPlatform
+import podbor.screen.SessionStory
 import podbor.app.share.writeShare
 import podbor.app.sub.SubscriptionStore
 import podbor.app.sub.inputOf
@@ -162,15 +165,41 @@ class MainActivity : FragmentActivity() {
     }
 
     private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        vm.answered()
-        if (r.resultCode == RESULT_OK) {
-            startVpn()
-        } else {
-            // VPN не будет — сервис экрану держать незачем ([MainViewModel.hold]).
-            vm.refused()
-            log("согласие на VPN не дано")
-        }
+        val granted = r.resultCode == RESULT_OK
+        // Отказ: VPN не будет — сервис экрану держать незачем ([MainViewModel.hold]).
+        if (!granted) log("согласие на VPN не дано")
+        story.send(SessionLetter.ConsentAnswered(granted))
     }
+
+    /** Как включается VPN на Android: окно согласия системы и сервис переднего плана. */
+    private val platform: SessionPlatform = object : SessionPlatform {
+        private var prepared: Intent? = null
+
+        override fun consentNeeded(): Boolean {
+            prepared = VpnService.prepare(this@MainActivity)
+            return prepared != null
+        }
+
+        override fun askConsent() {
+            prepared?.let { consent.launch(it) }
+        }
+
+        // Сначала старт: дальше сервис держит он, и отпущенная после него привязка ([MainViewModel.hold]) его не гасит.
+        override fun startEngine() {
+            startForegroundService(Intent(this@MainActivity, PodborVpnService::class.java).setAction(PodborVpnService.ACTION_START))
+        }
+
+        override fun followEngine() = linked.bind()
+
+        // Сессию останавливает сервис — тем же путём, что отзыв VPN системой.
+        override fun stopEngine() {
+            startService(Intent(this@MainActivity, PodborVpnService::class.java).setAction(PodborVpnService.ACTION_STOP))
+        }
+
+        override fun reopen() = opening("включить")
+    }
+
+    private val story: SessionStory by lazy { SessionStory(vm, platform) }
 
     private val connection: ServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
@@ -372,7 +401,7 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { vm.canGoBack.collect { back.isEnabled = it } }
-                launch { vm.needsStart.collect { if (it) ensureVpn() } }
+                launch { vm.needsStart.collect { if (it) story.send(SessionLetter.StartDue) } }
             }
         }
     }
@@ -427,37 +456,20 @@ class MainActivity : FragmentActivity() {
         input(text)
     }
 
-    private fun ensureVpn() {
-        when (val ask = VpnService.prepare(this)) {
-            null -> startVpn()
-            is Intent -> {
-                vm.asked(Ask.VpnConsent)
-                consent.launch(ask)
-            }
-        }
-    }
-
-    private fun startVpn() {
-        // Сначала старт: дальше сервис держит он, и отпущенная после него привязка ([MainViewModel.hold]) его не гасит.
-        startForegroundService(Intent(this, PodborVpnService::class.java).setAction(PodborVpnService.ACTION_START))
-        vm.issued()
-        linked.bind()
-    }
-
     /** «повторить» после неудачного подъёма: тот же путь, что при входе — согласие могли отозвать, prepare спросит. */
     internal fun retry() {
         log("экран: повторить подъём")
-        ensureVpn()
+        story.send(SessionLetter.Retry)
     }
 
-    /** Лепесток «выкл»: сессию останавливает сервис — тем же путём, что отзыв VPN системой. */
+    /** Лепесток «выкл». */
     internal fun turnOff() {
         log("экран: выключить VPN")
-        startService(Intent(this, PodborVpnService::class.java).setAction(PodborVpnService.ACTION_STOP))
+        story.send(SessionLetter.TurnOff)
     }
 
     /** «включить» после выключения: как открытие экрана — подъём и замер открытия на поднятой сессии. */
-    internal fun turnOn() = opening("включить")
+    internal fun turnOn() = story.send(SessionLetter.TurnOn)
 
     internal fun press() {
         log("экран: нажатие")

@@ -102,13 +102,14 @@ import podbor.driver.serverOrNull
 import podbor.driver.xrayApiOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
+import podbor.app.sub.inputOf
+import podbor.remote.RemoteBrain
 import podbor.screen.AlwaysOn
 import podbor.screen.CountrySelection
 import podbor.screen.ExitOrigin
 import podbor.screen.InputError
 import podbor.screen.Picked
 import podbor.screen.ServerRoute
-import podbor.screen.ServicePort
 import podbor.screen.Skipped
 import podbor.screen.Status
 import podbor.screen.SubscriptionInput
@@ -142,7 +143,7 @@ data class LinuxConfig(
  * Android только входом: общий прокси ([Tun.Proxy]) вместо туннеля. Сеть для ядра — домашняя: Linux-машина не знает ни
  * оператора, ни вышки.
  */
-class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : ServicePort {
+class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : RemoteBrain {
     private val xray = Mutex()
     private val os: OsNetwork = OsNetwork.Wifi
 
@@ -244,13 +245,16 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : S
     suspend fun hasSubscription(): Boolean = desk.hasSubscription()
 
     /** Поднять прокси на текущей подписке. */
-    fun start() = host.start(0)
+    override fun start() = host.start(0)
 
     /** Погасить прокси. */
-    fun stop() = host.stop(0)
+    override fun stop() = host.stop(0)
+
+    /** Вставленное в браузере разбирается здесь: разбор ссылок — на JVM. */
+    override suspend fun parse(text: String): Either<InputError, SubscriptionInput> = inputOf(text)
 
     /** Подписки глазами экрана: как ведёт себя здесь каждая. */
-    suspend fun shelf(): Subscriptions = withContext(Dispatchers.IO) {
+    override suspend fun shelf(): Subscriptions = withContext(Dispatchers.IO) {
         val passport = passports.load() ?: Passport(emptyMap(), 0)
         val known = memory.loadMemory()
         val book = books.load()

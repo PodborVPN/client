@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,13 +36,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import podbor.app.BuildConfig
-import podbor.app.R
 import podbor.screen.Offer
 import podbor.screen.networkTraffic
 import podbor.core.NetworkCard
@@ -126,7 +123,7 @@ fun NetworkScreen(
                 AssistChip(
                     onClick = { onUpdate(update.url) },
                     label = { Text("обновить до ${update.version}", style = MaterialTheme.typography.labelMedium, maxLines = 1) },
-                    leadingIcon = { Icon(painterResource(R.drawable.ic_download), contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
+                    leadingIcon = { Icon(painterOf(Glyph.Download), contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
                     shape = Corner,
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = PodborColors.Accent,
@@ -146,12 +143,12 @@ fun NetworkScreen(
  * появляется, а плашка не прыгает.
  */
 @Composable
-private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false, color: Color = Muted, action: (@Composable () -> Unit)? = null) {
+private fun IconRow(icon: Glyph, text: String, dim: Boolean = false, color: Color = Muted, action: (@Composable () -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().height(Space.control).alpha(if (dim) DIM else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(Space.icon))
+        Icon(painterOf(icon), contentDescription = null, tint = Muted, modifier = Modifier.size(Space.icon))
         Spacer(Modifier.width(Space.m))
         Text(text, color = color, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         action?.invoke()
@@ -162,7 +159,7 @@ private fun IconRow(@DrawableRes icon: Int, text: String, dim: Boolean = false, 
 /** 🔧 в строке улики — кнопкой-значком: касание 48dp выступает за строку 40dp, строка не растёт. */
 @Composable
 private fun Wrench(onClick: () -> Unit) {
-    IconSquareButton(R.drawable.ic_wrench, "DNS сети", onClick)
+    IconSquareButton(Glyph.Wrench,"DNS сети", onClick)
 }
 
 @Composable
@@ -188,7 +185,7 @@ private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
     // Строка оператора — только у сотовой и всегда, от замера до итога: есть она или нет, решает сеть ОС, а не
     // заголовок, иначе страница под сетью прыгает. Wi-Fi назван в заголовке. Вышка — только с разрешением геолокации.
     when (os) {
-        is OsNetwork.Cellular -> IconRow(R.drawable.ic_cell_tower, listOfNotNull(operatorOf(os), towerLine(os)).joinToString(" · "))
+        is OsNetwork.Cellular -> IconRow(Glyph.CellTower,listOfNotNull(operatorOf(os), towerLine(os)).joinToString(" · "))
         OsNetwork.Wifi, OsNetwork.None -> Unit
     }
     // Строка улики держит место и во время замера (прошлая улика приглушена): страница под сетью не прыгает.
@@ -197,8 +194,8 @@ private fun NetworkTier(card: NetworkCard, dns: DnsLine, onDns: () -> Unit) {
     // DNS сети — в той же строке: сломан — словами янтарём и 🔧 «починить», починен — как обошли и 🔧 «вернуть».
     when (dns) {
         // Улики ещё не было — строка держит место словами о том, что проверяем, а не пустотой.
-        DnsLine.Quiet -> IconRow(R.drawable.ic_globe, evidence ?: last.value ?: "проверяю, отвечает ли заграница…", dim = evidence == null)
-        is DnsLine.Broken -> IconRow(R.drawable.ic_globe, dns.text, color = PodborColors.Accent) { Wrench(onDns) }
-        is DnsLine.Fixed -> IconRow(R.drawable.ic_globe, dns.text) { Wrench(onDns) }
+        DnsLine.Quiet -> IconRow(Glyph.Globe,evidence ?: last.value ?: "проверяю, отвечает ли заграница…", dim = evidence == null)
+        is DnsLine.Broken -> IconRow(Glyph.Globe,dns.text, color = PodborColors.Accent) { Wrench(onDns) }
+        is DnsLine.Fixed -> IconRow(Glyph.Globe,dns.text) { Wrench(onDns) }
     }
 }

@@ -16,6 +16,7 @@ COPY --from=engine /libxray-cli /usr/local/bin/libxray-cli
 COPY --from=engine /xray /usr/local/bin/xray
 COPY podbor-linux /opt/podbor/app
 COPY assets /opt/podbor/assets
+COPY web /opt/podbor/web
 USER podbor
 VOLUME /data
 EXPOSE 8898 8899

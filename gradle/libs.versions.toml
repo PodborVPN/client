@@ -12,6 +12,7 @@ grpcKotlin = "1.4.1"
 protobufPlugin = "0.9.4"
 agp = "8.13.2"
 composeBom = "2026.06.01"
+composeMultiplatform = "1.11.1"
 activityCompose = "1.13.0"
 robolectric = "4.17"
 lifecycle = "2.9.4"
@@ -72,4 +73,5 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
