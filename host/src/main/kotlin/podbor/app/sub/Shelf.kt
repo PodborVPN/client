@@ -15,7 +15,10 @@ fun Shelf.current(): Subscription? = items.firstOrNull { it.id == currentId }
  */
 fun Shelf.put(s: Subscription, newId: () -> String, nowMs: Long = 0): Pair<Shelf, Subscription> {
     val same = same(s)
-    val put = s.copy(id = same?.id ?: newId(), analyzed = same?.analyzed ?: s.analyzed, usedAtMs = nowMs)
+    val put = when (same) {
+        null -> s.copy(id = newId(), usedAtMs = nowMs)
+        else -> s.copy(id = same.id, analyzed = same.analyzed, usedAtMs = nowMs)
+    }
     val list = if (same == null) items + put else items.map { if (it.id == put.id) put else it }
     return Shelf(list, put.id) to put
 }

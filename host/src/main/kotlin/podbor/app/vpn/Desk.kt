@@ -207,9 +207,9 @@ class Desk(
             SessionState.Down, SessionState.Starting, is SessionState.Failed -> async { detect(net) { boardState.value = it } }
         }
         val line = when (host.state.first { it is SessionState.Up || it is SessionState.Failed }) {
-            is SessionState.Up -> early?.await()?.prior ?: Prior.None
+            is SessionState.Up -> if (early == null) Prior.None else early.await().prior
             SessionState.Down, SessionState.Starting, is SessionState.Failed -> {
-                early?.cancel()
+                if (early != null) early.cancel()
                 Prior.None
             }
         }
@@ -279,14 +279,16 @@ class Desk(
     suspend fun repick() = pressing.withLock { pressLocked() }
 
     private suspend fun pressLocked() {
-        openRun.get()?.cancel(Superseded())
+        val measuring = openRun.get()
+        if (measuring != null) measuring.cancel(Superseded())
         searching()
         settle(
             host.act { live ->
                 actions.withLock {
                     // Вытесненный замер мог успеть опубликовать экран, пока снимался.
                     searching()
-                    val hints = pressHintsOf(live.warm) ?: hintsOf(scan.passports.load())
+                    val listed = pressHintsOf(live.warm)
+                    val hints = if (listed == null) hintsOf(scan.passports.load()) else listed
                     live.driver.press(live.warm, services, os(), prior, hints) { boardState.value = it }
                     prior = Prior.None
                 }
@@ -344,14 +346,18 @@ class Desk(
         try {
             resourceScope {
                 val live = scan.warm(this, text).mapLeft { InputError.ScanFailed }.bind()
-                val link = (input as? SubscriptionInput.Link)?.url
+                val link = when (input) {
+                    is SubscriptionInput.Link -> input.url
+                    is SubscriptionInput.Text -> null
+                }
                 // С подъёма Xray анализа подписка в списке и текущая: человек её вставил — значит, выбрал.
                 val id = putCurrent(
-                    Subscription(link ?: savedLink, text, servers = keys).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it },
+                    Subscription(if (link == null) savedLink else link, text, servers = keys).let { if (link != null) it.fetched(got, scan.clock.nowMs()) else it },
                 )
                 val lists = scan.lists()
-                val hints = hintsBy(lists, live.warm.servers) ?: live.warm.servers.associate { it.key to WhiteHint.Unlikely }
-                val sni = lists?.let { l -> live.warm.servers.filter { sniWhite(l, it.sni) }.map { it.key }.toSet() }.orEmpty()
+                val listed = hintsBy(lists, live.warm.servers)
+                val hints = if (listed == null) live.warm.servers.associate { it.key to WhiteHint.Unlikely } else listed
+                val sni = if (lists == null) emptySet() else live.warm.servers.filter { sniWhite(lists, it.sni) }.map { it.key }.toSet()
                 val last = AtomicReference<ScanBoard?>(null)
                 try {
                     paced(FRAME_MS, onBoard) { emit ->
@@ -364,7 +370,8 @@ class Desk(
                 } catch (e: CancellationException) {
                     // «ОК» или «назад» посреди: отметка — по последней доске; отмену не глотаем.
                     val b = last.get()
-                    withContext(NonCancellable) { mark(id, Analyzed.Interrupted(scan.clock.nowMs(), b?.done ?: 0, b?.total ?: keys.size)) }
+                    val (done, total) = if (b == null) 0 to keys.size else b.done to b.total
+                    withContext(NonCancellable) { mark(id, Analyzed.Interrupted(scan.clock.nowMs(), done, total)) }
                     throw e
                 }
             }
@@ -401,8 +408,10 @@ class Desk(
     suspend fun reanalyze(id: String, onSkipped: (Skipped) -> Unit, onBoard: (ScanBoard) -> Unit): Either<InputError, ScanBoard> =
         withContext(io) {
             scans.withLock {
-                val s = scan.subscriptions.load().items.firstOrNull { it.id == id } ?: return@withLock Either.Left(InputError.Empty)
-                val link = s.link ?: return@withLock analyzeLocked(SubscriptionInput.Text(s.text), onSkipped, onBoard)
+                val s = scan.subscriptions.load().items.firstOrNull { it.id == id }
+                if (s == null) return@withLock Either.Left(InputError.Empty)
+                val link = s.link
+                if (link == null) return@withLock analyzeLocked(SubscriptionInput.Text(s.text), onSkipped, onBoard)
                 // Ссылка не скачалась (белые списки, VPN выключен) — анализ по сохранённому тексту, запись та же.
                 when (val out = analyzeLocked(SubscriptionInput.Link(link), onSkipped, onBoard)) {
                     is Either.Left -> if (out.value is InputError.Download) analyzeLocked(SubscriptionInput.Text(s.text), onSkipped, onBoard, link) else out
@@ -421,7 +430,8 @@ class Desk(
         if (scan.subscriptions.load().items.none { it.id == id }) return@withContext Picked.Ready
         val picked = scans.withLock {
             val shelf = scan.subscriptions.load()
-            val s = shelf.items.firstOrNull { it.id == id } ?: return@withLock Picked.Ready
+            val s = shelf.items.firstOrNull { it.id == id }
+            if (s == null) return@withLock Picked.Ready
             val fresh = refreshed(s, prior)
             val picked = pickedOf(termOf(fresh.provider, scan.clock.nowMs()), fresh.provider.support)
             val updated = shelf.updated(id) { fresh }
@@ -445,7 +455,8 @@ class Desk(
     suspend fun delete(id: String): Unit = withContext(io) {
         val wasCurrent = scans.withLock {
             val shelf = scan.subscriptions.load()
-            val gone = shelf.items.firstOrNull { it.id == id } ?: return@withLock false
+            val gone = shelf.items.firstOrNull { it.id == id }
+            if (gone == null) return@withLock false
             // Сначала — с диска: сессия, поднятая следом за стопом (always-on, выкл→вкл), найдёт «нет подписки».
             val rest = shelf.without(id)
             scan.subscriptions.save(rest)
@@ -453,7 +464,7 @@ class Desk(
             val was = scan.passports.load()
             if (was != null) scan.passports.save(was.keptOnly(keep))
             scan.memory.saveMemory(scan.memory.loadMemory().keptOnly(keep))
-            scan.forgot(gone, was?.servers?.keys?.count { it !in keep } ?: 0)
+            scan.forgot(gone, if (was == null) 0 else was.servers.keys.count { it !in keep })
             shelf.currentId == id
         }
         if (wasCurrent) stopSessionIfAny()
@@ -476,10 +487,18 @@ class Desk(
      * Не скачалась, без ссылки или в новом тексте нет серверов — [s] как есть.
      */
     private suspend fun refreshed(s: Subscription, line: Prior): Subscription {
-        val link = s.link ?: return s
+        val link = s.link
+        if (link == null) return s
         val net = os()
         suspend fun fetch(url: String) = fetchText(SubscriptionInput.Link(url), scan.download, { whiteBy(net, line) }, tunnel(), scan.proxy)
-        val got = fetch(link).getOrNull() ?: s.fallbackUrl?.let { fetch(it).getOrNull() } ?: return s
+        val main = fetch(link).getOrNull()
+        val fallback = s.fallbackUrl
+        val got = when {
+            main != null -> main
+            fallback != null -> fetch(fallback).getOrNull()
+            else -> null
+        }
+        if (got == null) return s
         val keys = scan.serverKeys(got.body).distinct()
         if (keys.isEmpty()) return s
         return s.fetched(got, scan.clock.nowMs()).copy(servers = keys)
@@ -513,11 +532,19 @@ class Desk(
      * Скачивание туннелем: SOCKS сервера общего выхода поднятой сессии; сессии или выхода нет — null. Порт
      * берётся сейчас: сессия, погасшая до скачивания, — просто неудачная попытка.
      */
-    private fun tunnel(): (suspend (String) -> Fetched?)? = tunnelPort()?.let { port -> { url -> scan.downloadVia(url, port) } }
+    private fun tunnel(): (suspend (String) -> Fetched?)? {
+        val port = tunnelPort()
+        if (port == null) return null
+        return { url -> scan.downloadVia(url, port) }
+    }
 
     private fun tunnelPort(): Int? {
-        val live = (host.state.value as? SessionState.Up)?.live ?: return null
-        val exit = live.driver.exits.state.value.general.serverOrNull() ?: return null
+        val live = when (val s = host.state.value) {
+            is SessionState.Up -> s.live
+            SessionState.Down, SessionState.Starting, is SessionState.Failed -> return null
+        }
+        val exit = live.driver.exits.state.value.general.serverOrNull()
+        if (exit == null) return null
         return live.driver.socksPort(exit, live.warm)
     }
 
@@ -548,7 +575,8 @@ class Desk(
         if (!scans.tryLock()) return@withContext
         try {
             val shelf = scan.subscriptions.load()
-            val old = shelf.current() ?: return@withContext
+            val old = shelf.current()
+            if (old == null) return@withContext
             // Переехавшая со старого файла — без ключей серверов: дописываем по тексту (карточка и забвение на них).
             val filled = if (old.servers.isEmpty()) old.copy(servers = scan.serverKeys(old.text)) else old
             // Основная не скачалась никаким путём — запасная ссылка провайдера; ссылка подписки остаётся прежней.
@@ -566,8 +594,13 @@ class Desk(
      */
     suspend fun latestRelease(): Release? = withContext(io) {
         val port = tunnelPort()
-        suspend fun locate(url: String): String? = scan.location(url, null) ?: port?.let { scan.location(url, it) }
-        val tag = locate(LATEST_RELEASE_PAGE)?.let(::tagOf) ?: return@withContext null
+        suspend fun locate(url: String): String? {
+            val direct = scan.location(url, null)
+            return if (direct != null || port == null) direct else scan.location(url, port)
+        }
+        val latest = locate(LATEST_RELEASE_PAGE)
+        val tag = if (latest == null) null else tagOf(latest)
+        if (tag == null) return@withContext null
         val apk = apkUrlOf(tag)
         Release(tag, if (locate(apk) != null) apk else releasePageOf(tag))
     }
@@ -607,16 +640,20 @@ class Desk(
 
     /** Подсказки по вшитым спискам белых (IP входа) для каждого из [servers]; списков нет — null. */
     private fun hintsBy(lists: WhiteLists?, servers: List<Server>): Map<String, WhiteHint>? =
-        lists?.let { l -> servers.associate { it.key to whiteHint(l, it.endpoint.host) } }
+        if (lists == null) null else servers.associate { it.key to whiteHint(lists, it.endpoint.host) }
 
     /** Подсказки по спискам для [warm] — из [pressHints], если посчитаны для него же; списков нет — null. */
-    private suspend fun pressHintsOf(warm: Warm): Map<String, WhiteHint>? =
-        pressHints?.takeIf { it.first === warm }?.second
-            ?: hintsBy(scan.lists(), warm.servers)?.also { pressHints = warm to it }
+    private suspend fun pressHintsOf(warm: Warm): Map<String, WhiteHint>? {
+        val kept = pressHints
+        if (kept != null && kept.first === warm) return kept.second
+        val counted = hintsBy(scan.lists(), warm.servers)
+        if (counted != null) pressHints = warm to counted
+        return counted
+    }
 
     /** Запасные подсказки нажатию (списков нет) — из паспорта подписки; паспорта нет — пусто (порядок как раньше). */
     private fun hintsOf(passport: Passport?): Map<String, WhiteHint> =
-        passport?.servers?.mapValues { it.value.whiteHint }.orEmpty()
+        if (passport == null) emptyMap() else passport.servers.mapValues { it.value.whiteHint }
 
     private fun settle(acted: Acted<Unit>): Boolean = when (acted) {
         is Acted.Done -> true

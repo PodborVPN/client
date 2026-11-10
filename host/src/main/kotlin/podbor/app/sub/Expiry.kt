@@ -21,7 +21,8 @@ fun reminderDay(expireS: Long?, nowMs: Long, zone: ZoneId, last: Reminded?): Int
     if (expireS == null || expireS <= 0) return null
     val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
     val end = Instant.ofEpochSecond(expireS).atZone(zone).toLocalDate()
-    val day = ChronoUnit.DAYS.between(today, end).toInt().takeIf { it in REMIND_DAYS } ?: return null
+    val day = ChronoUnit.DAYS.between(today, end).toInt()
+    if (day !in REMIND_DAYS) return null
     return day.takeIf { last != Reminded(expireS, it) }
 }
 
@@ -32,5 +33,5 @@ fun expiryWords(day: Int, title: String?): Pair<String, String> {
         1 -> "Подписка кончается завтра"
         else -> "Подписка кончается через $day дня"
     }
-    return head to (title?.let { "$it — продли у провайдера" } ?: "Продли у провайдера")
+    return head to (if (title == null) "Продли у провайдера" else "$title — продли у провайдера")
 }

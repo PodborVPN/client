@@ -1,38 +1,23 @@
 package podbor.linux
 
 import arrow.core.Either
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.install
-import io.ktor.server.cio.CIO
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.http.content.staticFiles
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.request.receiveText
-import io.ktor.server.response.respond
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.routing
-import io.ktor.server.websocket.WebSockets
-import io.ktor.server.websocket.webSocket
-import io.ktor.websocket.CloseReason
-import io.ktor.websocket.Frame
-import io.ktor.websocket.close
-import io.ktor.websocket.readText
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.http.content.*
+import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.server.websocket.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import podbor.app.sub.current
 import podbor.app.sub.inputOf
 import podbor.app.sub.wordsOf
 import podbor.core.Button
@@ -121,7 +106,11 @@ fun main() {
             post("/api/subscription") {
                 if (!sameOrigin(call)) return@post call.respond(HttpStatusCode.Forbidden)
                 val input = when (val parsed = inputOf(call.receiveText())) {
-                    is Either.Left -> return@post call.respondText(wordsOf(parsed.value), status = HttpStatusCode.BadRequest)
+                    is Either.Left -> return@post call.respondText(
+                        wordsOf(parsed.value),
+                        status = HttpStatusCode.BadRequest
+                    )
+
                     is Either.Right -> parsed.value
                 }
                 intake.withLock {

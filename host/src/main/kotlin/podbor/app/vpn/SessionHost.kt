@@ -143,8 +143,9 @@ class SessionHost<L : Any>(
 
     private suspend fun restartSession(startId: Int) {
         // Ранее исполненный Stop сильнее запроса пересборки: выключенный VPN не поднимаем.
-        if (job?.isActive == true) {
-            job?.cancelAndJoin()
+        val running = job
+        if (running != null && running.isActive) {
+            running.cancelAndJoin()
             job = null
             set(SessionState.Starting)
             begin(startId)
@@ -154,8 +155,11 @@ class SessionHost<L : Any>(
 
     private suspend fun begin(startId: Int) {
         lastStart.set(startId)
-        if (job?.isActive == true) return
-        job?.join()
+        val previous = job
+        if (previous != null) {
+            if (previous.isActive) return
+            previous.join()
+        }
         set(SessionState.Starting)
         job = scope.launch {
             val failed = resourceScope {
@@ -175,7 +179,8 @@ class SessionHost<L : Any>(
     }
 
     private suspend fun end(startId: Int) {
-        job?.cancelAndJoin()
+        val running = job
+        if (running != null) running.cancelAndJoin()
         job = null
         // Неудачный подъём остаётся итогом (Failed), остальное — Down.
         when (stateFlow.value) {

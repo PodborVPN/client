@@ -14,7 +14,8 @@ private val TAPE_NAME = Regex("""tape-(\d+)\.jsonl""")
 /** Файлы Ленты в [dir]: tape-<мс>.jsonl — время начала из имени и вес. */
 fun tapeFilesIn(dir: File): List<Pair<TapeFile, File>> =
     dir.listFiles().orEmpty().mapNotNull { f ->
-        TAPE_NAME.matchEntire(f.name)?.takeIf { f.isFile }?.let { m -> TapeFile(m.groupValues[1].toLong(), f.length()) to f }
+        val m = TAPE_NAME.matchEntire(f.name)
+        if (m != null && f.isFile) TapeFile(m.groupValues[1].toLong(), f.length()) to f else null
     }
 
 /**

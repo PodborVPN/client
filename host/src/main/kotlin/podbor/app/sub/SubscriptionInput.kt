@@ -33,7 +33,12 @@ fun inputOf(raw: String): Either<InputError, SubscriptionInput> {
  */
 private fun hostOf(link: String): String? = Either.catch {
     val uri = URI(link)
-    uri.host ?: uri.rawAuthority?.substringAfterLast('@')?.substringBeforeLast(':')?.takeIf(ASCII_HOST::matches)
+    val authority: String? = uri.rawAuthority
+    when {
+        uri.host != null -> uri.host
+        authority == null -> null
+        else -> authority.substringAfterLast('@').substringBeforeLast(':').takeIf(ASCII_HOST::matches)
+    }
 }.getOrNull()
 
 private val ASCII_HOST = Regex("""[A-Za-z0-9._-]+""")
@@ -57,14 +62,28 @@ suspend fun fetchText(
 ): Either<InputError, Fetched> = when (input) {
     is SubscriptionInput.Text -> Fetched(input.text).right()
     is SubscriptionInput.Link -> {
-        val got = download(input.url) ?: run {
+        val direct = download(input.url)
+        val got = if (direct != null) direct else {
             val white = whitelist()
-            val around = if (!white) null else tunnel?.invoke(input.url)
-                ?: proxy(viaYandex(input.url))?.body?.let(::unwrapTranslated)?.let(::Fetched)
-            around ?: return InputError.Download(white).left()
+            val around = if (white) fetchAround(input.url, tunnel, proxy) else null
+            if (around == null) return InputError.Download(white).left()
+            around
         }
         checked(got)
     }
+}
+
+/** В обход белых списков: туннелем найденного выхода, не вышло — прокси Яндекса. */
+private suspend fun fetchAround(
+    url: String,
+    tunnel: (suspend (String) -> Fetched?)?,
+    proxy: suspend (String) -> Fetched?,
+): Fetched? {
+    val tunneled = if (tunnel == null) null else tunnel(url)
+    if (tunneled != null) return tunneled
+    val translated = proxy(viaYandex(url))
+    val text = if (translated == null) null else unwrapTranslated(translated.body)
+    return if (text == null) null else Fetched(text)
 }
 
 /** Скачанное — подписка, если провайдер не отказал по лимиту устройств и тело не пустое. */
@@ -84,6 +103,9 @@ fun viaYandex(url: String): String =
  * base64 1,3 МБ, кириллица). Подписка с `<` не начинается — по этому и различаем. Текст `<pre>` — разбором jsoup:
  * теги внутри сняты, сущности раскрыты по стандарту HTML. HTML без `<pre>` («Ошибка перевода») — null.
  */
-fun unwrapTranslated(body: String): String? =
-    if (!body.trimStart().startsWith("<")) body else Jsoup.parse(body).selectFirst("pre")?.wholeText()
+fun unwrapTranslated(body: String): String? {
+    if (!body.trimStart().startsWith("<")) return body
+    val pre = Jsoup.parse(body).selectFirst("pre")
+    return if (pre == null) null else pre.wholeText()
+}
 

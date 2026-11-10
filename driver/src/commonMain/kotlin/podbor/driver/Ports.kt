@@ -3,15 +3,7 @@ package podbor.driver
 import arrow.core.Either
 import arrow.fx.coroutines.ResourceScope
 import kotlinx.serialization.json.JsonObject
-import podbor.core.Endpoint
-import podbor.core.LineObservation
-import podbor.core.Memory
-import podbor.core.TrafficBook
-import podbor.core.Passport
-import podbor.core.ProbeSpec
-import podbor.core.Reach
-import podbor.core.Server
-import podbor.core.Verdict
+import podbor.core.*
 import kotlin.concurrent.Volatile
 
 /** Ошибки движка — системные, живут на краю; ядро о них не знает. */
@@ -110,9 +102,12 @@ interface PassportStore {
 
 /** Паспорт в памяти процесса: для разовых прогонов (CLI) и тестов; приложение держит файловый (FilePassportStore). */
 class InMemoryPassportStore : PassportStore {
-    @Volatile private var passport: Passport? = null
+    @Volatile
+    private var passport: Passport? = null
     override fun load() = passport
-    override fun save(p: Passport) { passport = p }
+    override fun save(p: Passport) {
+        passport = p
+    }
 }
 
 fun interface TapeSink {

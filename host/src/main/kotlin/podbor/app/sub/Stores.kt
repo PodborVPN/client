@@ -62,7 +62,8 @@ class SubscriptionStore(
 
     /** Файл — на пуле IO: зовут и с главного потока (экран). */
     suspend fun load(): Shelf = withContext(io) {
-        readJson(file) { json.decodeFromString(Shelf.serializer(), it) } ?: migrated()
+        val saved = readJson(file) { json.decodeFromString(Shelf.serializer(), it) }
+        if (saved == null) migrated() else saved
     }
 
     suspend fun save(s: Shelf) = withContext(io) {
@@ -73,7 +74,8 @@ class SubscriptionStore(
 
     /** Переезд — сразу на диск: иначе каждое чтение давало бы новый id, и экран со службой видели бы разные. */
     private fun migrated(): Shelf {
-        val old = readJson(single) { json.decodeFromString(Subscription.serializer(), it) } ?: return Shelf()
+        val old = readJson(single) { json.decodeFromString(Subscription.serializer(), it) }
+        if (old == null) return Shelf()
         val s = old.copy(id = newSubscriptionId())
         val shelf = Shelf(listOf(s), s.id)
         writeAtomic(file, "подписки", json.encodeToString(Shelf.serializer(), shelf), warn)
@@ -93,7 +95,10 @@ class FilePassportStore(dir: File, private val warn: (String) -> Unit = ::warnTo
 /** Итоги трафика (на сети, через VPN на подписке) между запусками процесса; нет файла или битый — пустые. */
 class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = ::warnToStderr) : TrafficBookStore {
     private val file = File(dir, "traffic.json")
-    override fun load(): TrafficBook = readJson(file) { json.decodeFromString(TrafficBook.serializer(), it) } ?: TrafficBook()
+    override fun load(): TrafficBook {
+        val saved = readJson(file) { json.decodeFromString(TrafficBook.serializer(), it) }
+        return if (saved == null) TrafficBook() else saved
+    }
     override fun save(b: TrafficBook) = writeAtomic(file, "итоги трафика", json.encodeToString(TrafficBook.serializer(), b), warn)
 }
 
@@ -103,7 +108,7 @@ class FileTrafficBookStore(dir: File, private val warn: (String) -> Unit = ::war
  * проверить догадку «это такая-то публичная ссылка» и не связать Ленты разных установок.
  */
 fun subscriptionKey(s: Subscription, salt: ByteArray): String =
-    Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(salt, "HmacSHA256")) }.doFinal((s.link ?: s.text).encodeToByteArray())
+    Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(salt, "HmacSHA256")) }.doFinal((if (s.link == null) s.text else s.link).encodeToByteArray())
         .take(8).toByteArray().hex()
 
 /**
@@ -133,10 +138,11 @@ private const val SALT_BYTES = 16
  */
 fun installSalt(dir: File): ByteArray {
     val file = File(dir, "install-salt")
-    val stored = Either.catch { file.readText().trim() }.getOrNull()
-        ?.takeIf { it.length == SALT_BYTES * 2 && it.all { c -> c in "0123456789abcdef" } }
-        ?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray()
-    return stored ?: ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }.also { podbor.app.net.writeAtomic(file, it.hex()) }
+    val stored = Either.catch { file.readText().trim() }.fold({ "" }, { it })
+    if (stored.length == SALT_BYTES * 2 && stored.all { c -> c in "0123456789abcdef" }) {
+        return stored.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    }
+    return ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }.also { podbor.app.net.writeAtomic(file, it.hex()) }
 }
 
 private fun ByteArray.hex(): String = joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
