@@ -33,7 +33,7 @@ class XrayBinary(
         var process: Process? = null
         return install(
             { withContext(Dispatchers.IO) { start(config) { process = it } } },
-            { _, _ -> withContext(Dispatchers.IO) { process?.let(::stop) } },
+            { _, _ -> withContext(Dispatchers.IO) { listOfNotNull(process).forEach(::stop) } },
         )
     }
 
@@ -77,7 +77,7 @@ class XrayBinary(
 
 /** Файл с правами 600: создаётся с ними сразу, а не правится после записи. */
 internal fun writePrivate(file: File, text: String) {
-    file.parentFile?.mkdirs()
+    file.absoluteFile.parentFile.mkdirs()
     file.delete()
     Files.createFile(file.toPath(), PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
     file.writeText(text)

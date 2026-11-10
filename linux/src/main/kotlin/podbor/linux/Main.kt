@@ -50,7 +50,7 @@ data class StatusAnswer(val session: String, val line: String, val exit: String,
 
 private fun answerOf(s: Status, problem: String) = StatusAnswer(s.session.toString(), trayOf(s).line, s.exit, problem)
 
-private fun env(name: String, default: String): String = System.getenv(name) ?: default
+private fun env(name: String, default: String): String = System.getenv().getOrDefault(name, default)
 
 /** Настройки — из окружения контейнера. */
 fun configFromEnv() = LinuxConfig(
@@ -67,7 +67,8 @@ fun configFromEnv() = LinuxConfig(
  * 127.0.0.1 сам: WebSocket и простой POST браузер не останавливает.
  */
 private fun sameOrigin(call: ApplicationCall): Boolean {
-    val origin = call.request.headers[HttpHeaders.Origin] ?: return true
+    val origin = call.request.headers[HttpHeaders.Origin]
+    if (origin == null) return true
     return Either.catch { URI(origin).authority }.getOrNull() == call.request.headers[HttpHeaders.Host]
 }
 
@@ -124,7 +125,7 @@ fun main() {
                     is Either.Right -> parsed.value
                 }
                 intake.withLock {
-                    running?.cancelAndJoin()
+                    listOfNotNull(running).forEach { it.cancelAndJoin() }
                     problem.value = ""
                     running = scope.launch { problem.value = accept(brain, input) }
                 }

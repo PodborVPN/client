@@ -38,6 +38,12 @@ fun SubscriptionScreen(
 
 /** Текст буфера обмена; пусто или не текст — "" (судит inputOf). Содержимое секретно — в лог не идёт. */
 private fun clipboardText(context: Context): String {
-    val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return ""
-    return (0 until clip.itemCount).joinToString("\n") { clip.getItemAt(it).coerceToText(context)?.toString().orEmpty() }.trim()
+    val manager: ClipboardManager? = context.getSystemService(ClipboardManager::class.java)
+    if (manager == null) return ""
+    val clip = manager.primaryClip
+    if (clip == null) return ""
+    return (0 until clip.itemCount).joinToString("\n") { i ->
+        val text: CharSequence? = clip.getItemAt(i).coerceToText(context)
+        if (text == null) "" else text.toString()
+    }.trim()
 }

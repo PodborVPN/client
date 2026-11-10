@@ -61,7 +61,7 @@ fun SubscriptionScreen(
         AnimatedVisibility(visible = error != null) {
             Column {
                 Text(
-                    error?.let(::wordsOf).orEmpty(),
+                    if (error == null) "" else wordsOf(error),
                     color = PodborColors.Fail,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = Space.l),

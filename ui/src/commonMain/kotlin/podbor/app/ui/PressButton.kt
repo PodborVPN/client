@@ -140,7 +140,10 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
     val currentTap by rememberUpdatedState(tap)
     val currentOff by rememberUpdatedState(onOff)
     val currentPetals by rememberUpdatedState(petals)
-    val fan = (radial as? Radial.Fanned)?.takeIf { petals }
+    val fan = when (val now = radial) {
+        is Radial.Fanned -> if (petals) now else null
+        Radial.Idle, is Radial.Holding, Radial.Dropped -> null
+    }
 
     // Навёл на лепесток — щелчок; выбрал «выкл» — выключить. Только пока лепестки есть.
     fun aimed(aim: Aim) = when (aim) {
@@ -151,7 +154,7 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
         Petal.Off -> if (currentPetals) currentOff() else Unit
     }
     fun act(g: Gesture) = when (g) {
-        Gesture.Tap -> currentTap?.invoke() ?: Unit
+        Gesture.Tap -> listOfNotNull(currentTap).forEach { it() }
         Gesture.Opened -> if (currentPetals) haptic.performHapticFeedback(HapticFeedbackType.LongPress) else Unit
         is Gesture.Aimed -> aimed(g.aim)
         is Gesture.Chose -> chose(g.petal)
@@ -191,7 +194,7 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
                             last >= threshold -> null
                             else -> withTimeoutOrNull(threshold - last) { awaitPointerEvent() }
                         }
-                        val change = event?.changes?.firstOrNull { it.id == down.id }
+                        val change = if (event == null) null else event.changes.firstOrNull { it.id == down.id }
                         when {
                             event == null -> feed(Touch.Tick(threshold)).also { last = threshold }
                             change == null -> feed(Touch.Cancel(last))
@@ -212,10 +215,10 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
                 }
             }
             .drawBehind {
-                val p = pulse?.value
+                val p = if (pulse == null) null else pulse.value
                 val glow = when (button) {
                     Button.Idle -> 0f
-                    Button.Searching -> 0.22f + 0.18f * (1f - (p ?: 0f))
+                    Button.Searching -> 0.22f + 0.18f * (1f - (if (p == null) 0f else p))
                     Button.Ready, Button.Green, Button.Red -> 0.28f
                 }
                 val c = Offset(size.width / 2, size.height / 2)
@@ -233,12 +236,12 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
                     center = c,
                     style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 6.dp.toPx()))),
                 )
-                p?.let { w ->
-                    drawCircle(color.copy(alpha = 0.6f * (1f - w)), radius = main + 25.dp.toPx() * w, center = c, style = Stroke(3.dp.toPx()))
+                if (p != null) {
+                    drawCircle(color.copy(alpha = 0.6f * (1f - p)), radius = main + 25.dp.toPx() * p, center = c, style = Stroke(3.dp.toPx()))
                 }
-                fan?.let { f ->
+                if (fan != null) {
                     val r = PETAL_RADIUS.toPx()
-                    val aimed = f.aim == Aim.At(Petal.Off)
+                    val aimed = fan.aim == Aim.At(Petal.Off)
                     drawArc(
                         color = if (aimed) PodborColors.Fail else PodborColors.Fail.copy(alpha = 0.45f),
                         startAngle = -125f,
@@ -252,7 +255,7 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
             },
         contentAlignment = Alignment.Center,
     ) {
-        fan?.let {
+        if (fan != null) {
             Text(
                 "ВЫКЛ",
                 color = MaterialTheme.colorScheme.background,
@@ -272,8 +275,8 @@ fun PressButton(face: Face, onPress: () -> Unit, onOff: () -> Unit, onOn: () -> 
                 Spacer(Modifier.height(Space.s))
                 Text(label, color = color, style = MaterialTheme.typography.titleMedium.copy(letterSpacing = CapsSpacing))
                 // Цифры одной ширины: идущий секундомер не дёргает строку.
-                elapsed?.let {
-                    Text(buttonTime(it), color = color, style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
+                if (elapsed != null) {
+                    Text(buttonTime(elapsed), color = color, style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
                 }
             }
         }

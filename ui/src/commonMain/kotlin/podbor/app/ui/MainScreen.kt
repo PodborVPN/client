@@ -211,10 +211,11 @@ private fun Menu(subscription: SubscriptionNote?, onSupport: (String) -> Unit, o
             containerColor = MaterialTheme.colorScheme.surface,
             border = BorderStroke(Space.hairline, Rule),
         ) {
-            subscription?.takeIf { it.title != null || it.lines.isNotEmpty() }?.let { note ->
+            if (subscription != null && (subscription.title != null || subscription.lines.isNotEmpty())) {
                 Column(Modifier.padding(horizontal = Space.m, vertical = Space.s)) {
-                    note.title?.let { Text(it, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) }
-                    note.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+                    val title = subscription.title
+                    if (title != null) Text(title, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium)
+                    subscription.lines.forEach { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
                 }
             }
             when (val s = supportOf(subscription)) {
@@ -257,8 +258,8 @@ private fun ShareLink(note: String?, onShare: (() -> Unit)?, onDonate: (() -> Un
             horizontalArrangement = Arrangement.spacedBy(Space.s, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            onShare?.let { QuietButton("поделиться Лентой", it, Modifier.testTag(SHARE_TAG), Glyph.BugReport, PodborColors.Accent) }
-            onDonate?.let { QuietButton("Поддержать", it, icon = Glyph.Favorite, tint = PodborColors.Heart) }
+            if (onShare != null) QuietButton("поделиться Лентой", onShare, Modifier.testTag(SHARE_TAG), Glyph.BugReport, PodborColors.Accent)
+            if (onDonate != null) QuietButton("Поддержать", onDonate, icon = Glyph.Favorite, tint = PodborColors.Heart)
         }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
@@ -375,9 +376,13 @@ private fun ServiceSheet(
     route: ServerRoute?,
     onDismiss: () -> Unit,
 ) {
-    var country by remember(row.service, route?.id, row.mark) { mutableStateOf("проверяю…") }
-    LaunchedEffect(row.service, route?.id, row.mark) {
-        if (row.mark == Mark.Works) country = exitCountry(row.service)?.let(::placeOf) ?: "не определена"
+    val routeId = if (route == null) null else route.id
+    var country by remember(row.service, routeId, row.mark) { mutableStateOf("проверяю…") }
+    LaunchedEffect(row.service, routeId, row.mark) {
+        if (row.mark == Mark.Works) {
+            val code = exitCountry(row.service)
+            country = if (code == null) "не определена" else placeOf(code)
+        }
     }
     var events by remember(row.label) { mutableStateOf(emptyList<HistoryEvent>()) }
     LaunchedEffect(row.label) { events = history(row.label).take(HISTORY_SHOWN) }
@@ -401,8 +406,9 @@ private fun ServiceSheet(
         }
         Text(row.mini.text, color = colorOf(row.mini.tone), style = MaterialTheme.typography.bodyMedium)
         // Величины пары — если добавляют к мини-статусу («сейчас не пользуется» там уже сказано).
-        row.pulse?.takeUnless { it in row.mini.text }?.let {
-            Text(it, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = Space.xs))
+        val measured = row.pulse
+        if (measured != null && measured !in row.mini.text) {
+            Text(measured, color = Muted, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), modifier = Modifier.padding(top = Space.xs))
         }
         // Заметки — кроме уже сказанной мини-статусом.
         row.notes.filterNot { it.text in row.mini.text }.forEach { n ->
@@ -480,8 +486,9 @@ fun ServiceLine(row: ServiceRow, onTap: () -> Unit, route: ServerRoute? = null) 
                             else -> Icon(painterOf(glyph), contentDescription = row.label, tint = PodborColors.Text, modifier = Modifier.size(Space.icon))
                         }
                     }
+                    val elapsed = elapsedOf(row.stopwatch)
                     Text(
-                        elapsedOf(row.stopwatch)?.let(::cardTime).orEmpty(),
+                        if (elapsed == null) "" else cardTime(elapsed),
                         color = Muted,
                         style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                         maxLines = 1,
@@ -490,7 +497,11 @@ fun ServiceLine(row: ServiceRow, onTap: () -> Unit, route: ServerRoute? = null) 
                 VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = Space.m))
             }
             Column(Modifier.weight(1f)) {
-                val title = if (row.protocol == null) row.name else route?.let(::routeTitle) ?: "выход уточняется"
+                val title = when {
+                    row.protocol == null -> row.name
+                    route == null -> "выход уточняется"
+                    else -> routeTitle(route)
+                }
                 Text(title, color = PodborColors.Text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     row.mini.text,
@@ -500,7 +511,8 @@ fun ServiceLine(row: ServiceRow, onTap: () -> Unit, route: ServerRoute? = null) 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            row.protocol?.let { p ->
+            val p = row.protocol
+            if (p != null) {
                 VerticalDivider(color = Rule, modifier = Modifier.fillMaxHeight().padding(horizontal = Space.m))
                 Column {
                     Text("ПРОТОКОЛ", color = Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)

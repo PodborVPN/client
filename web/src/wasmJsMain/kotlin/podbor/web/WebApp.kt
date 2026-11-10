@@ -106,21 +106,26 @@ private fun SubscriptionPage(vm: MainViewModel, port: RemotePort, scope: Corouti
     val skipped by vm.skipped.collectAsState()
     val sheet by vm.sheet.collectAsState()
     val duplicate by vm.duplicate.collectAsState()
-    skipped?.let { s -> key(s) { SkippedSheet(s, onDismiss = vm::dismissSkipped) } }
-    duplicate?.let { RepeatDialog(it, onRefresh = vm::refreshDuplicate, onDismiss = vm::dismissDuplicate) }
-    sheet?.let { s ->
-        key(s.card().id) {
+    val notParsed = skipped
+    val repeated = duplicate
+    val opened = sheet
+    val loaded = subs
+    val shelf = if (loaded == null) Subscriptions.None else loaded
+    if (notParsed != null) key(notParsed) { SkippedSheet(notParsed, onDismiss = vm::dismissSkipped) }
+    if (repeated != null) RepeatDialog(repeated, onRefresh = vm::refreshDuplicate, onDismiss = vm::dismissDuplicate)
+    if (opened != null) {
+        key(opened.card().id) {
             SubscriptionSheet(
-                s, nowMs(),
+                opened, nowMs(),
                 onPick = vm::pick, onReanalyze = vm::reanalyze,
                 onAskDelete = vm::askDelete, onConfirmDelete = vm::confirmDelete,
                 onSupport = ::openInNewTab, onDismiss = vm::closeSheet,
             )
         }
     }
-    when (val page = pageOf(subs ?: Subscriptions.None, phase)) {
+    when (val page = pageOf(shelf, phase)) {
         Page.AddSubscription -> SubscriptionScreen(
-            errorOf(phase), ::openInNewTab, subs ?: Subscriptions.None, nowMs(), vm::openCard,
+            errorOf(phase), ::openInNewTab, shelf, nowMs(), vm::openCard,
             hint = "ссылку на подписку или сами конфиги — вставь сюда",
         ) { PastedSubscription { text -> scope.launch { vm.input(port.parse(text)) } } }
         is Page.Scanning -> ScanScreen(page.board, onOk = vm::finishScan)

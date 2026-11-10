@@ -234,7 +234,7 @@ private fun Feed(cards: List<ServerCard>, glyphs: Map<String, Glyph?>, modifier:
     val list = rememberLazyListState()
     val shown = cards.take(FEED_CARDS)
     // LazyColumn держит якорь на прежней первой карточке: новая сверху ушла бы за край. Пока смотрят в начало — вернуть.
-    LaunchedEffect(shown.firstOrNull()?.key) {
+    LaunchedEffect(shown.take(1).map { it.key }) {
         if (list.firstVisibleItemIndex <= 1) list.requestScrollToItem(0)
     }
     LazyColumn(
@@ -336,7 +336,7 @@ fun skipProgress(board: ScanBoard?): String =
  */
 @Composable
 private fun Ok(board: ScanBoard?, onOk: () -> Unit) {
-    val finished = board?.finished == true
+    val finished = board != null && board.finished
     var asking by remember { mutableStateOf(false) }
     LaunchedEffect(finished) { if (finished) asking = false }
     val fill by animateColorAsState(if (finished) PodborColors.Accent else Color.Transparent, tween(400), label = "ок")

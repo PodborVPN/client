@@ -255,7 +255,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
 
     /** Подписки глазами экрана: как ведёт себя здесь каждая. */
     override suspend fun shelf(): Subscriptions = withContext(Dispatchers.IO) {
-        val passport = passports.load() ?: Passport(emptyMap(), 0)
+        val passport = savedPassport()
         val known = memory.loadMemory()
         val book = books.load()
         subscriptionsOf(
@@ -337,22 +337,33 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         val key = subscriptionKey(s, salt)
         pulseState.update { it.copy(book = it.book.without(key)) }
         books.save(pulseState.value.book)
-        pulseNow.update { if (it.vpn?.key == key) it.copy(vpn = null) else it }
+        pulseNow.update { now ->
+            val vpn = now.vpn
+            if (vpn != null && vpn.key == key) now.copy(vpn = null) else now
+        }
         Either.catch { tape.write(noteLine("subscription: удалена, забыто серверов $servers")) }
     }
 
     private suspend fun switchTraffic() {
-        val current = subscriptions.current() ?: return
+        val current = subscriptions.current()
+        if (current == null) return
         val key = subscriptionKey(current, salt)
         pulseState.update { it.copy(book = it.book.switchedTo(key)) }
         books.save(pulseState.value.book)
         pulseNow.update { it.copy(vpn = pulseState.value.book.vpn) }
     }
 
+    /** Паспорт с диска; пока его нет — пустой. */
+    private suspend fun savedPassport(): Passport {
+        val saved = passports.load()
+        return if (saved == null) Passport(emptyMap(), 0) else saved
+    }
+
     private suspend fun passportCountries(): Set<String> {
-        val current = subscriptions.current() ?: return emptySet()
+        val current = subscriptions.current()
+        if (current == null) return emptySet()
         val keys = current.servers.ifEmpty { converter.convert(current.text).fold({ emptyList() }, ::draftKeysOf) }.toSet()
-        return passports.load()?.servers.orEmpty().filterKeys { it in keys }.values.mapNotNull { facts ->
+        return savedPassport().servers.filterKeys { it in keys }.values.mapNotNull { facts ->
             when (val exit = facts.exit) {
                 Exit.Unknown -> null
                 is Exit.At -> exit.country.takeIf(::knownCountry)
@@ -375,13 +386,19 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         when (s) {
             is SessionState.Up -> {
                 val servers = s.live.warm.servers.associateBy { it.id }
-                val facts = passports.load()?.servers.orEmpty()
+                val facts = savedPassport().servers
                 s.live.driver.exits.state.map { exits ->
                     val general = exits.general.serverOrNull()
                     val routes = VPN_SERVICES.mapNotNull { service ->
-                        val id = exits.pinned[service.id]?.server ?: general
-                        val server = servers[id] ?: return@mapNotNull null
-                        val country = (facts[server.key]?.exit as? Exit.At)?.country.orEmpty()
+                        val pin = exits.pinned[service.id]
+                        val server = servers[if (pin == null) general else pin.server]
+                        if (server == null) return@mapNotNull null
+                        val known = facts[server.key]
+                        val exit = if (known == null) Exit.Unknown else known.exit
+                        val country = when (exit) {
+                            Exit.Unknown -> ""
+                            is Exit.At -> exit.country
+                        }
                         service.id to ServerRoute(server.id, server.entry, country)
                     }.toMap()
                     Triple(s, general, routes)
@@ -392,7 +409,10 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
     }
 
     private fun exitName(s: SessionState<Live>, exit: ServerId?): String = when (s) {
-        is SessionState.Up -> s.live.warm.servers.find { it.id == exit }?.name ?: podbor.screen.NO_EXIT
+        is SessionState.Up -> {
+            val server = s.live.warm.servers.find { it.id == exit }
+            if (server == null) podbor.screen.NO_EXIT else server.name
+        }
         SessionState.Down, SessionState.Starting, is SessionState.Failed -> podbor.screen.NO_EXIT
     }
 
@@ -425,7 +445,10 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
             passportStore = passports,
             tape = tape,
             opts = opts,
-            countryOf = { ip -> withTimeoutOrNull(GEO_WAIT_MS) { geo.await() }?.of(ip) },
+            countryOf = { ip ->
+                val base = withTimeoutOrNull(GEO_WAIT_MS) { geo.await() }
+                if (base == null) null else base.of(ip)
+            },
             exitFallback = fallback::measure,
         )
         val filter = when (tun) {
@@ -455,7 +478,8 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         booksLoaded.await()
         val epoch = nextEpoch()
         val tagOf = exitTagOf(opts)
-        val subscription = subscriptions.current()?.let { subscriptionKey(it, salt) } ?: ""
+        val current = subscriptions.current()
+        val subscription = if (current == null) "" else subscriptionKey(current, salt)
         install(
             {
                 scope.launch {
@@ -464,10 +488,13 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
                         clock = clock,
                         mono = mono,
                         epoch = epoch,
-                        context = { PulseContext(kind, networkKey(os) ?: "", subscription) },
+                        context = { PulseContext(kind, networkKey(os).orEmpty(), subscription) },
                         watching = watching,
                         effective = {
-                            VPN_SERVICES.mapNotNull { s -> driver.exits.effective(s.id).serverOrNull()?.let { s.id to tagOf(it, s.id) } }.toMap()
+                            VPN_SERVICES.mapNotNull { s ->
+                                val server = driver.exits.effective(s.id).serverOrNull()
+                                if (server == null) null else s.id to tagOf(server, s.id)
+                            }.toMap()
                         },
                         pulse = pulseState,
                         tape = tape,
@@ -486,13 +513,13 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
 
     private fun nextEpoch(): Long {
         val file = File(cfg.data, "xray-epoch")
-        val next = (Either.catch { file.readText().trim().toLong() }.getOrNull() ?: 0) + 1
+        val next = Either.catch { file.readText().trim().toLong() }.fold({ 0L }, { it }) + 1
         writeAtomic(file, next.toString())
         return next
     }
 
     private fun readFilter(): ExitFilter =
-        Either.catch { Json.decodeFromString(ExitFilter.serializer(), filterFile.readText()) }.getOrNull() ?: ExitFilter()
+        Either.catch { Json.decodeFromString(ExitFilter.serializer(), filterFile.readText()) }.fold({ ExitFilter() }, { it })
 
     private fun saveFilter(filter: ExitFilter) {
         writeAtomic(filterFile, Json.encodeToString(ExitFilter.serializer(), filter))
