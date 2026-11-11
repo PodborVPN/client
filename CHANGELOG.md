@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/PodborVPN/client/compare/v0.16.0...v0.17.0) (2026-11-11)
+
+
+### Новое
+
+* **android:** пускать рекламные запросы Google напрямую ([f8da999](https://github.com/PodborVPN/client/commit/f8da99998debb6b88b3dd7c55db8b453bdcda908))
+
+
+### Исправлено
+
+* **android:** выровнять кнопку фильтра стран ([63445a4](https://github.com/PodborVPN/client/commit/63445a45b236f2c8788d4d89df630f4f73eb3a67))
+
 ## [0.16.0](https://github.com/PodborVPN/client/compare/v0.15.1...v0.16.0) (2026-11-09)
 
 
