@@ -196,6 +196,26 @@
                 "outboundTag": "dns-out"
             },
             {
+                "inboundTag": [
+                    "tun"
+                ],
+                "domain": [
+                    "domain:2mdn.net",
+                    "domain:admob.com",
+                    "domain:adsenseformobileapps.com",
+                    "domain:app-ads-services.com",
+                    "domain:doubleclick.com",
+                    "domain:doubleclick.net",
+                    "domain:googleadservices.com",
+                    "domain:googlesyndication.com",
+                    "domain:googletagservices.com",
+                    "full:adservice.google.com",
+                    "full:imasdk.googleapis.com",
+                    "full:mobileads.google.com"
+                ],
+                "outboundTag": "direct"
+            },
+            {
                 "domain": [
                     "geosite:category-ru"
                 ],

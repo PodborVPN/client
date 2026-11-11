@@ -86,6 +86,21 @@ private const val TUN_IN = "tun"
 private const val PROXY_IN = "proxy"
 
 /** Российские ресурсы: напрямую и через DNS сети. */
+private val googleAdDomains = listOf(
+    "domain:2mdn.net",
+    "domain:admob.com",
+    "domain:adsenseformobileapps.com",
+    "domain:app-ads-services.com",
+    "domain:doubleclick.com",
+    "domain:doubleclick.net",
+    "domain:googleadservices.com",
+    "domain:googlesyndication.com",
+    "domain:googletagservices.com",
+    "full:adservice.google.com",
+    "full:imasdk.googleapis.com",
+    "full:mobileads.google.com",
+)
+
 private const val RU_SITES = "geosite:category-ru"
 private const val RU_IPS = "geoip:ru"
 
@@ -201,6 +216,10 @@ private fun rulesOf(servers: List<Server>, opts: ConfigOpts): List<RuleConf> =
     listOf(rule(Target.Out(API), RuleConf(inboundTag = listOf(API)))) +
         servers.map { s -> rule(Target.Out(s.id.tag), RuleConf(inboundTag = listOf("in.${s.id.tag}"))) } +
         dnsRules(opts.tun) +
+        when (opts.tun) {
+            is Tun.On -> listOf(rule(Target.Out(DIRECT), RuleConf(inboundTag = listOf(TUN_IN), domain = googleAdDomains)))
+            Tun.Off, is Tun.Proxy -> emptyList()
+        } +
         listOf(
             rule(Target.Out(DIRECT), RuleConf(domain = listOf(RU_SITES))),
             rule(Target.Out(DIRECT), RuleConf(ip = listOf(RU_IPS))),

@@ -149,6 +149,17 @@ class XrayConfigTest : FunSpec({
         sniffing["routeOnly"] shouldBe JsonPrimitive(true)
     }
 
+    test("рекламные домены Google идут напрямую из Android TUN") {
+        val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
+        val tunRules = tun.getValue("routing").jsonObject.getValue("rules").jsonArray.map { it.jsonObject }
+        for (domain in listOf("domain:doubleclick.net", "domain:googlesyndication.com", "domain:admob.com", "full:imasdk.googleapis.com")) {
+            val adRule = tunRules.single { domain in it.strs("domain") }
+            adRule["outboundTag"] shouldBe JsonPrimitive("direct")
+            tunRules.indexOf(adRule) shouldBeLessThan tunRules.lastIndex
+            rules.none { domain in it.strs("domain") } shouldBe true
+        }
+    }
+
     test("tunFd → DNS телефона (порт 53 из tun) уходит в dns-outbound раньше geo-правил и балансера") {
         val tun = buildConfig(servers, outbounds, opts.copy(tun = Tun.On(42)))
         val dnsOut = tun.getValue("outbounds").jsonArray.map { it.jsonObject }.single { it["tag"] == JsonPrimitive(DNS_OUT) }
