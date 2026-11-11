@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,6 +16,7 @@ import org.robolectric.annotation.Config
 import podbor.app.ui.MENU_LABEL
 import podbor.app.ui.MainScreen
 import podbor.app.ui.PodborTheme
+import podbor.app.ui.Space
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
 import podbor.screen.Link
@@ -40,6 +42,10 @@ class MenuButtonUiTest {
         val button = compose.onNode(hasClickAction() and hasContentDescription(MENU_LABEL), useUnmergedTree = false)
         val b = button.getBoundsInRoot()
         assert(b.bottom - b.top >= 48.dp && b.right - b.left >= 48.dp) { "касание кнопки меню меньше 48 dp: $b" }
+        val filter = compose.onNode(hasClickAction() and hasContentDescription("Страны выхода: все")).getBoundsInRoot()
+        val heading = compose.onNodeWithText("ТЕКУЩИЙ VPN").getBoundsInRoot()
+        assertEquals(b.top.value, filter.top.value, 1f)
+        assertEquals(heading.left.value, (filter.left + Space.xs).value, 1f)
         button.performClick()
         compose.onNodeWithText("Сменить подписку").assertExists()
     }

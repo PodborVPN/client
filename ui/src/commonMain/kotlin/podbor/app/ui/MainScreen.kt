@@ -155,7 +155,7 @@ fun MainScreen(
             }
             ShareLink(shareNote, onShare, onDonate)
         }
-        CountryFilterButton(countries, onCountries, Modifier.align(Alignment.TopStart))
+        CountryFilterButton(countries, onCountries, Modifier.align(Alignment.TopStart).padding(start = Space.screen - Space.xs))
         Menu(subscription, onSupport, onChangeSubscription, Modifier.align(Alignment.TopEnd))
     }
 }
