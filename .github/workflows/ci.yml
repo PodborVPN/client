@@ -1,23 +1,11 @@
-# Каждый push в main: тесты, сборка APK из исходников (вместе с libXray), заголовки коммитов — и только
-# после них выпуск: release-please ведёт PR релиза с CHANGELOG; его мёрж — тег и GitHub Release, к которому
-# прикладывается подписанный APK с аттестацией происхождения и SHA-256. Красные тесты — ни PR релиза, ни APK.
-# Выпуск — в этом же workflow: события от GITHUB_TOKEN другие workflow не запускают.
-name: CI
+name: Android CI
 
 on:
   push:
     branches: [main]
-  # PR со стороны: тесты и заголовки, без выпуска (у please — только push).
   pull_request:
-  # Руками с тегом — APK к уже созданному релизу, если выпуск оборвался между тегом и APK.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Тег релиза без APK, например v0.9.1; пусто — обычный прогон
-        type: string
-        required: false
 
-# Без отмены: новый push не обрывает начатый выпуск (релиз без APK).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false
@@ -65,83 +53,3 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
-
-  please:
-    needs: [build, commits]
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-    steps:
-      - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-  # Релиз release-please создаёт раньше, чем доделывает остальное (следующий PR): его сбой после тега не отменяет APK.
-  apk:
-    needs: [build, please]
-    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.please.outputs.release_created == 'true' || inputs.tag != '') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
-    env:
-      TAG: ${{ needs.please.outputs.tag_name || inputs.tag }}
-    steps:
-      - name: Тег и имя APK
-        run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "тег не vX.Y.Z: $TAG" >&2; exit 1; }
-          echo "APK=podbor-${TAG#v}.apk" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ env.TAG }}
-      - uses: ./.github/actions/setup
-      # Выпускной libXray — всегда с нуля, без кеша.
-      - run: app/scripts/build-libxray.sh force
-      # Без ключа релиз не выпускается: debug-подпись молча не подставляется.
-      - name: Ключ подписи
-        env:
-          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-        run: |
-          [[ -n "$SIGNING_KEYSTORE_BASE64" ]] || { echo "нет секрета SIGNING_KEYSTORE_BASE64" >&2; exit 1; }
-          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-      - run: ./gradlew :app:assembleRelease
-        env:
-          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-      - run: |
-          cp app/build/outputs/apk/release/app-release.apk "$APK"
-          rm -f "$RUNNER_TEMP/release.jks"
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: ${{ env.APK }}
-      - name: APK и SHA-256 в релиз
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "$TAG" "$APK"
-          sha=$(sha256sum "$APK" | cut -d' ' -f1)
-          gh release view "$TAG" --json body --jq .body > notes.md
-          printf '\n\n`%s` SHA-256: `%s`\n' "$APK" "$sha" >> notes.md
-          gh release edit "$TAG" --notes-file notes.md
-
-  announce:
-    needs: [please, apk]
-    if: ${{ !cancelled() && needs.apk.result == 'success' }}
-    uses: ./.github/workflows/announce.yml
-    with:
-      tag: ${{ needs.please.outputs.tag_name || inputs.tag }}
-    secrets:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
