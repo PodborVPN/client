@@ -25,8 +25,14 @@ sealed interface ApiListen {
 sealed interface Tun {
     data object Off : Tun
     data class On(val fd: Int) : Tun
-    data class Proxy(val listen: String, val port: Int) : Tun
+    data class Proxy(
+        val listen: String,
+        val port: Int,
+        val transparent: List<TransparentListen> = emptyList(),
+    ) : Tun
 }
+
+data class TransparentListen(val address: String, val port: Int)
 
 /** SOCKS-входы кандидатов: открытые (тесты, JVM без соседей) или с паролем процесса. */
 sealed interface SocksIn {
@@ -172,9 +178,9 @@ private fun ruDnsAddress(ruDns: RuDns): String = when (ruDns) {
 }
 
 private fun apiInbound(at: ApiListen): InboundConf = when (at) {
-    is ApiListen.Tcp -> InboundConf.Api(API, "127.0.0.1", at.port, DokodemoSettings("127.0.0.1"))
+    is ApiListen.Tcp -> InboundConf.Dokodemo(API, "127.0.0.1", at.port, DokodemoSettings("127.0.0.1"))
     // Путь в listen — Xray слушает Unix-сокет, порт не нужен.
-    is ApiListen.Unix -> InboundConf.Api(API, at.path, settings = DokodemoSettings("127.0.0.1"))
+    is ApiListen.Unix -> InboundConf.Dokodemo(API, at.path, settings = DokodemoSettings("127.0.0.1"))
 }
 
 private fun socksInbound(s: Server, servers: List<Server>, opts: ConfigOpts): InboundConf =
@@ -188,7 +194,8 @@ private fun socksSettings(socks: SocksIn): SocksSettings = when (socks) {
 private fun tunInbounds(tun: Tun): List<InboundConf> = when (tun) {
     Tun.Off -> emptyList()
     // SOCKS-клиент может прислать голый IP: без sniffing правила по доменам его не увидят.
-    is Tun.Proxy -> listOf(InboundConf.Mixed(PROXY_IN, tun.listen, tun.port, SocksSettings(udp = false), SESSION_SNIFFING))
+    is Tun.Proxy -> listOf(InboundConf.Mixed(PROXY_IN, tun.listen, tun.port, SocksSettings(udp = false), SESSION_SNIFFING)) +
+        tun.transparent.mapIndexed(::transparentInbound)
     is Tun.On -> listOf(
         InboundConf.Tun(
             TUN_IN,
@@ -199,6 +206,15 @@ private fun tunInbounds(tun: Tun): List<InboundConf> = when (tun) {
         ),
     )
 }
+
+private fun transparentInbound(index: Int, listener: TransparentListen) = InboundConf.Dokodemo(
+    tag = "transparent.$index",
+    listen = listener.address,
+    port = listener.port,
+    settings = DokodemoSettings(network = "tcp,udp", followRedirect = true),
+    sniffing = SESSION_SNIFFING,
+    streamSettings = InboundStreamSettings(InboundSocketOptions("tproxy", v6only = true.takeIf { ':' in listener.address })),
+)
 
 /**
  * Из TUN приходят IP: без sniffing правило geosite:category-ru для них не срабатывает. routeOnly — домен только для

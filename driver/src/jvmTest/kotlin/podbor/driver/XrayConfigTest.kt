@@ -95,6 +95,28 @@ class XrayConfigTest : FunSpec({
         exitTagOf(proxy)(ServerId("s001"), Telegram.id) shouldBe pairTag(ServerId("s001"), Telegram.id)
     }
 
+    test("прозрачные входы добавляются к прокси и используют его маршрутизацию") {
+        val proxy = opts.copy(tun = Tun.Proxy("0.0.0.0", 8888), services = setOf(Telegram))
+        val addresses = listOf("0.0.0.0", "::")
+        val transparent = proxy.copy(tun = Tun.Proxy("0.0.0.0", 8888, addresses.map { TransparentListen(it, 12345) }))
+        val base = buildConfig(servers, outbounds, proxy)
+        val conf = buildConfig(servers, outbounds, transparent)
+        conf["routing"] shouldBe base["routing"]
+        val inbounds = conf.getValue("inbounds").jsonArray
+        val ordinary = base.getValue("inbounds").jsonArray
+        inbounds.take(ordinary.size) shouldBe ordinary.toList()
+        val added = inbounds.drop(ordinary.size).map { it.jsonObject }
+        added.map { it["listen"] } shouldBe addresses.map(::JsonPrimitive)
+        added.forEach { inbound ->
+            inbound["protocol"] shouldBe JsonPrimitive("dokodemo-door")
+            inbound["port"] shouldBe JsonPrimitive(12345)
+            inbound.getValue("settings").jsonObject["network"] shouldBe JsonPrimitive("tcp,udp")
+            inbound.getValue("settings").jsonObject["followRedirect"] shouldBe JsonPrimitive(true)
+            inbound.getValue("streamSettings").jsonObject.getValue("sockopt").jsonObject["tproxy"] shouldBe JsonPrimitive("tproxy")
+            inbound.getValue("sniffing").jsonObject["routeOnly"] shouldBe JsonPrimitive(true)
+        }
+    }
+
     test("SOCKS-входы кандидатов — с паролем процесса, если он задан; без него — как было") {
         val auth = SocksAuth("u", "p")
         val socks = buildConfig(servers, outbounds, opts.copy(socks = SocksIn.Locked(auth))).getValue("inbounds").jsonArray.map { it.jsonObject }

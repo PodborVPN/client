@@ -67,7 +67,14 @@ internal sealed interface InboundConf {
 
     @Serializable
     @SerialName("dokodemo-door")
-    data class Api(override val tag: String, val listen: String, val port: Int? = null, val settings: DokodemoSettings) : InboundConf
+    data class Dokodemo(
+        override val tag: String,
+        val listen: String,
+        val port: Int? = null,
+        val settings: DokodemoSettings,
+        val sniffing: Sniffing? = null,
+        val streamSettings: InboundStreamSettings? = null,
+    ) : InboundConf
 
     @Serializable
     @SerialName("socks")
@@ -84,7 +91,17 @@ internal sealed interface InboundConf {
 }
 
 @Serializable
-internal data class DokodemoSettings(val address: String)
+internal data class DokodemoSettings(
+    val address: String? = null,
+    val network: String? = null,
+    val followRedirect: Boolean? = null,
+)
+
+@Serializable
+internal data class InboundStreamSettings(val sockopt: InboundSocketOptions)
+
+@Serializable
+internal data class InboundSocketOptions(val tproxy: String, val v6only: Boolean? = null)
 
 /** SOCKS-вход: [auth] и [accounts] — оба или ни одного (вход с паролем или открытый). */
 @Serializable
