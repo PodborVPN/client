@@ -10,10 +10,15 @@ RUN go mod init podbor/libxray-cli \
  && CGO_ENABLED=0 go build -trimpath -o /libxray-cli . \
  && CGO_ENABLED=0 go build -trimpath -o /xray github.com/xtls/xray-core/main
 
+COPY xray-owner ./xray-owner
+RUN go test ./xray-owner \
+ && CGO_ENABLED=0 go build -trimpath -o /podbor-xray-owner ./xray-owner
+
 FROM eclipse-temurin:21-jre-alpine AS runtime
 RUN adduser -D -u 10001 podbor && mkdir /data && chown podbor /data
 COPY --from=engine /libxray-cli /usr/local/bin/libxray-cli
 COPY --from=engine /xray /usr/local/bin/xray
+COPY --from=engine /podbor-xray-owner /usr/local/bin/podbor-xray-owner
 COPY podbor-linux /opt/podbor/app
 COPY assets /opt/podbor/assets
 COPY web /opt/podbor/web

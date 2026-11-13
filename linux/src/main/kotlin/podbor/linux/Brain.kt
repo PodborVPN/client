@@ -139,6 +139,7 @@ data class LinuxConfig(
     val proxyListen: String,
     val proxyPort: Int,
     val transparent: List<TransparentListen> = emptyList(),
+    val xrayOwner: String = "podbor-xray-owner",
 )
 
 /**
@@ -485,7 +486,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         val channel = xrayChannel { ManagedChannelBuilder.forAddress("127.0.0.1", API_PORT).usePlaintext().build() }
         val driver = Driver(
             converter = converter,
-            engine = XrayBinary(cfg.xray, cfg.data, API_PORT, transparent) {
+            engine = XrayBinary(cfg.xray, cfg.data, API_PORT, transparent, cfg.xrayOwner) {
                 if (transparent) transparentProcess.set(it)
             },
             api = xrayApiOn(channel),

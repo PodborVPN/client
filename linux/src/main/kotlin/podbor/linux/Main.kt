@@ -80,6 +80,7 @@ fun configFromEnv() = LinuxConfig(
     data = File(env("PODBOR_DATA", "/data")).also { it.mkdirs() },
     assets = File(env("PODBOR_ASSETS", "/opt/podbor/assets")),
     xray = env("PODBOR_XRAY", "xray"),
+    xrayOwner = env("PODBOR_XRAY_OWNER", "podbor-xray-owner"),
     converter = env("PODBOR_CONVERTER", "libxray-cli"),
     proxyListen = env("PODBOR_PROXY_LISTEN", "0.0.0.0"),
     proxyPort = env("PODBOR_PROXY_PORT", "8898").toInt(),

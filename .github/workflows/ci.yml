@@ -36,7 +36,8 @@ jobs:
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-      - run: ./gradlew :core:test :driver:test :screen:jvmTest :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - run: GO111MODULE=off go test ./linux/docker/xray-owner
+      - run: ./gradlew :core:test :driver:test :screen:jvmTest :linux:test :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

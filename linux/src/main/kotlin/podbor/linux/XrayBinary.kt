@@ -24,14 +24,15 @@ private const val STOP_SEC = 3L
 private val XRAY_STARTED = Regex("Xray [^ ]+ started")
 
 /**
- * Xray отдельным процессом: один запуск — один процесс, готовность — открытый порт API. Конфиг в [workDir] с правами
- * 600: в нём ключи серверов подписки.
+ * Супервизор держит Xray до закрытия входного канала JVM.
+ * Конфиг в [workDir] с правами 600: в нём ключи серверов подписки.
  */
 class XrayBinary(
     private val binary: String,
     private val workDir: File,
     private val apiPort: Int,
     private val transparent: Boolean = false,
+    private val owner: String = "podbor-xray-owner",
     private val onProcess: (Process?) -> Unit = {},
 ) : XrayEngine {
     override suspend fun ResourceScope.run(config: JsonObject): Either<EngineError, Unit> {
@@ -61,7 +62,7 @@ class XrayBinary(
         val listening = AtomicBoolean()
         val socketFailed = AtomicBoolean()
         val p = Either.catch {
-            ProcessBuilder(binary, "run", "-c", file.path)
+            ProcessBuilder(owner, binary, "run", "-c", file.path)
                 .apply {
                     if (transparent) environment()["xray.cone.disabled"] = "true"
                 }
@@ -98,8 +99,12 @@ class XrayBinary(
     }
 
     private fun stop(p: Process) {
-        p.destroy()
-        if (!p.waitFor(STOP_SEC, TimeUnit.SECONDS)) p.destroyForcibly().waitFor()
+        // После EOF супервизор останавливает движок и собирает его статус завершения.
+        Either.catch { p.outputStream.close() }
+        if (!p.waitFor(STOP_SEC, TimeUnit.SECONDS)) {
+            p.destroy()
+            if (!p.waitFor(STOP_SEC, TimeUnit.SECONDS)) p.destroyForcibly().waitFor()
+        }
     }
 
     private suspend fun waitPort(open: Boolean): Boolean {
