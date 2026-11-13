@@ -16,9 +16,12 @@ import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 private const val READY_MS = 8_000L
 private const val STOP_SEC = 3L
+private val XRAY_STARTED = Regex("Xray [^ ]+ started")
 
 /**
  * Xray отдельным процессом: один запуск — один процесс, готовность — открытый порт API. Конфиг в [workDir] с правами
@@ -28,12 +31,26 @@ class XrayBinary(
     private val binary: String,
     private val workDir: File,
     private val apiPort: Int,
+    private val transparent: Boolean = false,
+    private val onProcess: (Process?) -> Unit = {},
 ) : XrayEngine {
     override suspend fun ResourceScope.run(config: JsonObject): Either<EngineError, Unit> {
         var process: Process? = null
         return install(
-            { withContext(Dispatchers.IO) { start(config) { process = it } } },
-            { _, _ -> withContext(Dispatchers.IO) { listOfNotNull(process).forEach(::stop) } },
+            {
+                withContext(Dispatchers.IO) {
+                    start(config) {
+                        process = it
+                        onProcess(it)
+                    }
+                }
+            },
+            { _, _ ->
+                withContext(Dispatchers.IO) {
+                    listOfNotNull(process).forEach(::stop)
+                    onProcess(null)
+                }
+            },
         )
     }
 
@@ -41,17 +58,40 @@ class XrayBinary(
         if (!waitPort(open = false)) return EngineError.Failed("порт API :$apiPort занят").left()
         val file = File(workDir, "xray.json")
         writePrivate(file, config.toString())
+        val listening = AtomicBoolean()
+        val socketFailed = AtomicBoolean()
         val p = Either.catch {
             ProcessBuilder(binary, "run", "-c", file.path)
+                .apply {
+                    if (transparent) environment()["xray.cone.disabled"] = "true"
+                }
                 .redirectErrorStream(true)
-                .redirectOutput(File(workDir, "xray.log"))
+                .redirectOutput(if (transparent) ProcessBuilder.Redirect.PIPE else ProcessBuilder.Redirect.to(File(workDir, "xray.log")))
                 .start()
         }.fold({ return EngineError.Failed("Xray не запустился: ${it.javaClass.simpleName}").left() }, { it })
         started(p)
+        if (transparent) thread(isDaemon = true, name = "xray-output") {
+            Either.catch {
+                p.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        if (!listening.get()) {
+                            if ("failed to apply socket options" in line) socketFailed.set(true)
+                            if (XRAY_STARTED.containsMatchIn(line)) listening.set(true)
+                        }
+                    }
+                }
+            }
+        }
         val deadline = System.currentTimeMillis() + READY_MS
         while (System.currentTimeMillis() < deadline) {
             if (!p.isAlive) return EngineError.Failed("Xray вышел с кодом ${p.exitValue()}").left()
-            if (portOpen()) return Unit.right()
+            if (portOpen() && !transparent) return Unit.right()
+            if (transparent && listening.get()) {
+                if (socketFailed.get()) {
+                    return EngineError.Failed("transparent_socket_options").left()
+                }
+                if (portOpen()) return Unit.right()
+            }
             delay(100)
         }
         return EngineError.Failed("Xray не поднял API :$apiPort").left()

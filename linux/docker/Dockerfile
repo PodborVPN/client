@@ -10,7 +10,7 @@ RUN go mod init podbor/libxray-cli \
  && CGO_ENABLED=0 go build -trimpath -o /libxray-cli . \
  && CGO_ENABLED=0 go build -trimpath -o /xray github.com/xtls/xray-core/main
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-alpine AS runtime
 RUN adduser -D -u 10001 podbor && mkdir /data && chown podbor /data
 COPY --from=engine /libxray-cli /usr/local/bin/libxray-cli
 COPY --from=engine /xray /usr/local/bin/xray
@@ -21,3 +21,13 @@ USER podbor
 VOLUME /data
 EXPOSE 8898 8899
 ENTRYPOINT ["/opt/podbor/app/bin/podbor-linux"]
+
+
+FROM runtime AS transparent
+USER root
+RUN apk add --no-cache --virtual .file-capabilities libcap-utils \
+ && setcap cap_net_raw=ep /usr/local/bin/xray \
+ && apk del .file-capabilities
+USER podbor
+
+FROM runtime AS default

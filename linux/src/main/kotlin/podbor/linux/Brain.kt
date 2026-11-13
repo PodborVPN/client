@@ -75,6 +75,7 @@ import podbor.driver.AccessLog
 import podbor.driver.ApiListen
 import podbor.driver.Clock
 import podbor.driver.ConfigOpts
+import podbor.driver.TransparentListen
 import podbor.driver.Driver
 import podbor.driver.EndpointGate
 import podbor.driver.EngineError
@@ -137,6 +138,7 @@ data class LinuxConfig(
     val converter: String,
     val proxyListen: String,
     val proxyPort: Int,
+    val transparent: List<TransparentListen> = emptyList(),
 )
 
 /**
@@ -146,6 +148,7 @@ data class LinuxConfig(
  */
 class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : RemoteBrain {
     private val xray = Mutex()
+    private val transparentProcess = java.util.concurrent.atomic.AtomicReference<Process?>()
     private val os: OsNetwork = OsNetwork.Wifi
 
     private val host = SessionHost(
@@ -154,10 +157,38 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
             holdXray(xray)
             val current = subscriptions.current()
             if (current == null) Either.Left(EngineError.Failed("нет подписки"))
-            else live(Tun.Proxy(cfg.proxyListen, cfg.proxyPort), current.text)
+            else live(Tun.Proxy(cfg.proxyListen, cfg.proxyPort, cfg.transparent), current.text)
         },
         ended = {},
     )
+
+    internal fun transparentStatus(): TransparentAnswer {
+        val (state, reason) = if (cfg.transparent.isEmpty()) {
+            "disabled" to null
+        } else when (val session = host.state.value) {
+            SessionState.Down -> "degraded" to "session_down"
+            SessionState.Starting -> "starting" to null
+            is SessionState.Failed -> "failed" to
+                if (session.error == EngineError.Failed("transparent_socket_options")) "transparent_socket_options" else "session_failed"
+            is SessionState.Up -> if (transparentProcess.get()?.isAlive == true) {
+                "ready" to null
+            } else {
+                "failed" to "engine_stopped"
+            }
+        }
+        return TransparentAnswer(
+            schemaVersion = 1,
+            mode = if (cfg.transparent.isEmpty()) "off" else "tproxy",
+            listeners = cfg.transparent.map {
+                TransparentListener(if (':' in it.address) "ipv6" else "ipv4", it.address, it.port, listOf("tcp", "udp"))
+            },
+            requiredCapabilities = if (cfg.transparent.isEmpty()) emptyList() else listOf("CAP_NET_RAW"),
+            outboundMark = null,
+            state = state,
+            reason = reason,
+            dns = if (cfg.transparent.isEmpty()) null else TransparentDns(),
+        )
+    }
 
     private val http = HttpFetch(direct = { url: URL -> url.openConnection() as HttpURLConnection })
     private val resolver = Resolver { host ->
@@ -437,10 +468,12 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
 
     /** Xray в этой области ресурсов: с общим входом-прокси (сессия) или без него ([Tun.Off] — анализ). */
     private suspend fun ResourceScope.live(tun: Tun, subscription: String): Either<EngineError, Live> {
+        val transparent = tun is Tun.Proxy && tun.transparent.isNotEmpty()
         val opts = ConfigOpts(
             api = ApiListen.Tcp(API_PORT),
             assetDir = File(cfg.assets, "xray").absolutePath,
             tun = tun,
+            logLevel = if (transparent) "info" else "warning",
             services = VPN_SERVICES,
             // Входы кандидатов — на петле контейнера, соседей там нет.
             socks = SocksIn.Open,
@@ -452,7 +485,9 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         val channel = xrayChannel { ManagedChannelBuilder.forAddress("127.0.0.1", API_PORT).usePlaintext().build() }
         val driver = Driver(
             converter = converter,
-            engine = XrayBinary(cfg.xray, cfg.data, API_PORT),
+            engine = XrayBinary(cfg.xray, cfg.data, API_PORT, transparent) {
+                if (transparent) transparentProcess.set(it)
+            },
             api = xrayApiOn(channel),
             prober = ProberImpl(
                 TelegramProbeImpl(),

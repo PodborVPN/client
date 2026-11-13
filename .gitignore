@@ -17,3 +17,8 @@ app/libs/*.aar
 *.jks
 *.keystore
 keystore.properties
+
+# Agents
+/AGENTS.md
+./.codex
+/.codex/hooks.json

@@ -36,6 +36,7 @@ import podbor.app.sub.current
 import podbor.app.sub.inputOf
 import podbor.app.sub.wordsOf
 import podbor.core.Button
+import podbor.driver.TransparentListen
 import podbor.remote.BrainServer
 import podbor.screen.Picked
 import podbor.screen.Status
@@ -47,6 +48,28 @@ import java.net.URI
 /** Состояние для `GET /api/status`: слова экрана, без ключей и адресов подписки. [problem] — чем кончился последний приём подписки. */
 @Serializable
 data class StatusAnswer(val session: String, val line: String, val exit: String, val problem: String)
+
+@Serializable
+internal data class TransparentListener(val family: String, val address: String, val port: Int, val transports: List<String>)
+
+@Serializable
+internal data class TransparentAnswer(
+    val schemaVersion: Int,
+    val mode: String,
+    val listeners: List<TransparentListener>,
+    val requiredCapabilities: List<String>,
+    val outboundMark: Int?,
+    val state: String,
+    val reason: String?,
+    val dns: TransparentDns? = null,
+)
+
+@Serializable
+internal data class TransparentDns(
+    val clientQueries: String = "routed_as_traffic",
+    val domainDetection: List<String> = listOf("http", "tls", "quic"),
+    val encryptedName: String = "ip_then_default",
+)
 
 private fun answerOf(s: Status, problem: String) = StatusAnswer(s.session.toString(), trayOf(s).line, s.exit, problem)
 
@@ -60,7 +83,28 @@ fun configFromEnv() = LinuxConfig(
     converter = env("PODBOR_CONVERTER", "libxray-cli"),
     proxyListen = env("PODBOR_PROXY_LISTEN", "0.0.0.0"),
     proxyPort = env("PODBOR_PROXY_PORT", "8898").toInt(),
+    transparent = transparentFromEnv(),
+
 )
+
+private fun transparentFromEnv(): List<TransparentListen> = when (env("PODBOR_TRANSPARENT_MODE", "off")) {
+    "off" -> emptyList()
+    "tproxy" -> {
+        val port = env("PODBOR_TRANSPARENT_PORT", "").toIntOrNull()
+        require(port != null && port in 1..65535) { "Некорректный PODBOR_TRANSPARENT_PORT" }
+        val v4 = env("PODBOR_TRANSPARENT_LISTEN_V4", "")
+        val v6 = env("PODBOR_TRANSPARENT_LISTEN_V6", "")
+        require(v4.isEmpty() || v4.split('.').let { parts ->
+            parts.size == 4 && parts.all { part -> (part.toIntOrNull() ?: -1) in 0..255 && part.all(Char::isDigit) }
+        }) { "Некорректный PODBOR_TRANSPARENT_LISTEN_V4" }
+        require(v6.isEmpty() || ':' in v6 && Either.catch {
+            java.net.InetAddress.getByName(v6) is java.net.Inet6Address
+        }.getOrNull() == true) { "Некорректный PODBOR_TRANSPARENT_LISTEN_V6" }
+        require(v4.isNotEmpty() || v6.isNotEmpty()) { "Не задан адрес прозрачного входа" }
+        listOf(v4, v6).filter(String::isNotEmpty).map { TransparentListen(it, port) }
+    }
+    else -> error("Некорректный PODBOR_TRANSPARENT_MODE")
+}
 
 /**
  * Запрос со своей страницы или не из браузера (нет Origin). Чужой сайт, открытый в том же браузере, достучался бы до
@@ -109,6 +153,7 @@ fun main() {
         install(ContentNegotiation) { json() }
         install(WebSockets)
         routing {
+            get("/api/transparent") { call.respond(brain.transparentStatus()) }
             get("/api/status") { call.respond(answerOf(brain.status.value, problem.value)) }
             // Экран живёт, пока открыт сокет: закрылся — его вопросы к мозгу отменяются вместе с сессией.
             webSocket("/ws") {
