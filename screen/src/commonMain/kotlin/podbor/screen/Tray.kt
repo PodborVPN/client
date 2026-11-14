@@ -1,6 +1,7 @@
 package podbor.screen
 
 import podbor.core.Board
+import podbor.core.isOffline
 import podbor.core.Button
 import podbor.core.CardStatus
 import podbor.core.NetworkMove
@@ -53,7 +54,9 @@ private fun sessionTray(session: SessionView, board: Board): Tray = when (sessio
 }
 
 /** Поднята: идёт подбор — «подбираю…», иначе по сервису «IG ✓ · TG ✗». */
-private fun upLine(board: Board): String = when (board.button) {
+private fun upLine(board: Board): String = if (board.network.isOffline) "Нет сети" else servicesLine(board)
+
+private fun servicesLine(board: Board): String = when (board.button) {
     Button.Searching -> "подбираю…"
     Button.Idle, Button.Ready, Button.Green, Button.Red -> board.cards.joinToString(" · ") { "${it.label} ${markOf(it.status)}" }
 }
@@ -76,13 +79,13 @@ sealed interface Shade {
  */
 fun shadeOf(s: Status): Shade = when (s.work) {
     is Work.Analysis -> Shade.Hidden
-    is Work.Remeasure, Work.Idle -> sessionShade(s.session, trayOf(s).line)
+    is Work.Remeasure, Work.Idle -> sessionShade(s.session, trayOf(s).line, s.board.network.isOffline)
 }
 
-private fun sessionShade(session: SessionView, line: String): Shade = when (session) {
+private fun sessionShade(session: SessionView, line: String, offline: Boolean): Shade = when (session) {
     SessionView.Down, is SessionView.Failed -> Shade.Hidden
     SessionView.Starting -> Shade.Shown(line, listOf(ShadeButton.Stop))
-    SessionView.Up -> Shade.Shown(line, listOf(ShadeButton.Press, ShadeButton.Stop))
+    SessionView.Up -> Shade.Shown(line, if (offline) listOf(ShadeButton.Stop) else listOf(ShadeButton.Press, ShadeButton.Stop))
 }
 
 /** Что делает тап по плитке. */

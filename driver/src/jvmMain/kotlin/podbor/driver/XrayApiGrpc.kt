@@ -58,13 +58,32 @@ private class GrpcXrayApi(channel: ManagedChannel) : XrayApi {
         stub.testRoute(TestRouteRequest.newBuilder().setRoutingContext(context).addFieldSelectors("outbound").build()).outboundTag
     }.mapLeft { EngineError.Failed("TestRoute: ${it.message}") }
 
+    override suspend fun exitTarget(balancer: String): Either<EngineError, String> = Either.catch {
+        val request = com.xray.app.router.command.GetBalancerInfoRequest.newBuilder().setTag(balancer).build()
+        stub.withDeadlineAfter(STATS_DEADLINE_S, TimeUnit.SECONDS).getBalancerInfo(request).balancer.override.target
+    }.mapLeft { EngineError.Failed("GetBalancerInfo") }
+
     override suspend fun setExit(balancer: String, tag: String): Either<EngineError, Unit> = overrideExit(balancer, tag)
 
     // Пустая цель — так Xray сам снимает override (Router.SetOverrideTarget, balancing.go: override.Get() == "").
     override suspend fun clearExit(balancer: String): Either<EngineError, Unit> = overrideExit(balancer, "")
 
     private suspend fun overrideExit(balancer: String, target: String): Either<EngineError, Unit> = Either.catch {
-        stub.overrideBalancerTarget(OverrideBalancerTargetRequest.newBuilder().setBalancerTag(balancer).setTarget(target).build())
+        stub.withDeadlineAfter(STATS_DEADLINE_S, TimeUnit.SECONDS).overrideBalancerTarget(OverrideBalancerTargetRequest.newBuilder().setBalancerTag(balancer).setTarget(target).build())
         Unit
     }.mapLeft { EngineError.Failed("OverrideBalancerTarget $balancer: ${it.message}") }
+}
+
+fun xrayObservatoryOn(channel: ManagedChannel): OutboundObservatory {
+    val stub = com.xray.app.observatory.command.ObservatoryServiceGrpcKt.ObservatoryServiceCoroutineStub(channel)
+    return OutboundObservatory {
+        Either.catch {
+            stub.withDeadlineAfter(STATS_DEADLINE_S, TimeUnit.SECONDS)
+                .getOutboundStatus(com.xray.app.observatory.command.GetOutboundStatusRequest.getDefaultInstance())
+                .status.statusList.associate { outbound ->
+                    podbor.core.ServerId(outbound.outboundTag) to
+                        exitObservation(outbound.alive, outbound.healthPing.all, outbound.healthPing.fail)
+                }
+        }.mapLeft { EngineError.Failed("GetOutboundStatus") }
+    }
 }

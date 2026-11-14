@@ -71,6 +71,11 @@ class TrayTest : FunSpec({
         shadeOf(status(SessionView.Up, works, Work.Analysis(0, 79))) shouldBe Shade.Hidden
     }
 
+    test("без сети в уведомлении доступно только выключение") {
+        val offline = works.copy(network = NetworkCard.Measured(OsNetwork.None, podbor.core.Scenario.Offline, "нет маршрута"))
+        shadeOf(status(SessionView.Up, offline)) shouldBe Shade.Shown("Нет сети", listOf(ShadeButton.Stop))
+    }
+
     test("уведомление на поднятой: статус шторки и обе кнопки") {
         shadeOf(status(SessionView.Up, works)) shouldBe Shade.Shown("IG ✓ · TG ✓", listOf(ShadeButton.Press, ShadeButton.Stop))
     }

@@ -34,6 +34,9 @@ fun interface XrayEngine {
 }
 
 interface XrayApi {
+    suspend fun exitTarget(balancer: String): Either<EngineError, String> =
+        Either.Left(EngineError.Failed("цель балансера неизвестна"))
+
     /** Через какой outbound Xray повёл бы IP: "direct" ⟺ сработало правило geoip:ru. */
     suspend fun routeOf(ip: String): Either<EngineError, String>
 

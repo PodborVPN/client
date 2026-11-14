@@ -58,6 +58,7 @@ data class ConfigOpts(
     val accessLog: AccessLog = AccessLog.Off,
     /** Чем резолвить российские домены: DNS сети или, после ремонта, Яндекс DNS по IP. */
     val ruDns: RuDns = RuDns.System,
+    val observeExits: Boolean = false,
 )
 
 /** DNS для российских доменов: системный (DNS сети) или Яндекс по IP — когда DNS сети сломан и человек починил. */
@@ -150,7 +151,8 @@ fun buildConfig(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opt
 private fun confOf(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, opts: ConfigOpts) = XrayConf(
     log = LogConf(opts.logLevel, accessOf(opts.accessLog)),
     env = mapOf("xray.location.asset" to opts.assetDir) + tunEnv(opts.tun),
-    api = ApiConf(API, listOf("RoutingService", "StatsService")),
+    api = ApiConf(API, listOf("RoutingService", "StatsService") +
+        listOf("ObservatoryService").filter { opts.observeExits && servers.isNotEmpty() }),
     // Счётчики байт входов и выходов — пульс: трафик сессии и проб, в том числе анализа подписки.
     stats = StatsConf,
     policy = PolicyConf(SystemPolicy(statsInboundUplink = true, statsInboundDownlink = true, statsOutboundUplink = true, statsOutboundDownlink = true)),
@@ -160,6 +162,10 @@ private fun confOf(servers: List<Server>, outbounds: Map<ServerId, JsonObject>, 
         pairsOf(servers, opts).map { (s, svc) -> JsonObject(outbounds.getValue(s.id) + ("tag" to JsonPrimitive(pairTag(s.id, svc.id)))) } +
         builtinOutbounds(opts.tun).map { xrayJson.encodeToJsonElement(BuiltinOutbound.serializer(), it).jsonObject },
     routing = RoutingConf("IPIfNonMatch", rulesOf(servers, opts), balancersOf(servers, opts)),
+    burstObservatory = if (opts.observeExits && servers.isNotEmpty()) BurstObservatoryConf(
+        listOf("s"),
+        HealthPingConf("https://connectivitycheck.gstatic.com/generate_204", "30s", 1, "4s", "GET"),
+    ) else null,
 )
 
 private fun accessOf(a: AccessLog): String? = when (a) {

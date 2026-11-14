@@ -1,5 +1,6 @@
 package podbor.core
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -26,7 +27,28 @@ data class ServiceCard(val service: ServiceId, val label: String, val status: Ca
 
 /** Сводный экран: одна карточка сети, кнопка на всех (и общий секундомер), карточка на каждый сервис (по [ServiceId]). */
 @Serializable
-data class Board(val network: NetworkCard, val button: Button, val cards: List<ServiceCard>, val stopwatch: Stopwatch = Stopwatch.None)
+data class Board(
+    val network: NetworkCard,
+    @SerialName("button") private val selectionButton: Button,
+    val cards: List<ServiceCard>,
+    val stopwatch: Stopwatch = Stopwatch.None,
+) {
+    val button: Button get() = if (network.isOffline) Button.Idle else selectionButton
+
+    fun withNetwork(measured: NetworkCard.Measured): Board {
+        val ready = measured.scenario != Scenario.Offline && measured.scenario != Scenario.Unclear
+        val next = if (ready && selectionButton == Button.Idle) Button.Ready else selectionButton
+        return copy(network = measured, selectionButton = next)
+    }
+
+    fun searching(): Board = copy(
+        selectionButton = Button.Searching,
+        cards = cards.map { it.copy(status = CardStatus.Searching) },
+    )
+}
+
+val NetworkCard.isOffline: Boolean
+    get() = this is NetworkCard.Measured && scenario == Scenario.Offline
 
 /** [screens] — экраны трубопроводов; сервис без экрана — Unknown. Сеть — с экрана GENERAL_FOLLOWS, иначе с первого по ServiceId. */
 fun board(services: Set<Service>, screens: Map<ServiceId, Screen>): Board {

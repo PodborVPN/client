@@ -199,6 +199,7 @@ private fun deadMini(blame: Blame): String = when (blame) {
     Blame.SuspectedWhitelist -> "похоже на белые списки"
     Blame.NoNetwork -> "нет сети"
     Blame.Server -> "сервер не отвечает"
+    Blame.ServiceThroughExit -> "сервис не отвечает через этот выход"
     Blame.Unexplained -> "не отвечает"
 }
 

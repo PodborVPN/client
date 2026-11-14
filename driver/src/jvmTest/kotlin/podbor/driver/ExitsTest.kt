@@ -1,6 +1,7 @@
 package podbor.driver
 
 import arrow.core.right
+import arrow.core.left
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -9,6 +10,9 @@ import podbor.core.ChosenOn
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.Instagram
 import podbor.core.OsNetwork
+import podbor.core.RecoveryApplied
+import podbor.core.RecoveryChange
+import podbor.core.RecoveryRoute
 import podbor.core.ServerId
 import podbor.core.Telegram
 import podbor.core.Tower
@@ -27,6 +31,50 @@ class ExitsTest : FunSpec({
     val s2 = ServerId("s2")
     val s3 = ServerId("s3")
     val wifi = ChosenOn.Network(OsNetwork.Wifi)
+
+    test("частичный отказ меняет только подтверждённые цели") {
+        val targets = mutableMapOf<String, String>()
+        val api = object : XrayApi {
+            override suspend fun routeOf(ip: String) = DIRECT.right()
+            override suspend fun setExit(balancer: String, tag: String) =
+                if (balancer == "svc.insta" && tag == "s2") EngineError.Failed("запись отклонена").left()
+                else Unit.right().also { targets[balancer] = tag }
+            override suspend fun exitTarget(balancer: String) = targets.getValue(balancer).right()
+            override suspend fun clearExit(balancer: String) = Unit.right()
+        }
+        val exits = Exits(api, HARDCODED_SERVICES)
+        exits.make(Telegram.id, s1, wifi).isRight() shouldBe true
+        val general = RecoveryRoute.General
+        val insta = RecoveryRoute.Service(Instagram.id)
+        val tg = RecoveryRoute.Service(Telegram.id)
+        val change = RecoveryChange(s1, s2)
+        exits.recover(mapOf(general to change, insta to change, tg to change), wifi) { true } shouldBe
+            mapOf(general to RecoveryApplied.Applied, insta to RecoveryApplied.Rejected, tg to RecoveryApplied.Applied)
+        exits.state.value.general shouldBe Route.Fixed(s2)
+        exits.effective(Instagram.id) shouldBe Route.Fixed(s1)
+        exits.effective(Telegram.id) shouldBe Route.Fixed(s2)
+    }
+
+    test("смена сети после первой записи запрещает следующую") {
+        val api = Overrides()
+        val exits = Exits(api, HARDCODED_SERVICES)
+        exits.make(Telegram.id, s1, wifi)
+        api.calls.clear()
+        val general = RecoveryRoute.General
+        val tg = RecoveryRoute.Service(Telegram.id)
+        val change = RecoveryChange(s1, s2)
+        exits.recover(mapOf(tg to change, general to change), wifi) { api.calls.isEmpty() } shouldBe
+            mapOf(tg to RecoveryApplied.Applied, general to RecoveryApplied.Rejected)
+        api.calls shouldContainExactly listOf("svc.tg=s2")
+        exits.state.value.general shouldBe Route.Fixed(s1)
+    }
+
+    test("нет свежего результата или неполный отказ не считаются отказом выхода") {
+        exitObservation(false, 0, 0) shouldBe ExitObservation.Unknown
+        exitObservation(false, 2, 1) shouldBe ExitObservation.Unknown
+        exitObservation(false, 1, 1) shouldBe ExitObservation.Failed
+        exitObservation(true, 1, 0) shouldBe ExitObservation.Replied
+    }
 
     test("make(GENERAL_FOLLOWS) ставит свой балансер, общий и все незакреплённые") {
         val api = Overrides()

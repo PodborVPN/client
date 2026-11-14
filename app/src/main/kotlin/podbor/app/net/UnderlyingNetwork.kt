@@ -12,6 +12,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import podbor.app.sub.Fetched
 import podbor.driver.Resolver
@@ -40,7 +43,14 @@ class UnderlyingNetwork(private val cm: ConnectivityManager) {
      * подписке — тоже, чтобы было от чего отсчитывать. Что за сеть — читает подписчик ([transport]): событие — только
      * повод.
      */
-    fun changes(): Flow<Unit> = callbackFlow {
+    fun changes(): Flow<Unit> = merge(callbackChanges(), flow {
+        while (true) {
+            delay(2_000)
+            emit(Unit)
+        }
+    }).conflate()
+
+    private fun callbackChanges(): Flow<Unit> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { trySend(Unit) }
             override fun onLost(network: Network) { trySend(Unit) }

@@ -23,7 +23,7 @@ sealed interface NetworkCard {
 
 /** Кто виноват, что текущий выход мёртв, — по диагнозу линии. Unexplained: сеть непонятная или линия не ответила к сроку. */
 @Serializable
-enum class Blame { Whitelist, SuspectedWhitelist, NoNetwork, Server, Unexplained }
+enum class Blame { Whitelist, SuspectedWhitelist, NoNetwork, Server, ServiceThroughExit, Unexplained }
 
 /** Откуда выход, на котором сидит человек, и что с ним. Экран при открытии. */
 @Serializable
@@ -226,6 +226,7 @@ private fun blameWords(blame: Blame): String = when (blame) {
     Blame.SuspectedWhitelist -> "похоже на белые списки, подтверждаю"
     Blame.NoNetwork -> "нет сети"
     Blame.Server -> "сеть ни при чём — проблема у сервера"
+    Blame.ServiceThroughExit -> "сервис не отвечает через этот выход"
     Blame.Unexplained -> "сеть непонятная, причину не называю"
 }
 

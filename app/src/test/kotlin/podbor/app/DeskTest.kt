@@ -178,7 +178,7 @@ private class Rig(
 
     init {
         desk = Desk(
-            host, os = { mts }, detect = { os, onBoard -> detectLine(line, clock, { }, os, services, onBoard) }, services = services,
+            host, os = { mts }, detect = { os, onBoard -> detectLine(line, clock, { }, os, services, onBoard = onBoard) }, services = services,
             xray = Mutex(),
             // Анализ здесь не зовётся (он — в ScanDeskTest): порты анализа — заглушки.
             scan = ScanPorts(

@@ -96,13 +96,13 @@ class LinkTest : FunSpec({
         seen shouldBe listOf("a-down", "b-down")
     }
     test("лицо кнопки: VPN поднят — подбор по кнопке ядра; выключен — «включить»; прочее — ждёт") {
-        val ready = board(HARDCODED_SERVICES, emptyMap()).copy(button = Button.Ready)
+        val ready = board(HARDCODED_SERVICES, emptyMap()).copy(selectionButton = Button.Ready)
         faceOf(ready, Link.Up) shouldBe Face.Press(Button.Ready)
         faceOf(ready, Link.Off) shouldBe Face.TurnOn
         for (l in listOf(Link.Starting, Link.Failed, Link.Refused, Link.Consent)) faceOf(ready, l) shouldBe Face.Waiting
     }
     test("лицо кнопки несёт общий секундомер экрана") {
-        val going = board(HARDCODED_SERVICES, emptyMap()).copy(button = Button.Searching, stopwatch = Stopwatch.Running(5))
+        val going = board(HARDCODED_SERVICES, emptyMap()).copy(selectionButton = Button.Searching, stopwatch = Stopwatch.Running(5))
         faceOf(going, Link.Up) shouldBe Face.Press(Button.Searching, Stopwatch.Running(5))
     }
 })

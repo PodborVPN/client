@@ -129,6 +129,7 @@ enum class DnsHealth { Unknown, Works, Broken }
  */
 fun dnsOf(line: LineObservation): DnsHealth {
     val all = line.russia + line.abroad
+    if (all.all { it.handshake == Handshake.NoRoute }) return DnsHealth.Unknown
     val fresh = all.filter { it.lookup == Lookup.Fresh }
     // Свежие имена есть — голосуют они, и сломан — только если не резолвится ни одно (оба сервиса: один лёг — это
     // сервис, а не DNS): кеш телефона может отвечать за обычные имена, когда DNS сети уже сломан. Лента до свежих

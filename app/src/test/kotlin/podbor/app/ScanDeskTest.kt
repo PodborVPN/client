@@ -203,7 +203,7 @@ private class ScanStand(
     val desk = Desk(
         host,
         os = { mts },
-        detect = { os, onBoard -> detectLine(lineProbe, clock, { }, os, setOf(Telegram), onBoard) },
+        detect = { os, onBoard -> detectLine(lineProbe, clock, { }, os, setOf(Telegram), onBoard = onBoard) },
         services = setOf(Telegram),
         xray = xray,
         scan = ScanPorts(

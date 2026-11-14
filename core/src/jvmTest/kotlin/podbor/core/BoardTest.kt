@@ -15,6 +15,20 @@ class BoardTest : FunSpec({
     val found = ResultCard.Found("NL-7", Transport.Xhttp, 100, "проверено 2 из 11 входов РФ")
     val notFound = ResultCard.NotFound(listOf("Нет сети."))
 
+    test("успешный замер вернувшейся сети снова разрешает подбор") {
+        val outage = Board(NetworkCard.Measured(os, Scenario.Offline, ""), Button.Idle, emptyList())
+        outage.withNetwork(NetworkCard.Measured(os, Scenario.Unclear, "")).button shouldBe Button.Idle
+        outage.withNetwork(NetworkCard.Measured(os, Scenario.MobileOpen, "")).button shouldBe Button.Ready
+    }
+
+    test("потеря сети отключает подбор при любом результате сервисов") {
+        val offline = NetworkCard.Measured(os, Scenario.Offline, "нет маршрута")
+        for (button in Button.entries) {
+            val online = Board(net, button, emptyList())
+            online.copy(network = offline).button shouldBe Button.Idle
+        }
+    }
+
     test("карточки по ServiceId: порядок insta, tg, метки IG, TG") {
         val screens = mapOf(Telegram.id to screen(Button.Green, found), Instagram.id to screen(Button.Red, notFound))
         val a = board(setOf(Telegram, Instagram), screens)

@@ -18,6 +18,11 @@ class DnsTest : FunSpec({
         nonEmptyListOf(Sample("one.one.one.one", far), Sample("dns.google", far)),
     )
 
+    test("без маршрута состояние DNS неизвестно") {
+        val missing = nonEmptyListOf(Sample("route", Handshake.NoRoute))
+        dnsOf(LineObservation(missing, missing)) shouldBe DnsHealth.Unknown
+    }
+
     test("имена не резолвятся, а по IP связь есть — DNS сети сломан (и при открытой сети, и при белых списках)") {
         dnsOf(round(dns, dns, dns, ok, ok)) shouldBe DnsHealth.Broken
         dnsOf(round(dns, dns, dns, ok, silent)) shouldBe DnsHealth.Broken

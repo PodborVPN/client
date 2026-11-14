@@ -88,6 +88,7 @@ fun XrayApi.reporting(failed: (String) -> Unit): XrayApi {
     val inner = this
     return object : XrayApi {
         override suspend fun routeOf(ip: String) = inner.routeOf(ip).onLeft { failed("routeOf $ip: $it") }
+        override suspend fun exitTarget(balancer: String) = inner.exitTarget(balancer)
         override suspend fun setExit(balancer: String, tag: String) = inner.setExit(balancer, tag).onLeft { failed("setExit $balancer → $tag: $it") }
         override suspend fun clearExit(balancer: String) = inner.clearExit(balancer).onLeft { failed("clearExit $balancer: $it") }
     }

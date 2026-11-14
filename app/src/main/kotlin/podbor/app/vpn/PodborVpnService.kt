@@ -85,6 +85,17 @@ import podbor.driver.draftKeysOf
 import podbor.driver.exitTagOf
 import podbor.driver.pulseLoop
 import podbor.driver.xrayApiOn
+import podbor.driver.effective
+import podbor.driver.watchRecovery
+import podbor.core.NetworkCard
+import podbor.core.OsNetwork
+import podbor.core.Scenario
+import podbor.core.RoundKind
+import podbor.core.LineObservation
+import podbor.core.Sample
+import podbor.core.Handshake
+import arrow.core.nonEmptyListOf
+import podbor.driver.xrayObservatoryOn
 import podbor.driver.xrayChannel
 import podbor.driver.xrayStatsOn
 import podbor.app.sub.FileTrafficBookStore
@@ -199,7 +210,20 @@ class PodborVpnService : VpnService(), ServicePort {
     private val underlying by lazy { UnderlyingNetwork(getSystemService(ConnectivityManager::class.java)) }
 
     /** Линия мимо туннеля: ей не нужен Xray, поэтому она общая для замера до подъёма и для сессии. */
-    private val line by lazy { LineProbeImpl(shaker = TlsHandshaker(resolve = underlying::resolve)) }
+    private val line by lazy {
+        val probe = LineProbeImpl(shaker = TlsHandshaker(resolve = underlying::resolve))
+        podbor.driver.LineProbe {
+            if (underlying.network() == null) noRouteObservation() else {
+                val observed = probe.observe()
+                if (underlying.network() == null) noRouteObservation() else observed
+            }
+        }
+    }
+
+    private fun noRouteObservation(): LineObservation {
+        val samples = nonEmptyListOf(Sample("маршрут", Handshake.NoRoute))
+        return LineObservation(samples, samples)
+    }
 
     /** Лента сервиса: замер до подъёма и сессии пишут в один файл. */
     private val tape by lazy { FileTape(filesDir) }
@@ -211,6 +235,7 @@ class PodborVpnService : VpnService(), ServicePort {
     private val memory by lazy { AndroidStore(filesDir) }
     private val filterPrefs by lazy { ExitFilterPrefs(getSharedPreferences("exit_filter", MODE_PRIVATE)) }
     private val countryChanges = Mutex()
+    private val recoveryPauses = MutableStateFlow(0)
     private val countryState by lazy { MutableStateFlow(CountrySelection(filter = filterPrefs.read())) }
 
     private suspend fun passportCountries(): Set<String> {
@@ -246,7 +271,7 @@ class PodborVpnService : VpnService(), ServicePort {
             host = host,
             services = VPN_SERVICES,
             os = { Telephony(this).osNetwork(underlying.transport()) },
-            detect = { os, onBoard -> detectLine(line, clock, tape, os, VPN_SERVICES, onBoard) },
+            detect = { os, onBoard -> detectLine(line, clock, tape, os, VPN_SERVICES, onBoard = onBoard) },
             xray = xray,
             scan = ScanPorts(
                 download = { url -> underlying.download(url, device) },
@@ -396,7 +421,7 @@ class PodborVpnService : VpnService(), ServicePort {
             when (host.state.value) {
                 is SessionState.Up -> {
                     log("нажатие: из уведомления")
-                    scope.launch { desk.press() }
+                    scope.launch { press() }
                 }
                 // Команда разбудила службу без сессии — подбирать нечем, а висеть пустой ей незачем.
                 SessionState.Down, SessionState.Starting, is SessionState.Failed -> {
@@ -447,7 +472,23 @@ class PodborVpnService : VpnService(), ServicePort {
     override suspend fun latestRelease() = desk.latestRelease()
 
     /** Нажатие: см. [Desk.press]. */
-    override suspend fun press() = desk.press()
+    override suspend fun press() = withoutRecovery<Unit> {
+        if (underlying.network() == null) {
+            val os = telephony.osNetworkLight(underlying.transport())
+            recoveryLine(os) { underlying.network() == null }
+        } else {
+            desk.press()
+        }
+    }
+
+    private suspend fun <A> withoutRecovery(block: suspend () -> A): A {
+        recoveryPauses.update { it + 1 }
+        try {
+            return block()
+        } finally {
+            recoveryPauses.update { it - 1 }
+        }
+    }
 
     override suspend fun exitCountry(service: ServiceId): String? =
         when (val result = host.act { live -> live.driver.currentExitCountry(live.warm, service) }) {
@@ -455,18 +496,20 @@ class PodborVpnService : VpnService(), ServicePort {
             is Acted.Done -> result.value
         }
 
-    override suspend fun setExitFilter(filter: ExitFilter): Unit = countryChanges.withLock {
-        if (filter == countryState.value.filter) return@withLock
-        filterPrefs.save(filter)
-        countryState.update { it.copy(filter = filter, blocked = false) }
-        when (host.state.value) {
-            SessionState.Down, is SessionState.Failed -> Unit
-            SessionState.Starting, is SessionState.Up -> {
-                val before = host.stops.value
-                host.restart(lastStartId)
-                scope.launch {
-                    host.stops.first { it > before }
-                    desk.repick()
+    override suspend fun setExitFilter(filter: ExitFilter): Unit = withoutRecovery {
+        countryChanges.withLock {
+            if (filter == countryState.value.filter) return@withLock
+            filterPrefs.save(filter)
+            countryState.update { it.copy(filter = filter, blocked = false) }
+            when (host.state.value) {
+                SessionState.Down, is SessionState.Failed -> Unit
+                SessionState.Starting, is SessionState.Up -> {
+                    val before = host.stops.value
+                    host.restart(lastStartId)
+                    scope.launch {
+                        host.stops.first { it > before }
+                        withoutRecovery { desk.repick() }
+                    }
                 }
             }
         }
@@ -503,7 +546,7 @@ class PodborVpnService : VpnService(), ServicePort {
         desk.reanalyze(id, onSkipped, onBoard).also { refreshCountries() }
 
     /** Выбор подписки: см. [Desk.select]; уведомление о сроке — уже по новой текущей. */
-    override suspend fun select(id: String): Picked = desk.select(id).also { picked ->
+    override suspend fun select(id: String): Picked = withoutRecovery { desk.select(id) }.also { picked ->
         when (picked) {
             Picked.Ready -> { switchTraffic(); refreshCountries() }
             is Picked.Expired -> Unit
@@ -522,7 +565,7 @@ class PodborVpnService : VpnService(), ServicePort {
     }
 
     override suspend fun delete(id: String) {
-        desk.delete(id)
+        withoutRecovery { desk.delete(id) }
         refreshCountries()
     }
 
@@ -536,8 +579,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 s.live.driver.exits.state.map { exits ->
                     val general = exits.general.serverOrNull()
                     val routes = VPN_SERVICES.mapNotNull { service ->
-                        val pin = exits.pinned[service.id]
-                        val server = servers[if (pin == null) general else pin.server]
+                        val server = servers[exits.effective(service.id).serverOrNull()]
                         if (server == null) return@mapNotNull null
                         val known = facts[server.key]
                         val exit = if (known == null) Exit.Unknown else known.exit
@@ -580,6 +622,7 @@ class PodborVpnService : VpnService(), ServicePort {
                 is Tun.On, is Tun.Proxy -> AccessLog.File(File(noBackupFilesDir, ACCESS_LOG).apply { delete() }.path)
             },
             ruDns = ruDnsHere(tun),
+            observeExits = tun is Tun.On,
         )
         // Загрузка базы не захватывается снимком: поздно готовая база доступна следующим измерениям.
         val fallback = TraceExit()
@@ -622,8 +665,51 @@ class PodborVpnService : VpnService(), ServicePort {
                 }
             }
             meter(driver, opts, xrayStatsOn(channel), epochOf(tun))
+            if (opts.observeExits) {
+                val observatory = xrayObservatoryOn(channel)
+                val watch = scope.launch {
+                    combine(underlying.changes().map { underlying.network() }, recoveryPauses, ::Pair)
+                        .distinctUntilChanged().collectLatest { (network, pauses) ->
+                            if (pauses != 0) return@collectLatest
+                            val os = telephony.osNetworkLight(underlying.transport())
+                            val current = { underlying.network() == network && recoveryPauses.value == 0 }
+                            if (network == null) {
+                                recoveryLine(os, current)
+                            } else {
+                                driver.watchRecovery(warm, os, observatory, current, {
+                                    recoveryLine(os, current)
+                                }, onState = { state ->
+                                    if (current()) desk.showRecovery(state, Live(driver, warm))
+                                }, onVerified = { verified ->
+                                    if (current()) desk.showVerified(verified, Live(driver, warm))
+                                }, runAttempt = desk::withRecoveryAttempt) { log("автоподбор: ${redact(it.toString())}") }
+                            }
+                        }
+                }
+                onRelease { watch.cancelAndJoin() }
+            }
+
             Live(driver, warm)
         }
+    }
+
+    private suspend fun recoveryLine(os: OsNetwork, current: () -> Boolean): RoundKind {
+        val opening = detectLine(line, clock, tape, os, VPN_SERVICES, recovery = true)
+        val network = opening.board.network
+        if (current() && network is NetworkCard.Measured) desk.showNetwork(network)
+        return recoveryRound(network)
+    }
+
+    private fun recoveryRound(network: NetworkCard): RoundKind = when (network) {
+        is NetworkCard.Measuring -> RoundKind.Unclear
+        is NetworkCard.Measured -> recoveryRound(network.scenario)
+    }
+
+    private fun recoveryRound(scenario: Scenario): RoundKind = when (scenario) {
+        Scenario.Offline -> RoundKind.Offline
+        Scenario.MobileWhitelist, Scenario.SuspectWhitelist -> RoundKind.WhitelistLike
+        Scenario.MobileOpen, Scenario.Wifi -> RoundKind.Open
+        Scenario.Unclear -> RoundKind.Unclear
     }
 
     /**

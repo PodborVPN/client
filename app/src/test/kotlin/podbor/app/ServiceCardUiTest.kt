@@ -106,6 +106,35 @@ class ServiceCardUiTest {
     }
 
     @Test
+    fun openSheetTracksServiceFailureAndRecovery() {
+        val first = podbor.core.ExitRef("Первый выход", podbor.core.Transport.Grpc)
+        val spare = podbor.core.ExitRef("Резервный выход", podbor.core.Transport.Grpc)
+        var current by mutableStateOf<CardStatus>(CardStatus.Works(first))
+        compose.setContent {
+            PodborTheme {
+                MainScreen(
+                    Board(NetworkCard.Measuring(OsNetwork.Wifi), Button.Green, listOf(ServiceCard(Telegram.id, "TG", current))),
+                    Link.Up, emptyMap(), null, null,
+                    onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = {}, onChangeSubscription = {},
+                    history = {
+                        if (current is CardStatus.Dead) listOf(
+                            podbor.core.HistoryEvent(1_000, podbor.core.Mood.Bad, "Телега перестала отвечать"),
+                        ) else emptyList()
+                    },
+                )
+            }
+        }
+        compose.onNodeWithTag(SERVICE_TAG).performClick()
+        compose.runOnIdle { current = CardStatus.Dead(first, podbor.core.Blame.Server) }
+        compose.onNodeWithText("Телега перестала отвечать").assertExists()
+        compose.runOnIdle { current = CardStatus.Works(spare) }
+        compose.onNodeWithText("Телега перестала отвечать").assertDoesNotExist()
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Резервный выход")).fetchSemanticsNodes().size.let {
+            org.junit.Assert.assertTrue(it > 0)
+        }
+    }
+
+    @Test
     fun historyInSheetNewestFirst() {
         val board = Board(
             NetworkCard.Measuring(OsNetwork.Wifi), Button.Green,

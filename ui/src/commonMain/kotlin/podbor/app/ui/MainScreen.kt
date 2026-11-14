@@ -385,7 +385,9 @@ private fun ServiceSheet(
         }
     }
     var events by remember(row.label) { mutableStateOf(emptyList<HistoryEvent>()) }
-    LaunchedEffect(row.label) { events = history(row.label).take(HISTORY_SHOWN) }
+    LaunchedEffect(row.service, routeId, row.mark, row.mini.text) {
+        events = history(row.label).take(HISTORY_SHOWN)
+    }
     PodborSheet(rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismiss, title = row.label) {
         Text(
             if (route != null && row.protocol != null) "${serverNumber(route)} · ${row.protocol}" else row.name,

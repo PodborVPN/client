@@ -28,8 +28,9 @@ internal class OpenMachine(
     private val opened: Letter.Opened,
     private val known: List<Letter.LineObserved>,
     service: ServiceId,
+    recovery: Boolean = false,
 ) : Machine<OpenState> {
-    override val head = Head.Open(known, service)
+    override val head = Head.Open(known, service, recovery)
     override fun start(first: Letter): Pair<OpenState, List<Deed>> {
         val (s, deeds) = openStart(opened)
         if (known.isEmpty()) return s to deeds

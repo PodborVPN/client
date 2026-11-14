@@ -39,7 +39,7 @@ fun replay(tape: String): List<RunReplay> {
     val lines = tape.lines().withIndex().filter { it.value.isNotBlank() }.map { (i, text) ->
         Numbered(i + 1, Either.catch { rowOf(text) }.mapLeft { e -> "не строка Ленты v1–v$TAPE_FORMAT: ${firstLineOf(e.message)}" })
     }
-    val firstRun = lines.indexOfFirst { it.value.getOrNull() is Row.Run }.let { if (it < 0) lines.size else it }
+    val firstRun = lines.indexOfFirst { it.value.getOrNull() is Row.Run || it.value.getOrNull() is Row.Recovery }.let { if (it < 0) lines.size else it }
     val v0 = lines.take(firstRun)
         .filter { n -> n.value.fold({ true }, { row -> whose(row) != Whose.Nobody }) }.take(1)
         .map { RunReplay(it.line, "v0", Replayed.Unplayable(it.line, "формат v0: буквы без шапки прогона")) }
@@ -49,7 +49,7 @@ fun replay(tape: String): List<RunReplay> {
     val runs = rows.mapNotNull { n ->
         when (val row = n.value) {
             is Row.Run -> Numbered(n.line, row)
-            is Row.Step, is Row.Closed, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns -> null
+            is Row.Step, is Row.Closed, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns, is Row.Recovery -> null
         }
     }
     val ids = runs.map { it.value.id }.toSet()
@@ -58,7 +58,26 @@ fun replay(tape: String): List<RunReplay> {
     val judged = runs.map { run ->
         RunReplay(run.line, nameOf(run.value.head), judge(run, rows.filter { whose(it.value) == Whose.Of(run.value.id) }), serviceOf(run.value.head))
     }
-    return (v0 + judged + broken + orphans).sortedBy { it.line }
+    val recovered = rows.mapNotNull { numbered ->
+        val row = numbered.value
+        if (row is Row.Recovery) RunReplay(numbered.line, "Recovery", replayRecovery(row, numbered.line)) else null
+    }
+    return (v0 + judged + broken + orphans + recovered).sortedBy { it.line }
+}
+
+private fun replayRecovery(row: Row.Recovery, line: Int): Replayed {
+    var state: podbor.core.RecoveryState = podbor.core.RecoveryState.Watching
+    for (step in row.steps) {
+        val (next, deeds) = podbor.core.recoveryStep(state, step.letter)
+        if (deeds != step.deeds) return Replayed.Unplayable(line, "дела восстановления разошлись")
+        state = next
+    }
+    val ending = when (state) {
+        podbor.core.RecoveryState.Watching, is podbor.core.RecoveryState.Settled -> Ending.Done
+        is podbor.core.RecoveryState.Checking, is podbor.core.RecoveryState.Searching,
+        is podbor.core.RecoveryState.Applying -> Ending.Torn
+    }
+    return Replayed.Converged(row.steps.size, ending)
 }
 
 /** Первая строка сообщения исключения (у kotlinx — многострочные); сообщения нет — «null», как в шаблоне строки. */
@@ -76,7 +95,7 @@ private sealed interface Whose {
 private fun whose(row: Row): Whose = when (row) {
     is Row.Step -> Whose.Of(row.run)
     is Row.Closed -> Whose.Of(row.run)
-    is Row.Run, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns -> Whose.Nobody
+    is Row.Run, is Row.Note, is Row.Pulse, is Row.Lost, is Row.Conns, is Row.Recovery -> Whose.Nobody
 }
 
 /** Строка прогона, чьей шапки в Ленте нет. */
@@ -104,7 +123,7 @@ private fun judge(run: Numbered<Row.Run>, rows: List<Numbered<Row>>): Replayed =
     val steps = rows.mapNotNull { n ->
         when (val row = n.value) {
             is Row.Step -> Numbered(n.line, row)
-            is Row.Note, is Row.Closed, is Row.Run, is Row.Pulse, is Row.Lost, is Row.Conns -> null
+            is Row.Note, is Row.Closed, is Row.Run, is Row.Pulse, is Row.Lost, is Row.Conns, is Row.Recovery -> null
         }
     }
     val closed = rows.any { it.value is Row.Closed }

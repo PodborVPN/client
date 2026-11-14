@@ -32,10 +32,17 @@ sealed interface Head {
     @Serializable @SerialName("press") data class Press(val service: ServiceId = Telegram.id) : Head
     /** Открытие: раунды линии, снятые до Xray, машина сворачивает на старте (OpenMachine). */
     @Serializable @SerialName("open")
-    data class Open(val known: List<Letter.LineObserved>, val service: ServiceId = Telegram.id) : Head
+    data class Open(
+        val known: List<Letter.LineObserved>,
+        val service: ServiceId = Telegram.id,
+        val recovery: Boolean = false,
+    ) : Head
     /** Анализ подписки: всё, что машина знает, — в букве Scan. */
     @Serializable @SerialName("scan") data object Scan : Head
 }
+
+@Serializable
+data class RecoveryStep(val letter: podbor.core.RecoveryLetter, val deeds: List<podbor.core.RecoveryDeed>)
 
 /**
  * Строка Ленты. Строки прогона несут его id: прогоны пишут в одну Ленту одновременно (детектор до Xray досылает
@@ -43,6 +50,13 @@ sealed interface Head {
  */
 @Serializable
 sealed interface Row {
+    @Serializable @SerialName("recovery")
+    data class Recovery(
+        val atMs: Long,
+        val steps: List<RecoveryStep>,
+        val confirmed: Map<podbor.core.RecoveryRoute, podbor.core.RecoveryApplied> = emptyMap(),
+    ) : Row
+
     /** Шапка прогона. id — случайный: Ленты разных запусков склеиваются в одну выгрузку. */
     @Serializable @SerialName("run") data class Run(val v: Int, val id: Long, val head: Head) : Row
     /**

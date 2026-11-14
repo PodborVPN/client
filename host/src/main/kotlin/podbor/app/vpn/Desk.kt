@@ -63,6 +63,7 @@ import podbor.core.CardStatus
 import podbor.core.generalServiceOf
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.OsNetwork
+import podbor.core.isOffline
 import podbor.core.Passport
 import podbor.core.Prior
 import podbor.core.ScanBoard
@@ -174,6 +175,31 @@ class Desk(
     private val boardState = MutableStateFlow(initial)
     val board: StateFlow<Board> = boardState.asStateFlow()
 
+    fun showNetwork(network: podbor.core.NetworkCard.Measured) {
+        boardState.update { it.withNetwork(network) }
+    }
+
+    suspend fun withRecoveryAttempt(block: suspend () -> Unit) = actions.withLock { block() }
+
+    fun showVerified(routes: Map<podbor.core.RecoveryRoute, podbor.core.ServerId>, live: Live) {
+        publishRecoveryCards(verifiedCards(routes, live))
+    }
+
+    fun showRecovery(
+        state: podbor.core.RecoveryState,
+        live: Live,
+    ) {
+        publishRecoveryCards(recoveryCards(state, live))
+    }
+
+    private fun publishRecoveryCards(statuses: Map<ServiceId, CardStatus>) {
+        boardState.update { board ->
+            board.copy(cards = board.cards.map { card ->
+                statuses[card.service]?.let { card.copy(status = it) } ?: card
+            })
+        }
+    }
+
     /** Чем занят сверх сессии — анализ подписки или перемер после переезда; часть общего состояния [podbor.screen.Status]. */
     private val workState = MutableStateFlow<Work>(Work.Idle)
     val work: StateFlow<Work> = workState.asStateFlow()
@@ -279,6 +305,7 @@ class Desk(
     suspend fun repick() = pressing.withLock { pressLocked() }
 
     private suspend fun pressLocked() {
+        if (boardState.value.network.isOffline) return
         val measuring = openRun.get()
         if (measuring != null) measuring.cancel(Superseded())
         searching()
@@ -606,7 +633,7 @@ class Desk(
     }
 
     private fun searching() {
-        boardState.update { b -> b.copy(button = Button.Searching, cards = b.cards.map { it.copy(status = CardStatus.Searching) }) }
+        boardState.update { b -> b.searching() }
     }
 
     /** Восстановленные выходы [bare] уже приняты Xray (Exits драйвера) — для слов «последний рабочий» помечаются. */

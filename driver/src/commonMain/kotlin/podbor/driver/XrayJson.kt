@@ -29,6 +29,7 @@ internal data class XrayConf(
     val inbounds: List<InboundConf>,
     val outbounds: List<JsonObject>,
     val routing: RoutingConf,
+    val burstObservatory: BurstObservatoryConf? = null,
 )
 
 @Serializable
@@ -162,3 +163,15 @@ internal fun rule(to: Target, match: RuleConf = RuleConf()): RuleConf = when (to
     is Target.Out -> match.copy(outboundTag = to.tag)
     is Target.Balancer -> match.copy(balancerTag = to.tag)
 }
+
+@Serializable
+internal data class BurstObservatoryConf(val subjectSelector: List<String>, val pingConfig: HealthPingConf)
+
+@Serializable
+internal data class HealthPingConf(
+    val destination: String,
+    val interval: String,
+    val sampling: Int,
+    val timeout: String,
+    val httpMethod: String,
+)

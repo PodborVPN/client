@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package xray.core.app.observatory.command;
+option java_package = "com.xray.app.observatory.command";
+option java_multiple_files = true;
+
+service ObservatoryService {
+  rpc GetOutboundStatus(GetOutboundStatusRequest) returns (GetOutboundStatusResponse);
+}
+
+message GetOutboundStatusRequest {}
+message GetOutboundStatusResponse { ObservationResult status = 1; }
+message ObservationResult { repeated OutboundStatus status = 1; }
+message OutboundStatus {
+  bool alive = 1;
+  string outbound_tag = 4;
+  HealthPingMeasurementResult health_ping = 7;
+}
+message HealthPingMeasurementResult {
+  int64 all = 1;
+  int64 fail = 2;
+}

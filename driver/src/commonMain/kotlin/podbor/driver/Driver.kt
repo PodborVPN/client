@@ -32,6 +32,7 @@ import podbor.core.knownCountry
 import podbor.core.generalServiceOf
 import podbor.core.Web
 import podbor.core.kind
+import podbor.core.Verdict
 import podbor.core.VerdictKind
 import podbor.core.LINE_FRESH_MS
 import podbor.core.Letter
@@ -125,6 +126,24 @@ class Driver(
     /** SOCKS на устройстве, через который трафик идёт сервером [server] прогретого [warm]; сервера там нет — null. */
     fun socksPort(server: ServerId, warm: Warm): Int? =
         if (warm.servers.any { it.id == server }) socksPortOf(server, warm.servers, opts) else null
+
+    internal fun recordRecovery(atMs: Long, steps: List<RecoveryStep>, confirmed: Map<podbor.core.RecoveryRoute, podbor.core.RecoveryApplied>) {
+        tape.write(rowLine(Row.Recovery(atMs, steps, confirmed)))
+    }
+
+    internal fun recoveryTime() = clock.nowMs()
+
+    internal suspend fun recoveryLine() = line.observe()
+
+    internal suspend fun recoveryProbe(warm: Warm, route: podbor.core.RecoveryRoute, server: Server): Verdict {
+        val spec = when (route) {
+            podbor.core.RecoveryRoute.General -> Web.probe
+            is podbor.core.RecoveryRoute.Service -> opts.services.first { it.id == route.id }.probe
+        }
+        return gate.withEndpoint(server.endpoint) {
+            prober.probe(spec, server, socksPortOf(server.id, warm.servers, opts))
+        }
+    }
 
     /** Память пишут трубопроводы и анализ параллельно: загрузка-слияние-запись — по одному. */
     private val memoryLock = Mutex()
@@ -224,7 +243,7 @@ class Driver(
         val boards = Boards(services, onBoard, emptyMap())
         val runs = pipes(services, { exits.effective(it) }) { service, exit, hub, inbox, lead ->
             val vpn = when (exit) {
-                Route.Free -> Vpn.Off
+                Route.Free, Route.Unknown -> Vpn.Off
                 is Route.Fixed -> vpnOn(exit.server, servers, service.id)
             }
             val opened = Letter.Opened(clock.nowMs(), os, vpn)
@@ -525,11 +544,12 @@ suspend fun detectLine(
     tape: TapeSink,
     os: OsNetwork,
     services: Set<Service>,
+    recovery: Boolean = false,
     onBoard: (Board) -> Unit = {},
 ): Opening {
     val opened = Letter.Opened(clock.nowMs(), os, Vpn.Off)
     fun boardOf(screen: Screen) = board(services, mapOf(generalServiceOf(services) to screen))
-    val run = act(opened, OpenMachine(opened, emptyList(), generalServiceOf(services)), OPEN_TIMEOUT_MS, { deed, inbox ->
+    val run = act(opened, OpenMachine(opened, emptyList(), generalServiceOf(services), recovery), OPEN_TIMEOUT_MS, { deed, inbox ->
         when (deed) {
             Deed.ProbeLine -> launch { inbox.send(Letter.LineObserved(clock.nowMs(), line.observe())) }
             // Машина с Vpn.Off других дел не даёт: пробовать и выставлять нечего.

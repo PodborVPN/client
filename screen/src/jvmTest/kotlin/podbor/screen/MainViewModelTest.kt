@@ -35,7 +35,7 @@ class MainViewModelTest : FunSpec({
             port.session.value = SessionView.Starting
             runCurrent()
             port.session.value = SessionView.Up
-            val pressed: Board = port.board.value.copy(button = Button.Searching)
+            val pressed: Board = port.board.value.copy(selectionButton = Button.Searching)
             port.board.value = pressed
             runCurrent()
             linkOf(vm.facts.value) shouldBe Link.Up
