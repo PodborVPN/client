@@ -296,7 +296,7 @@ class ScanDeskTest : FunSpec({
         runTest {
             val s = stand(servers = 0)
             val text = SubscriptionInput.Text(listOf("vless://x", "tuic://p", "hy2://p").joinToString("\n"))
-            s.analyze(text) shouldBe Either.Left(InputError.NoServers(Skipped(0, mapOf("tuic" to 1, "hysteria2" to 1), broken = 1)))
+            s.analyze(text) shouldBe Either.Left(InputError.NoServers(Skipped(0, mapOf("tuic" to 1), broken = 2)))
             s.subscriptions.one() shouldBe null
             s.desk.hasSubscription() shouldBe false
             s.events shouldNotContain "scan up"
@@ -310,7 +310,7 @@ class ScanDeskTest : FunSpec({
             val seen = mutableListOf<Any>()
             s.analyze(text, onSkipped = { seen += it }, onBoard = { if (seen.none { it is ScanBoard }) seen += it })
                 .shouldBeInstanceOf<Either.Right<ScanBoard>>()
-            seen.first() shouldBe Skipped(3, mapOf("hysteria2" to 1), broken = 0)
+            seen.first() shouldBe Skipped(3, emptyMap(), broken = 1)
             seen.filterIsInstance<Skipped>().size shouldBe 1
             seen.filterIsInstance<ScanBoard>().size shouldBe 1
         }

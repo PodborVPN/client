@@ -32,8 +32,8 @@ class SkippedSheetUiTest {
         show(Skipped(4, mapOf("hysteria2" to 3), broken = 1))
         compose.onNodeWithText("Проверю 4 сервера из 8").assertExists()
         compose.onNodeWithText("hysteria2 — 3").assertExists()
-        compose.onNodeWithText("битая ссылка — 1").assertExists()
-        compose.onNodeWithText("остальные Podbor не поддерживает — пропущу").assertExists()
+        compose.onNodeWithText("не удалось прочитать ссылку или её параметры — 1").assertExists()
+        compose.onNodeWithText("остальные не удалось использовать — пропущу; параметры ссылки могут не поддерживаться").assertExists()
         compose.onNodeWithText("Понятно").performClick()
         compose.waitForIdle()
         assertEquals(1, dismissed)
@@ -44,7 +44,7 @@ class SkippedSheetUiTest {
         show(Skipped(0, mapOf("tuic" to 2), broken = 0))
         compose.onNodeWithText("Podbor не поддерживает эту подписку").assertExists()
         compose.onNodeWithText("tuic — 2").assertExists()
-        compose.onNodeWithText("Podbor понимает vless, vmess, trojan и shadowsocks — попроси у провайдера подписку на них").assertExists()
+        compose.onNodeWithText("Podbor понимает vless, vmess, trojan, shadowsocks и Hysteria 2 — попроси у провайдера подписку на них").assertExists()
     }
 
     @Test

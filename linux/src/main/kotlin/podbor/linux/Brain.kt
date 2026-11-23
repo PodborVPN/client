@@ -233,7 +233,7 @@ class Brain(private val cfg: LinuxConfig, private val scope: CoroutineScope) : R
         host = host,
         services = VPN_SERVICES,
         os = { os },
-        detect = { network, onBoard -> detectLine(line, clock, tape, network, VPN_SERVICES, onBoard) },
+        detect = { network, onBoard -> detectLine(line, clock, tape, network, VPN_SERVICES, onBoard = onBoard) },
         xray = xray,
         scan = ScanPorts(
             download = { url -> http.download(url, device) },

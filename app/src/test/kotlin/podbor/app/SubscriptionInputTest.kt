@@ -114,22 +114,22 @@ class SubscriptionInputTest : FunSpec({
     test("шторка пропусков: ничего не подошло — чужие схемы по убыванию счёта, битые последними") {
         skippedWords(Skipped(0, mapOf("tuic" to 1, "hysteria2" to 5, "anytls" to 1), broken = 2)) shouldBe SkippedWords(
             title = "Podbor не поддерживает эту подписку",
-            lines = listOf("hysteria2 — 5", "anytls — 1", "tuic — 1", "битые ссылки — 2"),
-            note = "Podbor понимает vless, vmess, trojan и shadowsocks — попроси у провайдера подписку на них",
+            lines = listOf("hysteria2 — 5", "anytls — 1", "tuic — 1", "не удалось прочитать ссылку или её параметры — 2"),
+            note = "Podbor понимает vless, vmess, trojan, shadowsocks и Hysteria 2 — попроси у провайдера подписку на них",
         )
     }
 
     test("шторка пропусков: повторы — своей строкой, не битыми; в «из» — все ссылки") {
         val w = skippedWords(Skipped(79, emptyMap(), broken = 1, repeats = 5))
         w.title shouldBe "Проверю 79 серверов из 85"
-        w.lines shouldBe listOf("битая ссылка — 1", "повторы того же сервера — 5")
+        w.lines shouldBe listOf("не удалось прочитать ссылку или её параметры — 1", "повторы того же сервера — 5")
     }
 
     test("шторка пропусков: ссылок нет — формат не узнан") {
         skippedWords(Skipped(0, emptyMap(), 0)) shouldBe SkippedWords(
             title = "Не узнал формат подписки",
             lines = emptyList(),
-            note = "Podbor понимает ссылки vless, vmess, trojan и shadowsocks, а это похоже на настройки Clash или sing-box — " +
+            note = "Podbor понимает ссылки vless, vmess, trojan, shadowsocks и Hysteria 2, а это похоже на настройки Clash или sing-box — " +
                 "попроси у провайдера подписку для v2rayNG",
         )
     }
@@ -137,8 +137,8 @@ class SubscriptionInputTest : FunSpec({
     test("шторка пропусков: часть подошла — сколько проверю из всех, остальное пропускаю") {
         skippedWords(Skipped(4, mapOf("hysteria2" to 3), broken = 1)) shouldBe SkippedWords(
             title = "Проверю 4 сервера из 8",
-            lines = listOf("hysteria2 — 3", "битая ссылка — 1"),
-            note = "остальные Podbor не поддерживает — пропущу",
+            lines = listOf("hysteria2 — 3", "не удалось прочитать ссылку или её параметры — 1"),
+            note = "остальные не удалось использовать — пропущу; параметры ссылки могут не поддерживаться",
         )
         skippedWords(Skipped(1, mapOf("tuic" to 1), broken = 0)).title shouldBe "Проверю 1 сервер из 2"
         skippedWords(Skipped(5, mapOf("tuic" to 1), broken = 0)).title shouldBe "Проверю 5 серверов из 6"

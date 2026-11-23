@@ -25,11 +25,28 @@ sealed interface Entry {
 
 @Serializable
 sealed interface Transport {
+    @Serializable data object Hysteria2 : Transport
     @Serializable data object RealityVision : Transport
     @Serializable data object Xhttp : Transport
     @Serializable data object Grpc : Transport
     @Serializable data object Ws : Transport
     @Serializable data class Other(val name: String) : Transport
+}
+
+/** Сетевой транспорт до сервера; TCP-наблюдение ничего не говорит о UDP на том же порту. */
+enum class Carrier { Tcp, Udp, Unknown }
+
+val Transport.carrier: Carrier get() = when (this) {
+    Transport.Hysteria2 -> Carrier.Udp
+    Transport.RealityVision, Transport.Grpc, Transport.Ws -> Carrier.Tcp
+    Transport.Xhttp -> Carrier.Unknown
+    is Transport.Other -> carrierOfNetwork(name)
+}
+
+private fun carrierOfNetwork(name: String): Carrier = when (name) {
+    "tcp", "raw" -> Carrier.Tcp
+    "kcp", "mkcp", "quic" -> Carrier.Udp
+    else -> Carrier.Unknown
 }
 
 /**

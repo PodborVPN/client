@@ -35,7 +35,7 @@ fun openStep(s: OpenState, letter: Letter): Pair<OpenState, List<Deed>> = when (
 private fun exitAnswered(s: OpenState, letter: Letter.ProbeAnswered): Pair<OpenState, List<Deed>> = when (val vpn = s.opened.vpn) {
     is Vpn.On -> if (letter.server == vpn.exit.id) {
         // Одна тишина или мёртвая Телега — ещё не приговор: повтор один раз. Unreachable не повторяем.
-        val ambiguous = letter.verdict.kind() == VerdictKind.TlsSilence || letter.verdict.kind() == VerdictKind.ServiceDead
+        val ambiguous = letter.verdict.kind() in setOf(VerdictKind.TlsSilence, VerdictKind.ServiceDead, VerdictKind.NoResponse)
         s.copy(exitAnswers = s.exitAnswers + letter.verdict) to
             if (ambiguous && s.exitAnswers.isEmpty()) listOf(Deed.Probe(vpn.exit.id)) else emptyList()
     } else {
@@ -72,7 +72,7 @@ private fun lifeOf(answers: List<Verdict>): Life {
     return when (answers.last().kind()) {
         VerdictKind.Fits -> Life.Works
         VerdictKind.Unreachable -> Life.Dead
-        VerdictKind.TlsSilence, VerdictKind.ServiceDead -> if (answers.size >= 2) Life.Dead else Life.Checking
+        VerdictKind.TlsSilence, VerdictKind.ServiceDead, VerdictKind.NoResponse -> if (answers.size >= 2) Life.Dead else Life.Checking
     }
 }
 

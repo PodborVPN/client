@@ -82,7 +82,7 @@ class LookTest : FunSpec({
 
     test("строка: работающий выход — ✓, имя, протокол; мёртвый — ✗ и вина красным; проверка — «проверяю <сервис>…»") {
         tg(CardStatus.Works(nl)) shouldBe
-            ServiceRow("TG", Mark.Works, "🇳🇱 NL-7", "gRPC", emptyList(), searching = false, mini = Note("работает", Tone.Ok), service = Telegram.id)
+            ServiceRow("TG", Mark.Works, "🇳🇱 NL-7", "gRPC", emptyList(), searching = false, mini = Note("", Tone.Ok), service = Telegram.id)
         tg(CardStatus.Dead(nl, Blame.Server)) shouldBe ServiceRow(
             "TG", Mark.Dead, "🇳🇱 NL-7", "gRPC", listOf(Note("сеть ни при чём — проблема у сервера", Tone.Fail)), searching = false,
             mini = Note("сервер не отвечает", Tone.Fail),

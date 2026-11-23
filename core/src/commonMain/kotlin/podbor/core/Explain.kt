@@ -64,7 +64,9 @@ fun explain(letters: List<Letter>): Explanation {
         plan(it, pressed.servers, pressed.memory, memoryKey(pressed.os, it, pressed.service), planAtMs, pressed.hints)
     }
     // Двойники по IP:порт, выброшенные машиной после TlsSilence до запуска, — пропущены, а не «ещё в работе».
-    val (twins, admissible) = planned.queue.partition { it.id !in trace.launched && it.endpoint in silenced }
+    val (twins, admissible) = planned.queue.partition {
+        it.id !in trace.launched && it.endpoint in silenced && it.transport.carrier == Carrier.Tcp
+    }
     val skipped = mergeSkips(
         planned.skipped,
         twins.groupBy(::classOf).mapValues { (_, s) -> mapOf<SkipReason, Int>(SkipReason.BlockedRecently to s.size) },

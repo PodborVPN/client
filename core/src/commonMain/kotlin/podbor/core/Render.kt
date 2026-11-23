@@ -178,6 +178,7 @@ private fun towerWords(tower: Tower): String? = when (tower) {
 
 /** Транспорт словами экрана. */
 fun transportWords(t: Transport): String = when (t) {
+    Transport.Hysteria2 -> "Hysteria 2"
     Transport.RealityVision -> "Reality"
     Transport.Xhttp -> "XHTTP"
     Transport.Grpc -> "gRPC"
@@ -288,6 +289,7 @@ private fun nounOf(cls: CandidateClass, n: Int): String = when (cls) {
 }
 
 private fun phraseOf(kind: VerdictKind, whitelist: Boolean, service: Service): String = when (kind) {
+    VerdictKind.NoResponse -> "проба не получила ответа: причину соединения пока не знаем"
     VerdictKind.TlsSilence -> "тишина после рукопожатия: оператор режет эти адреса"
     VerdictKind.Unreachable -> if (whitelist) "не отвечают: их адресов нет в белом списке" else "не отвечают"
     VerdictKind.ServiceDead -> "соединился, но ${service.title} не ответила"

@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 /** Вердикт пробы сервиса через кандидата — сумма по подписи провала. */
 @Serializable
 sealed interface Verdict {
+    /** Проба не ответила; доступность транспорта и завершение рукопожатия не измерены. */
+    @Serializable data object NoResponse : Verdict
     /** TCP до сервера не установился. */
     @Serializable data object Unreachable : Verdict
     /** TCP есть, рукопожатие без ответа — подпись блока IP:порт. */
@@ -17,10 +19,11 @@ sealed interface Verdict {
 }
 
 @Serializable
-enum class VerdictKind { Unreachable, TlsSilence, ServiceDead, Fits }
+enum class VerdictKind { Unreachable, TlsSilence, ServiceDead, Fits, NoResponse }
 
 /** Fits ⟺ ответили ≥ 2 DC: отказ одного DC у живого сервера бывает (СС, DC5). */
 fun Verdict.kind(): VerdictKind = when (this) {
+    Verdict.NoResponse -> VerdictKind.NoResponse
     Verdict.Unreachable -> VerdictKind.Unreachable
     Verdict.TlsSilence -> VerdictKind.TlsSilence
     is Verdict.TelegramDc -> if (ok >= 2) VerdictKind.Fits else VerdictKind.ServiceDead

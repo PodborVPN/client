@@ -22,6 +22,7 @@ import podbor.app.ui.SHARE_TAG
 import podbor.core.HARDCODED_SERVICES
 import podbor.core.board
 import podbor.screen.Link
+import podbor.screen.Donation
 
 /** «поделиться Лентой» — видно, что кнопка: роль, палец помещается, нажатие отдаёт Ленту. */
 @RunWith(RobolectricTestRunner::class)
@@ -34,13 +35,13 @@ class ShareButtonUiTest {
     @Test
     fun shareIsAButton() {
         var shared = 0
-        var donated = 0
+        val donated = mutableListOf<Donation>()
         compose.setContent {
             PodborTheme {
                 MainScreen(
                     board(HARDCODED_SERVICES, emptyMap()), Link.Up, emptyMap(), null, null,
                     onPress = {}, onOff = {}, onOn = {}, onRetry = {}, onShare = { shared++ }, onChangeSubscription = {},
-                    onDonate = { donated++ },
+                    onDonate = { donated += it },
                 )
             }
         }
@@ -50,7 +51,13 @@ class ShareButtonUiTest {
             .performClick()
         assertEquals(1, shared)
         compose.onNodeWithText("Поддержать").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
-        assertEquals(1, donated)
+        assertEquals(emptyList<Donation>(), donated)
+        compose.onNodeWithText("Boosty").performClick()
+        assertEquals(listOf(Donation.Boosty), donated)
+        compose.onNodeWithText("Ozon Банк").assertDoesNotExist()
+        compose.onNodeWithText("Поддержать").performClick()
+        compose.onNodeWithText("Ozon Банк").performClick()
+        assertEquals(listOf(Donation.Boosty, Donation.Ozon), donated)
     }
 
     @Test

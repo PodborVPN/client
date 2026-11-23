@@ -134,7 +134,7 @@ private fun onAnswer(s: PressState.Running, a: Letter.ProbeAnswered): Pair<Press
         // Тишину даёт и холодный старт соединения: блок — только по второй.
         VerdictKind.TlsSilence ->
             if (server.id in s.retried) failed(silenced(after, server, a.atMs)) else failed(retry(after, server))
-        VerdictKind.ServiceDead -> if (server.id in s.retried) failed(after) else failed(retry(after, server))
+        VerdictKind.ServiceDead, VerdictKind.NoResponse -> if (server.id in s.retried) failed(after) else failed(retry(after, server))
         // TCP до сервера не прошёл — при белых списках это подпись «адрес не в списке», повтор только тратит время.
         VerdictKind.Unreachable -> failed(after)
     }
@@ -152,7 +152,7 @@ private fun found(s: PressState.Running, server: Server, atMs: Long): Pair<Press
 
 /** TlsSilence: IP:порт под блок; другой порт того же хоста — следующим. */
 private fun silenced(s: PressState.Running, server: Server, atMs: Long): PressState.Running {
-    val rest = s.queue.filter { it.endpoint != server.endpoint }
+    val rest = s.queue.filter { it.endpoint != server.endpoint || it.transport.carrier != Carrier.Tcp }
     val (sibling, other) = rest.partition { it.endpoint.host == server.endpoint.host }
     return s.copy(memory = s.memory.block(server.endpoint, atMs), queue = sibling + other)
 }

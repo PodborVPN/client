@@ -7,6 +7,12 @@ import kotlin.io.encoding.Base64
 /** Что из подписки не стало серверами: счёт ссылок по схемам против числа серверов конвертера. */
 class SkippedTest : FunSpec({
 
+    test("ссылки Hysteria 2 и hy2 учитываются среди поддерживаемых") {
+        skippedOf("hysteria2://test-only@example.org:443\nhy2://test-only@example.org:8443", 2) shouldBe
+            Skipped(2, emptyMap(), 0)
+        skippedOf("hy2://test-only@example.org:443?insecure=1", 0) shouldBe Skipped(0, emptyMap(), 1)
+    }
+
     fun sub(vararg lines: String) = lines.joinToString("\n")
 
     test("все ссылки наши и все стали серверами — пропусков нет") {
@@ -19,12 +25,12 @@ class SkippedTest : FunSpec({
     test("чужие схемы — по счёту каждой; наши стали серверами") {
         val text = sub("hysteria2://p@h:1", "tuic://a@h:1", "vless://a@h:1", "wireguard://k", "tuic://b@h:1", "socks://a@h:1")
         skippedOf(text, servers = 1) shouldBe
-            Skipped(servers = 1, unsupported = mapOf("hysteria2" to 1, "tuic" to 2, "wireguard" to 1, "socks" to 1), broken = 0)
+            Skipped(servers = 1, unsupported = mapOf("tuic" to 2, "wireguard" to 1, "socks" to 1), broken = 1)
     }
 
     test("hy2 — тот же hysteria2; схема без учёта регистра") {
         skippedOf(sub("hy2://p@h:1", "Hysteria2://p", "VLESS://a@h:1"), servers = 1) shouldBe
-            Skipped(servers = 1, unsupported = mapOf("hysteria2" to 2), broken = 0)
+            Skipped(servers = 1, unsupported = emptyMap(), broken = 2)
     }
 
     test("тот же сервер под другой ремаркой — повтор, не битая; одни повторы — сказать нечего") {

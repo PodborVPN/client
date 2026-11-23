@@ -47,6 +47,10 @@ fun Memory.block(endpoint: Endpoint, atMs: Long): Memory =
 fun Memory.isBlocked(endpoint: Endpoint, nowMs: Long): Boolean =
     endpoint in blocks && nowMs < blocks.getValue(endpoint)
 
+/** Блоки из TCP/TLS-проб не переносятся на UDP-кандидатов. */
+fun Memory.isBlocked(server: Server, nowMs: Long): Boolean =
+    server.transport.carrier == Carrier.Tcp && isBlocked(server.endpoint, nowMs)
+
 /** Успехи ключа, свежие первыми; ключ не встречался — пусто. */
 fun Memory.successesOf(key: MemoryKey): List<Success> = successes.getOrElse(key) { emptyList() }
 

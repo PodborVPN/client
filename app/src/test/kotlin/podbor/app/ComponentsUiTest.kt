@@ -3,6 +3,10 @@ package podbor.app
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -64,6 +68,9 @@ class ComponentsUiTest {
         // Знак сервиса подписан его меткой; метки словом рядом нет.
         compose.onNodeWithContentDescription("TG").assertExists()
         compose.onNodeWithText("TG").assertDoesNotExist()
+        compose.onNodeWithTag(podbor.app.ui.SERVICE_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "работает"))
+        compose.onNodeWithText("работает").assertDoesNotExist()
     }
 
     @Test

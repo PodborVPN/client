@@ -20,7 +20,7 @@ data class Skipped(val servers: Int, val unsupported: Map<String, Int>, val brok
 }
 
 /** Схемы, из которых конвертер и ядро делают серверы. */
-private val OURS = setOf("vless", "vmess", "trojan", "ss")
+private val OURS = setOf("vless", "vmess", "trojan", "ss", "hysteria2")
 
 /** Другие имена той же схемы. */
 private val ALIASES = mapOf("hy2" to "hysteria2")

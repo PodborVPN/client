@@ -5,6 +5,8 @@ import kotlinx.coroutines.coroutineScope
 import podbor.core.ProbeSpec
 import podbor.core.Reach
 import podbor.core.Server
+import podbor.core.Carrier
+import podbor.core.carrier
 import podbor.core.Verdict
 
 /** Срок одной пробы сервиса и TCP до сервера — один на все виды проб. */
@@ -18,20 +20,26 @@ class ProberImpl(
     private val https: suspend (Int) -> Boolean = { false },
 ) : Prober {
     override suspend fun probe(spec: ProbeSpec, server: Server, socksPort: Int): Verdict = coroutineScope {
-        val tcp = async { reach.reach(server.endpoint, PROBE_DEADLINE_MS) }
+        val connection = async { connectionCheck(server) }
         when (spec) {
             ProbeSpec.Telegram -> {
                 val answered = async { telegram.probe(socksPort) }
-                classify(answered.await(), tcp.await())
+                classify(answered.await(), connection.await())
             }
             ProbeSpec.Https -> {
                 val answered = async { https(socksPort) }.await()
-                if (answered || tcp.await() == Reach.Up) Verdict.Https(answered) else Verdict.Unreachable
+                classifyHttps(answered, connection.await())
             }
             ProbeSpec.Instagram -> {
                 val answer = async { instagram.probe(socksPort) }
-                classifyInstagram(answer.await(), tcp.await())
+                classifyInstagram(answer.await(), connection.await())
             }
         }
+    }
+
+    private suspend fun connectionCheck(server: Server): EndpointCheck = when (server.transport.carrier) {
+        Carrier.Udp, Carrier.Unknown -> EndpointCheck.NotApplicable
+        Carrier.Tcp ->
+            EndpointCheck.Tcp(reach.reach(server.endpoint, PROBE_DEADLINE_MS))
     }
 }

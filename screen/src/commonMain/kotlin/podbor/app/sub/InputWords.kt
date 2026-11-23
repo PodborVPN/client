@@ -26,7 +26,7 @@ private fun limitWords(announce: Announce): String = when (announce) {
 /** Слова шторки о ссылках, не ставших серверами: заголовок, счёт по схемам, что делать. */
 data class SkippedWords(val title: String, val lines: List<String>, val note: String)
 
-private const val OURS_WORDS = "vless, vmess, trojan и shadowsocks"
+private const val OURS_WORDS = "vless, vmess, trojan, shadowsocks и Hysteria 2"
 
 /** Строка счёта, если есть что считать. */
 private fun lineWhen(n: Int, line: (Int) -> String): List<String> = if (n > 0) listOf(line(n)) else emptyList()
@@ -35,14 +35,14 @@ private fun lineWhen(n: Int, line: (Int) -> String): List<String> = if (n > 0) l
 fun skippedWords(s: Skipped): SkippedWords {
     val lines = s.unsupported.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
         .map { (scheme, n) -> "$scheme — $n" } +
-        lineWhen(s.broken) { "${plural(it, "битая ссылка", "битые ссылки", "битых ссылок")} — $it" } +
+        lineWhen(s.broken) { "не удалось прочитать ссылку или её параметры — $it" } +
         lineWhen(s.repeats) { "повторы того же сервера — $it" }
     val total = s.servers + s.broken + s.repeats + s.unsupported.values.sum()
     return when {
         s.servers > 0 -> SkippedWords(
             "Проверю ${s.servers} ${plural(s.servers, "сервер", "сервера", "серверов")} из $total",
             lines,
-            "остальные Podbor не поддерживает — пропущу",
+            "остальные не удалось использовать — пропущу; параметры ссылки могут не поддерживаться",
         )
         s.recognized -> SkippedWords(
             "Podbor не поддерживает эту подписку",

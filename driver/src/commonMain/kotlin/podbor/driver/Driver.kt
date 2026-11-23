@@ -379,7 +379,7 @@ class Driver(
         return services.sortedBy { it.id.id }.mapNotNull { service ->
             val server = memory.successesOf(memoryKey(os, scenario, service.id))
                 .mapNotNull { success -> warm.servers.find { it.key == success.serverKey } }
-                .firstOrNull { !memory.isBlocked(it.endpoint, now) }
+                .firstOrNull { !memory.isBlocked(it, now) }
             if (server == null) return@mapNotNull null
             if (service.id == Web.id) {
                 val verdict = gate.withEndpoint(server.endpoint) {

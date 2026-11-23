@@ -89,7 +89,7 @@ private fun MainPage(vm: MainViewModel, port: RemotePort, story: SessionStory) {
         onShare = null,
         onChangeSubscription = vm::changeSubscription,
         onSupport = ::openInNewTab,
-        onDonate = null,
+        onDonate = { openInNewTab(it.url) },
         pulse = pulse,
         countries = countries,
         onCountries = vm::setExitFilter,

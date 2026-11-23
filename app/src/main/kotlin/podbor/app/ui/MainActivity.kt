@@ -424,10 +424,10 @@ class MainActivity : FragmentActivity() {
         Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
     }
 
-    /** «Поддержать»: страница проекта на Boosty. */
-    internal fun donate() {
+    /** Открыть выбранный способ поддержки во внешнем приложении. */
+    internal fun donate(destination: podbor.screen.Donation) {
         log("экран: поддержать")
-        Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(BuildConfig.DONATE_URL))) }
+        Either.catch { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(destination.url))) }
     }
 
     /** «⋮» → «Поддержка провайдера»: ссылка провайдера — браузером или его приложением; открыть нечем — молча. */

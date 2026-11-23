@@ -23,10 +23,10 @@ class MiniTest : FunSpec({
     val moved = Relocation.Moved(NetworkMove(OsNetwork.Wifi, OsNetwork.Cellular("MTS", "25001")))
     val flowing = PairPulse.Seen(downBps = 1_258_291, upBps = 12_000, answered = Since.Never)
 
-    test("работает: с трафиком — скорость вниз; без пульса — просто «работает»; не пользуется — так и пишем") {
-        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, flowing) shouldBe Note("работает · ↓ ${rateText(flowing.downBps)}", Tone.Ok)
-        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, PairPulse.Unseen) shouldBe Note("работает", Tone.Ok)
-        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, PairPulse.Seen(0, 0, Since.Never)) shouldBe Note("работает · сейчас не пользуется", Tone.Ok)
+    test("зелёная строка показывает только трафик без повторения статуса") {
+        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, flowing) shouldBe Note("↓ ${rateText(flowing.downBps)}", Tone.Ok)
+        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, PairPulse.Unseen) shouldBe Note("", Tone.Ok)
+        miniOf(CardStatus.Works(nl), ExitOrigin.Chosen, PairPulse.Seen(0, 0, Since.Never)) shouldBe Note("сейчас не пользуется", Tone.Ok)
     }
 
     test("найден подбором — чем проверен") {

@@ -190,8 +190,8 @@ private fun checkingMini(relocation: Relocation, origin: ExitOrigin): String = w
 }
 
 private fun worksMini(pulse: PairPulse): String = when (pulse) {
-    PairPulse.Unseen -> "работает"
-    is PairPulse.Seen -> if (pulse.downBps == 0L && pulse.upBps == 0L) "работает · сейчас не пользуется" else "работает · ↓ ${rateText(pulse.downBps)}"
+    PairPulse.Unseen -> ""
+    is PairPulse.Seen -> if (pulse.downBps == 0L && pulse.upBps == 0L) "сейчас не пользуется" else "↓ ${rateText(pulse.downBps)}"
 }
 
 private fun deadMini(blame: Blame): String = when (blame) {

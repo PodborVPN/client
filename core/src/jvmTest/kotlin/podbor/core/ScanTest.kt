@@ -85,6 +85,25 @@ class ScanTest : FunSpec({
     fun Trace.exits() = deeds.filterIsInstance<Deed.MeasureExit>().map { it.server.tag }
     fun Trace.passport() = state.shouldBeInstanceOf<ScanState.Done>().passport
 
+    test("тишина UDP не делает сервер ответившим и не блокирует адрес") {
+        val udp = server("s001", Entry.Unknown, transport = Transport.Hysteria2)
+        val trace = drive(scan(listOf(udp)), World(exit = { Exit.Unknown }, verdict = { _, _ -> Verdict.NoResponse }))
+        trace.passport().servers.getValue(udp.key).seen shouldBe Seen.Silent
+        trace.probes().size shouldBe 4
+        trace.deeds.filterIsInstance<Deed.Remember>().all { it.memory.blocks.isEmpty() } shouldBe true
+    }
+
+    test("повторная тишина TCP не снимает задачи UDP на том же адресе") {
+        val tcp = server("s001", Entry.Unknown, transport = Transport.Grpc)
+        val udp = server("s002", Entry.Unknown, transport = Transport.Hysteria2).copy(endpoint = tcp.endpoint)
+        val trace = drive(scan(listOf(tcp, udp), services = listOf(tg)), World(exit = { Exit.Unknown }, verdict = { id, _ ->
+            if (id == tcp.id) Verdict.TlsSilence else Verdict.TelegramDc(3)
+        }))
+        trace.passport().servers.getValue(udp.key).seen.shouldBeInstanceOf<Seen.Answered>()
+        trace.probes().filter { it.first == "s002" }.size shouldBe 1
+        trace.deeds.filterIsInstance<Deed.Remember>().any { it.memory.isBlocked(tcp.endpoint, 0) } shouldBe true
+    }
+
     test("старт без свежей линии → ProbeLine") {
         scanStep(ScanState.Idle, scan(listOf(server("s001", Entry.Ru)))).second shouldContainExactly listOf(Deed.ProbeLine)
     }

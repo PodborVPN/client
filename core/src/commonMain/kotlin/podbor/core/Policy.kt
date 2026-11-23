@@ -40,10 +40,10 @@ fun plan(
     val admissible = servers.filter { s ->
         val cls = classOf(s)
         val reason = when {
-            likely(s) -> if (memory.isBlocked(s.endpoint, nowMs)) SkipReason.BlockedRecently else null
-            scenario == Scenario.MobileWhitelist && cls == CandidateClass.Foreign -> SkipReason.ForeignInWhitelist
-            scenario == Scenario.SuspectWhitelist && cls == CandidateClass.Foreign -> SkipReason.ForeignWhileSuspected
-            memory.isBlocked(s.endpoint, nowMs) -> SkipReason.BlockedRecently
+            likely(s) -> if (memory.isBlocked(s, nowMs)) SkipReason.BlockedRecently else null
+            s.transport.carrier == Carrier.Tcp && scenario == Scenario.MobileWhitelist && cls == CandidateClass.Foreign -> SkipReason.ForeignInWhitelist
+            s.transport.carrier == Carrier.Tcp && scenario == Scenario.SuspectWhitelist && cls == CandidateClass.Foreign -> SkipReason.ForeignWhileSuspected
+            memory.isBlocked(s, nowMs) -> SkipReason.BlockedRecently
             else -> null
         }
         if (reason != null) skips += cls to reason
@@ -83,7 +83,7 @@ private fun openTier(entry: Entry, transport: Transport): Int = when (entry) {
 
 private fun transportTier(t: Transport): Int = when (t) {
     Transport.Xhttp, Transport.Grpc -> 0
-    Transport.Ws, is Transport.Other -> 1
+    Transport.Ws, Transport.Hysteria2, is Transport.Other -> 1
     Transport.RealityVision -> 2
 }
 

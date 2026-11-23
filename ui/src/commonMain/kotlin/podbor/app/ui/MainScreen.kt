@@ -58,11 +58,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import podbor.screen.Announce
+import podbor.screen.Donation
 import podbor.screen.SubscriptionNote
 import podbor.screen.Support
 import podbor.screen.supportWhenStuck
@@ -116,7 +119,7 @@ fun MainScreen(
     onChangeSubscription: () -> Unit,
     onSupport: (String) -> Unit = {},
     /** «Поддержать» проект; null — кнопки нет (сборка для магазина: там донаты только через его оплату). */
-    onDonate: (() -> Unit)? = null,
+    onDonate: ((Donation) -> Unit)? = null,
     /** Пульс сессии: величины пар в строках сервисов. */
     pulse: PulseView = PulseView.Empty,
     /** История строки по её метке — для шторки ([ServiceSheet]); свежие сверху. */
@@ -251,7 +254,7 @@ const val SHARE_TAG = "share"
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ShareLink(note: String?, onShare: (() -> Unit)?, onDonate: (() -> Unit)?) {
+private fun ShareLink(note: String?, onShare: (() -> Unit)?, onDonate: ((Donation) -> Unit)?) {
     Column(Modifier.fillMaxWidth().padding(top = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
         // Узкий экран или крупный шрифт — вторая кнопка уходит на новую строку, а не обрезается.
         FlowRow(
@@ -259,11 +262,36 @@ private fun ShareLink(note: String?, onShare: (() -> Unit)?, onDonate: (() -> Un
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             if (onShare != null) QuietButton("поделиться Лентой", onShare, Modifier.testTag(SHARE_TAG), Glyph.BugReport, PodborColors.Accent)
-            if (onDonate != null) QuietButton("Поддержать", onDonate, icon = Glyph.Favorite, tint = PodborColors.Heart)
+            if (onDonate != null) DonationMenu(onDonate)
         }
         // Появляется и уходит плавно: рывок сдвигал бы всё, что под строкой.
         AnimatedVisibility(visible = note != null) {
             Text(note.orEmpty(), color = PodborColors.Fail, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun DonationMenu(onDonate: (Donation) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        QuietButton("Поддержать", { open = true }, icon = Glyph.Favorite, tint = PodborColors.Heart)
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = Corner,
+            containerColor = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(Space.hairline, Rule),
+        ) {
+            Donation.entries.forEach { destination ->
+                DropdownMenuItem(
+                    text = { Text(destination.title, color = PodborColors.Text, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        open = false
+                        onDonate(destination)
+                    },
+                )
+            }
         }
     }
 }
@@ -464,6 +492,14 @@ fun ServiceLine(row: ServiceRow, onTap: () -> Unit, route: ServerRoute? = null) 
     Box(
         Modifier
             .testTag(SERVICE_TAG)
+            .semantics {
+                stateDescription = when (row.mark) {
+                    Mark.Works -> "работает"
+                    Mark.Checking -> "проверяю"
+                    Mark.Dead -> "не работает"
+                    null -> ""
+                }
+            }
             .then(if (tappable) Modifier.clickable(role = Role.Button, onClick = onTap) else Modifier),
     ) {
         Row(

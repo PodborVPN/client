@@ -135,10 +135,14 @@ private fun onProbe(s: ScanState.Running, a: Letter.ProbeAnswered): Pair<ScanSta
         }
         // Рукопожатие прошло — сервер жив, хоть сервис и молчит; повтор один раз.
         VerdictKind.ServiceDead -> launch(after.answeredBy(task.server, a.atMs).retry(task), a.atMs)
+        // Нет ответа — нет доказательства доступности и нет основания блокировать адрес.
+        VerdictKind.NoResponse -> launch(after.retry(task), a.atMs)
         // Холодный старт тоже даёт тишину — блок только по второй на этом IP:порт; остальное по адресу снимается.
         VerdictKind.TlsSilence ->
             if (endpoint in s.silent) {
-                remember(after.copy(memory = after.memory.block(endpoint, a.atMs), queue = after.queue.filter { it.server.endpoint != endpoint }), a.atMs)
+                remember(after.copy(memory = after.memory.block(endpoint, a.atMs), queue = after.queue.filter {
+                    it.server.endpoint != endpoint || it.server.transport.carrier != Carrier.Tcp
+                }), a.atMs)
             } else {
                 launch(after.copy(silent = after.silent + endpoint).retry(task), a.atMs)
             }
@@ -152,7 +156,10 @@ private fun onProbe(s: ScanState.Running, a: Letter.ProbeAnswered): Pair<ScanSta
 private fun ScanState.Running.answeredBy(server: Server, atMs: Long): ScanState.Running =
     copy(
         answered = if (server.id in answered) answered else answered + (server.id to atMs),
-        silent = silent - server.endpoint,
+        silent = when (server.transport.carrier) {
+            Carrier.Tcp -> silent - server.endpoint
+            Carrier.Udp, Carrier.Unknown -> silent
+        },
     )
 
 /** Неоднозначный провал — в конец очереди, один раз. */

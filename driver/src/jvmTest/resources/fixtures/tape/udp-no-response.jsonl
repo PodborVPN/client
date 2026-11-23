@@ -1,0 +1,1 @@
+{"type":"step","run":1,"letter":{"type":"podbor.core.Letter.ProbeAnswered","atMs":100,"server":"s001","verdict":{"type":"podbor.core.Verdict.NoResponse"},"service":"tg"},"deeds":[]}

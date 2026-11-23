@@ -18,7 +18,7 @@ import org.kotlincrypto.hash.sha2.SHA256
 data class Unusable(val reason: String)
 
 /** Протоколы прокси, которые перебираем; freedom, blackhole и прочие служебные — не кандидаты. */
-private val proxyProtocols = setOf("vless", "vmess", "trojan", "shadowsocks")
+private val proxyProtocols = setOf("vless", "vmess", "trojan", "shadowsocks", "hysteria")
 
 fun draftOf(name: String, outbound: JsonObject): Either<Unusable, ServerDraft> = either {
     val protocol = outbound.str("protocol")
@@ -35,6 +35,12 @@ fun draftOf(name: String, outbound: JsonObject): Either<Unusable, ServerDraft> =
     val port = ensureNotNull(if (portAt is JsonPrimitive) portAt.intOrNull else null) { Unusable("нет port") }
     ensure(port in 1..65535) { Unusable("нет port") }
     val stream = outbound.obj("streamSettings")
+    if (protocol == "hysteria") {
+        ensure(settings["version"] == JsonPrimitive(2)) { Unusable("поддерживается только Hysteria 2") }
+        ensure(stream.str("network") == "hysteria" && stream.str("security") == "tls") {
+            Unusable("Hysteria 2 требует транспорт hysteria и TLS")
+        }
+    }
     val reality = stream.obj("realitySettings")
     val tls = stream.obj("tlsSettings")
     val flow = objOr(target.arr("users").firstOrNull(), EMPTY).str("flow").ifEmpty { target.str("flow") }
@@ -51,6 +57,7 @@ fun draftOf(name: String, outbound: JsonObject): Either<Unusable, ServerDraft> =
 /** raw ≡ tcp, сети нет — tcp; RealityVision — только reality + flow vision, прочий tcp — Other("tcp"). */
 private fun transportOf(network: String, security: String, flow: String): Transport =
     when (val n = network.lowercase().ifEmpty { "tcp" }) {
+        "hysteria" -> Transport.Hysteria2
         "tcp", "raw" ->
             if (security == "reality" && flow == "xtls-rprx-vision") Transport.RealityVision else Transport.Other("tcp")
         "xhttp", "splithttp" -> Transport.Xhttp
