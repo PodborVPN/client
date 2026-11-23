@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/PodborVPN/client/compare/v0.17.0...v0.18.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **shared:** расширены варианты транспорта и исходов Ленты; старые читатели не поддерживают Hysteria2 и NoResponse.
+
+### Новое
+
+* **shared:** добавить поддержку Hysteria 2 ([3c14805](https://github.com/PodborVPN/client/commit/3c14805870d62aaf3515fdc8b20781667bba4834))
+
 ## [0.17.0](https://github.com/PodborVPN/client/compare/v0.16.0...v0.17.0) (2026-11-11)
 
 
